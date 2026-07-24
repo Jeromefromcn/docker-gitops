@@ -1,0 +1,22 @@
+# secrets / env
+.env
+.env.*
+*.env
+secrets/
+*.pem
+*.key
+*credentials*.json
+
+# local overrides (host-specific, not shared)
+docker-compose.override.yml
+docker-compose.*.local.yml
+
+# backups / temp
+*.bak
+*.tmp
+*~
+.DS_Store
+
+# editor
+.vscode/
+.idea/
