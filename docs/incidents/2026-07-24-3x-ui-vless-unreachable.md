@@ -1,13 +1,13 @@
 # 2026-07-24 3x-ui VLESS 连接不上
 
 ## 现象
-- 用户反馈 vless 服务连不上，重启 `3x-ui` 容器后恢复
+- 用户反馈 vless 服务连不上，港时约 19:30 左右手动重启 `3x-ui` 容器后恢复
 - 容器健康检查全程显示 `healthy`，Docker 没有自动重启过它（`RestartCount: 0`，`OOMKilled: false`，`ExitCode: 0`）
 
 ## 排查过程
 - `docker inspect`：容器本身没崩溃，宿主机 `dmesg`/`journalctl` 无 OOM、无内核杀进程记录，内存/磁盘充足
 - `docker events` 在故障时间窗口无任何事件（无 die/unhealthy/oom）
-- 容器日志：05:17 用户登录成功后，到 11:24 手动重启前，**长达6小时日志完全空白**，重启前的最后一条是优雅关闭（`WebSocket hub stopped` → `Shutting down servers`），不是崩溃
+- 容器日志：以下时间戳均为 **UTC**（容器本身 `TZ=Asia/Hong_Kong`，但这批日志戳来自 UTC 来源，换算需 +8）。UTC 05:17（港时 13:17）用户登录成功后，到 UTC 11:24（港时 19:24，与用户回忆的 19:30 左右手动重启基本吻合）手动重启前，**长达6小时日志完全空白**，重启前的最后一条是优雅关闭（`WebSocket hub stopped` → `Shutting down servers`），不是崩溃
 - 健康检查定义：`nc -z 127.0.0.1 443/2053/2096`，只测端口是否能完成 TCP 握手，不验证 VLESS 协议本身是否正常工作
 - 容器 `ulimit -n` 只有默认的 1024，没有单独调高
 - 排查了 fail2ban（`3x-ipl` jail，IP 限制封禁机制）：jail 是 enabled 状态，但源日志、ban 日志、历史 ban 日志全部为空，**排除** fail2ban/IP 限制导致本次故障的可能
