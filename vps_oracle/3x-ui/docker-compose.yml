@@ -10,7 +10,7 @@ services:
         max-size: "10m"
         max-file: "5"
     healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 443 && nc -z 127.0.0.1 2053 && nc -z 127.0.0.1 2096 && pgrep -f xray-linux-arm64 > /dev/null"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 39876 && nc -z 127.0.0.1 46213 && nc -z 127.0.0.1 51234 && pgrep -f xray-linux-arm64 > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -28,6 +28,6 @@ services:
       - /etc/x-ui/cert:/root/cert/    # 证书持久化
       - /etc/x-ui/xray/xray-linux-arm64:/app/bin/xray-linux-arm64:ro  # 固定 Xray 26.6.27
     ports:
-      - "14985:2053"                  # 面板:宿主机 14985 -> 容器内默认 2053
-      - "443:443"                     # 节点端口(VLESS + Reality)
-      - "2096:2096"                   # 订阅服务
+      - "46213:46213"                 # 面板:面板设置里已把监听端口改成 46213,容器内外一致
+      - "39876:39876"                 # 节点端口(VLESS + Reality),inbound 设置里已把监听端口改成 39876,容器内外一致
+      - "51234:51234"                 # 订阅服务,面板设置里已把监听端口改成 51234,容器内外一致
