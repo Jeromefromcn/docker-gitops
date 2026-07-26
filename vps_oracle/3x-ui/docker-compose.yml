@@ -28,6 +28,12 @@ services:
       - /etc/x-ui/cert:/root/cert/    # 证书持久化
       - /etc/x-ui/xray/xray-linux-arm64:/app/bin/xray-linux-arm64:ro  # 固定 Xray 26.6.27
     ports:
-      - "46213:46213"                 # 面板:面板设置里已把监听端口改成 46213,容器内外一致
-      - "39876:39876"                 # 节点端口(VLESS + Reality),inbound 设置里已把监听端口改成 39876,容器内外一致
-      - "51234:51234"                 # 订阅服务,面板设置里已把监听端口改成 51234,容器内外一致
+      - "39876:39876"                 # 节点端口(VLESS + Reality),客户端直连,必须留在宿主机
+      # 面板 46213、订阅服务 51234 不再发布到宿主机,改走 NPM 反代:
+      # https://panel.3x.jerome.cloudns.asia / https://sub.3x.jerome.cloudns.asia
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy
