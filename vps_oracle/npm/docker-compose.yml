@@ -1,0 +1,27 @@
+services:
+  app:
+    image: 'jc21/nginx-proxy-manager:2.12.3' # 固定版本，稳定不踩坑
+    container_name: npm
+    hostname: npm
+    restart: unless-stopped          # 手动停止后不会随宿主机重启被拉起
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    ports:
+      - '80:80'
+      - '443:443'
+      # 81（管理面板）不发布到宿主机，走 https://npm.jerome.cloudns.asia 访问；
+      # 应急时 SSH 到服务器用容器内部 IP 隧道访问
+    environment:
+      TZ: "Asia/Shanghai" # 保持时区一致，日志时间才准确
+    volumes:
+      - /etc/npm/data:/data           # 面板数据持久化（绝对路径，仓库目录搬家不受影响）
+      - /etc/npm/letsencrypt:/etc/letsencrypt  # 证书持久化
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy
