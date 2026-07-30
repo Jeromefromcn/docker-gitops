@@ -1,0 +1,87 @@
+services:
+  prometheus:
+    image: prom/prometheus@sha256:2d61f37ba9f2185195dfad94ee500d7ac1986560bac79a77d0a6de182a5bf814  # v3.13.1
+    container_name: prometheus
+    hostname: prometheus
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /etc/monitoring/prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    # 不对外暴露: 没有登录认证, 只用 docker exec 或临时端口做本地 PromQL 调试
+
+  node-exporter:
+    image: prom/node-exporter@sha256:c9ef89f9464f09e7234decaae68a80ab856ff0014435677a99fd48b03dd410ea  # v1.12.1
+    container_name: node-exporter
+    hostname: node-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - '--path.rootfs=/host'
+    # 不用 network_mode: host: 牺牲网络吞吐指标精度换取部署简单,网络告警本来就不在这次范围内
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter@sha256:2d27bd2523936a9f28d1073ee12fbae1497f7d45c1b08710a271cb6c48f06550  # v0.28.0
+    container_name: blackbox-exporter
+    hostname: blackbox-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+
+  grafana:
+    image: grafana/grafana@sha256:96b9eabbe113fffa7ce6efc6267ebe7e6e33bdc65a94d85d73b2b46cbd14e43d  # 13.1.1
+    container_name: grafana
+    hostname: grafana
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+      GF_SERVER_ROOT_URL: "https://grafana.jerome.cloudns.asia"
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /etc/monitoring/grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - default
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = grafana, Forward Port = 3000
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy
