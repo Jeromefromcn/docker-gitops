@@ -1,0 +1,181 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: host_metrics
+    folder: Monitoring
+    interval: 60s
+    rules:
+      - uid: cpu_warning
+        title: CPU Usage Warning
+        condition: B
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU usage above 75% for 15 minutes on vps_oracle"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [75]
+
+      - uid: cpu_critical
+        title: CPU Usage Critical
+        condition: B
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CPU usage above 90% for 10 minutes on vps_oracle"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [90]
+
+      - uid: memory_warning
+        title: Memory Usage Warning
+        condition: B
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory usage above 70% for 15 minutes on vps_oracle"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: '100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [70]
+
+      - uid: memory_critical
+        title: Memory Usage Critical
+        condition: B
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory usage above 85% for 10 minutes on vps_oracle"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: '100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+
+      - uid: disk_warning
+        title: Disk Usage Warning
+        condition: B
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk usage above 75% on vps_oracle root filesystem"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: '100 * (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"}))'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [75]
+
+      - uid: disk_critical
+        title: Disk Usage Critical
+        condition: B
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk usage above 85% on vps_oracle root filesystem"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: '100 * (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"}))'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
