@@ -1,0 +1,25 @@
+services:
+  portainer:
+    image: portainer/portainer-ce@sha256:707366c811956fe077135a6633af67e698529612869711cdb24896c892b28feb  # 2.43.0
+    container_name: portainer
+    hostname: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # 必需:控制宿主机 docker,等同 root 权限,已知风险,无法回避
+      - /etc/portainer/data:/data                     # Portainer 自身数据库持久化(stack 定义也存这里,不像 Dockge 需要挂宿主机 compose 目录)
+    networks:
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = portainer, Forward Port = 9000 (HTTP UI,未发布到宿主机;9443 是自带 HTTPS,交给 NPM 统一做 TLS 就不用它)
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy
