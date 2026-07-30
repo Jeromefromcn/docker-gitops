@@ -1,0 +1,152 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: service_probes
+    folder: Monitoring
+    interval: 60s
+    rules:
+      - uid: probe_npm_admin
+        title: NPM Admin Panel Down
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NPM Admin Panel (npm.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://npm.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_3xui_panel
+        title: 3x-ui Panel Down
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "3x-ui Panel (panel.3x.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://panel.3x.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_3xui_sub
+        title: 3x-ui Subscription Down
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "3x-ui Subscription (sub.3x.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://sub.3x.jerome.cloudns.asia/sub/"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_3xui_vless_port
+        title: 3x-ui VLESS Node Port Down
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "3x-ui VLESS node port (39876) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="jerome.cloudns.asia:39876"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_portainer
+        title: Portainer Admin Panel Down
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Portainer Admin Panel (portainer.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://portainer.jerome.cloudns.asia/"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]

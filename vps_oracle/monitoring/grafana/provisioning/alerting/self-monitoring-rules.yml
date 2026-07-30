@@ -1,0 +1,123 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: self_monitoring
+    folder: Monitoring
+    interval: 60s
+    rules:
+      - uid: self_prometheus_down
+        title: Prometheus Self-Scrape Down
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape itself (localhost:9090)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="prometheus"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: self_grafana_down
+        title: Grafana Scrape Down
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape Grafana's /metrics endpoint"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="grafana"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: self_blackbox_exporter_down
+        title: Blackbox Exporter Scrape Down
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape blackbox_exporter's own /metrics endpoint"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="blackbox_exporter_self"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: self_node_exporter_down
+        title: Node Exporter Scrape Down
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape node_exporter (host metrics unavailable)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="node"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
