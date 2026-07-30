@@ -1,0 +1,13 @@
+apiVersion: 1
+
+templates:
+  - orgId: 1
+    name: server_alert
+    template: |
+      {{ define "server_alert" }}
+      {{ if eq .Status "firing" }}
+      {{ if eq .CommonLabels.severity "critical" }}🚨🔴 CRITICAL{{ else }}⚠️🟠 WARNING{{ end }}: {{ .CommonAnnotations.summary }}
+      {{ else }}
+      ✅🟢 RESOLVED: {{ .CommonAnnotations.summary }}
+      {{ end }}
+      {{ end }}
