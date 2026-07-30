@@ -1,0 +1,16 @@
+modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: []  # defaults to 2xx
+
+  http_2xx_or_404:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [200, 201, 202, 203, 204, 205, 206, 404]
+
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
