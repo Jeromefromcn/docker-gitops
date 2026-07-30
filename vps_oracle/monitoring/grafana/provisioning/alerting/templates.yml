@@ -6,8 +6,12 @@ templates:
     template: |
       {{ define "server_alert" }}
       {{ if eq .Status "firing" }}
-      {{ if eq .CommonLabels.severity "critical" }}🚨🔴 CRITICAL{{ else }}⚠️🟠 WARNING{{ end }}: {{ .CommonAnnotations.summary }}
+      {{ if eq .CommonLabels.severity "critical" }}🚨🔴 CRITICAL{{ else }}⚠️🟠 WARNING{{ end }}
       {{ else }}
-      ✅🟢 RESOLVED: {{ .CommonAnnotations.summary }}
+      ✅🟢 RESOLVED
+      {{ end }}
+      {{ range .Alerts }}
+      {{ .Annotations.summary }}
+      <a href="{{ .GeneratorURL }}">Source</a>{{ if .SilenceURL }} · <a href="{{ .SilenceURL }}">Silence</a>{{ end }}
       {{ end }}
       {{ end }}
