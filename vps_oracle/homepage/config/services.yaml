@@ -15,7 +15,7 @@
 
     - Grafana:
         icon: grafana.png
-        href: https://grafana.jerome.cloudns.asia
+        href: https://grafana.jerome.cloudns.asia/d/rYdddlPWk/node-exporter-full?orgId=1&from=now-24h&to=now&timezone=browser&var-job=node&var-nodename=node-exporter&var-node=node-exporter:9100&refresh=1m
         description: Monitoring dashboard
         container: grafana
         server: my-docker

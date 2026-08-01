@@ -11,4 +11,4 @@ Central repo for server docker-compose files. Each `<host>/<compose>/` directory
 - Volume paths in compose files must stay absolute — this directory can move, but bind mounts must still resolve.
 - Don't assume a service here matches what's live — confirm with the user before applying changes that recreate a container.
 - Need to configure/edit an NPM reverse proxy host? Follow the steps in README.md's "给服务接入 NPM 反代" section (includes a known SSL-toggle-resets-itself gotcha).
-- Every time a new service is added to this repo, also add it as a card in the homepage dashboard config (`vps_oracle/homepage/config/services.yaml`) — icon, href, description (English, per README's exposed-content rule), `container`, and `server: my-docker`. Exception: sensitive services (e.g. 3x-ui) stay off the dashboard — ask before adding anything security-sensitive.
+- Every time a new service is added to this repo, also add it as a card in the homepage dashboard — follow README.md's "给新服务加 homepage 卡片" section.
