@@ -1,0 +1,27 @@
+services:
+  apprise:
+    image: caronc/apprise:v1.5.1
+    container_name: apprise
+    hostname: apprise
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      APPRISE_STATEFUL_MODE: "simple"
+      APPRISE_WORKER_COUNT: "1"
+      APPRISE_ADMIN: "y"
+    volumes:
+      - /etc/apprise/config:/config
+    networks:
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = apprise, Forward Port = 8000（未发布到宿主机）
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy
