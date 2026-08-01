@@ -45,6 +45,13 @@
     - Open WebUI:
         icon: open-webui.png
         href: https://ollama.jerome.cloudns.asia
-        description: LLM chat (Ollama)
+        description: LLM chat (llama.cpp)
         container: open-webui
+        server: my-docker
+
+    - SillyTavern:
+        icon: sillytavern.png
+        href: https://sillytavern.jerome.cloudns.asia
+        description: Roleplay / character chat frontend (llama.cpp)
+        container: sillytavern
         server: my-docker
