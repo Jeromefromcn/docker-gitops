@@ -15,7 +15,7 @@ services:
       # 81（管理面板）不发布到宿主机，走 https://npm.jerome.cloudns.asia 访问；
       # 应急时 SSH 到服务器用容器内部 IP 隧道访问
     environment:
-      TZ: "Asia/Shanghai" # 保持时区一致，日志时间才准确
+      TZ: "Asia/Hong_Kong" # 保持时区一致，日志时间才准确
     volumes:
       - /etc/npm/data:/data           # 面板数据持久化（绝对路径，仓库目录搬家不受影响）
       - /etc/npm/letsencrypt:/etc/letsencrypt  # 证书持久化
