@@ -41,3 +41,10 @@
         description: Notification forwarding
         container: apprise
         server: my-docker
+
+    - Open WebUI:
+        icon: open-webui.png
+        href: https://ollama.jerome.cloudns.asia
+        description: LLM chat (Ollama)
+        container: open-webui
+        server: my-docker
