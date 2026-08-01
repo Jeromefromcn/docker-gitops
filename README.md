@@ -56,6 +56,24 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 
 **⚠️ 已知坑**：创建时把 Force SSL / HTTP/2 Support 打开保存，有时会被静默重置回关闭状态。**保存后要重新打开这条记录复查一遍**，发现关掉了就再勾一次并保存。
 
+## 给新服务加 homepage 卡片
+
+每新增一个服务，同步在 `vps_oracle/homepage/config/services.yaml` 里加一张卡片，跟现有条目保持同样格式：
+
+```yaml
+    - <服务名>:
+        icon: <icon-name>.png
+        href: https://<service>.jerome.cloudns.asia
+        description: <一句话描述，英文>
+        container: <container_name>
+        server: my-docker
+```
+
+- `icon`：用 [walkxcode/dashboard-icons](https://github.com/walkxcode/dashboard-icons) 里对应的文件名，homepage 会自动去 CDN 拉
+- `description`：访客可见，按下面"暴露内容用英文"的约定用英文
+- `container` 填 compose 里的 `container_name`；`server` 固定 `my-docker`（对应 `config/docker.yaml` 里声明的本机 docker socket），用于展示容器状态小组件
+- **例外**：安全敏感的服务（如 3x-ui）不上卡片，加之前先问一句
+
 ## 约定
 
 - 不提交任何密钥/密码/token。敏感配置放 `.env` 文件（已在 `.gitignore` 排除），compose 里通过 `env_file` 或环境变量引用
