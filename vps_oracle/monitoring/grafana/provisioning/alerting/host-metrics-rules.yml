@@ -10,6 +10,7 @@ groups:
         title: CPU Usage Warning
         condition: B
         for: 15m
+        noDataState: OK
         labels:
           severity: warning
         annotations:
@@ -39,6 +40,7 @@ groups:
         title: CPU Usage Critical
         condition: B
         for: 10m
+        noDataState: OK
         labels:
           severity: critical
         annotations:
@@ -68,6 +70,7 @@ groups:
         title: Memory Usage Warning
         condition: B
         for: 15m
+        noDataState: OK
         labels:
           severity: warning
         annotations:
@@ -97,6 +100,7 @@ groups:
         title: Memory Usage Critical
         condition: B
         for: 10m
+        noDataState: OK
         labels:
           severity: critical
         annotations:
@@ -126,6 +130,7 @@ groups:
         title: Disk Usage Warning
         condition: B
         for: 0m
+        noDataState: OK
         labels:
           severity: warning
         annotations:
@@ -155,6 +160,7 @@ groups:
         title: Disk Usage Critical
         condition: B
         for: 0m
+        noDataState: OK
         labels:
           severity: critical
         annotations:
@@ -184,6 +190,7 @@ groups:
         title: Load Average Warning
         condition: B
         for: 15m
+        noDataState: OK
         labels:
           severity: warning
         annotations:
@@ -213,6 +220,7 @@ groups:
         title: Load Average Critical
         condition: B
         for: 10m
+        noDataState: OK
         labels:
           severity: critical
         annotations:
