@@ -10,6 +10,7 @@ groups:
         title: Prometheus Self-Scrape Down
         condition: B
         for: 2m
+        noDataState: OK
         labels:
           severity: critical
         annotations:
@@ -39,6 +40,7 @@ groups:
         title: Grafana Scrape Down
         condition: B
         for: 2m
+        noDataState: OK
         labels:
           severity: critical
         annotations:
@@ -68,6 +70,7 @@ groups:
         title: Blackbox Exporter Scrape Down
         condition: B
         for: 2m
+        noDataState: OK
         labels:
           severity: critical
         annotations:
@@ -97,6 +100,7 @@ groups:
         title: Node Exporter Scrape Down
         condition: B
         for: 2m
+        noDataState: OK
         labels:
           severity: critical
         annotations:
