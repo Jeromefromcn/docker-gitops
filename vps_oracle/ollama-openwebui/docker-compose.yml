@@ -13,6 +13,7 @@ services:
         max-file: "5"
     environment:
       TZ: "Asia/Hong_Kong"
+      OLLAMA_KEEP_ALIVE: "-1"   # 模型常驻内存、永不自动卸载：纯 CPU 加载慢，换取"只加载一次"
     volumes:
       - /etc/ollama/data:/root/.ollama
     networks:
