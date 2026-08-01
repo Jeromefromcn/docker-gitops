@@ -18,6 +18,10 @@ services:
       - /etc/ollama/data:/root/.ollama
     networks:
       - proxy
+    deploy:
+      resources:
+        limits:
+          cpus: "3"   # 留 1 核给 npm/3x-ui 等其他服务，避免生成时把它们饿死
     # 无 GPU，纯 CPU 推理（4 核 ARM）：模型建议选 3B 参数以内（如 llama3.2:3b / qwen2.5:3b），
     # 通过 Open WebUI 界面按需 pull，compose 不预置模型。
 
