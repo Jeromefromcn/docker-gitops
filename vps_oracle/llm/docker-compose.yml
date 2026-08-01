@@ -80,6 +80,8 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+    env_file:
+      - .env   # SILLYTAVERN_BASICAUTHUSER_USERNAME / _PASSWORD，见下面的说明
     environment:
       TZ: "Asia/Hong_Kong"
     volumes:
@@ -100,9 +102,10 @@ services:
     #     直接 process.exit(1) 拒绝启动，不是仅仅打个警告。
     #  2. IP whitelistMode 配 whitelistDockerHosts:true 也没用，它只认默认 bridge 网关，
     #     不认我们这种自定义 proxy 网络里的容器 IP，实测请求照样被 403。
-    # 所以没有走"关掉 whitelist 纯靠 NPM"这条路，而是关 whitelistMode、开 basicAuthMode，
-    # 在 config.yaml 里的 basicAuthUser 设了用户名+随机密码（NPM 反代的 http 客户端要带这组 Basic Auth
-    # 才能过，账号信息只在宿主机的 config.yaml 里，不在这个仓库里）。
+    # 所以关了 whitelistMode，开了 basicAuthMode（config.yaml 里这个布尔值本身不是密钥，留在文件里）。
+    # 账号密码是敏感信息，没有直接写在 config.yaml 里，用 SILLYTAVERN_<path>（ST 自带的通用 env 覆盖
+    # 机制，任意 config.yaml 路径都能用 SILLYTAVERN_XXX_YYY 覆盖）从上面的 .env 注入，跟 open-webui
+    # 的 WEBUI_SECRET_KEY 走的是同一套模式，不进 git。
 
 networks:
   proxy:
