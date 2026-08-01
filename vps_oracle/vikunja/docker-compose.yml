@@ -1,0 +1,31 @@
+services:
+  vikunja:
+    image: vikunja/vikunja:2.4.0
+    container_name: vikunja
+    hostname: vikunja
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    env_file:
+      - .env   # 需要一行 VIKUNJA_SERVICE_SECRET=<openssl rand -hex 32>，本目录下已生成，不提交
+    environment:
+      TZ: "Asia/Hong_Kong"
+      VIKUNJA_DATABASE_TYPE: sqlite
+      VIKUNJA_DATABASE_PATH: /db/vikunja.db
+      VIKUNJA_SERVICE_PUBLICURL: "https://vikunja.jerome.cloudns.asia"
+      VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
+    volumes:
+      - /etc/vikunja/files:/app/vikunja/files
+      - /etc/vikunja/db:/db
+    networks:
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = vikunja, Forward Port = 3456（未发布到宿主机）
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy
