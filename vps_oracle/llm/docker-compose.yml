@@ -1,0 +1,71 @@
+services:
+  llama-cpp:
+    image: amperecomputingai/llama.cpp:3.4.2   # Ampere Altra 优化版，注意不是 -ampereone 后缀（那是另一颗芯片，在 A1 上跑不了）
+    container_name: llama-cpp
+    hostname: llama-cpp
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      LLAMA_ARG_THREADS: "3"   # router 模式下每个子模型进程读这个环境变量决定线程数，命令行 -t 不会传给子进程
+    command: >
+      --models-dir /models
+      --models-max 2
+      --host 0.0.0.0
+      --port 8080
+    volumes:
+      - /etc/llama-cpp/models:/models
+    networks:
+      - proxy
+    deploy:
+      resources:
+        limits:
+          cpus: "3"   # 留 1 核给 npm/3x-ui 等其他服务，避免生成时把它们饿死
+    # router 模式：/models 目录下每个 .gguf 文件就是一个可选模型，id = 文件名去掉 .gguf 后缀，
+    # 通过 open-webui / sillytavern 请求里的 model 字段按需加载/卸载，模型之间切换不用重启容器。
+    # 新增模型文件（而不是在已有模型间切换）需要重启容器才能被扫描到。
+    # --models-max 2：最多同时常驻 2 个模型（3 核算力不会因此翻倍，只是切换时不用反复冷加载）。
+    # 首次部署前手动下载模型到 /etc/llama-cpp/models（router 模式不支持 -hf 自动下载），例如：
+    #   curl -L -o /etc/llama-cpp/models/Hermes-3-Llama-3.2-3B.Q4_K_M.gguf \
+    #     "https://huggingface.co/NousResearch/Hermes-3-Llama-3.2-3B-GGUF/resolve/main/Hermes-3-Llama-3.2-3B.Q4_K_M.gguf"
+    # 注：router 模式官方标注为 experimental，不建议在不受信任的环境暴露；这里只在 proxy 内网被
+    # open-webui/sillytavern 两个自己的容器访问，不发布到宿主机端口，也不接 NPM。
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:0.11.0
+    container_name: open-webui
+    hostname: open-webui
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    env_file:
+      - .env   # 需要一行 WEBUI_SECRET_KEY=<openssl rand -hex 32>，本目录下已生成，不提交
+    environment:
+      TZ: "Asia/Hong_Kong"
+      ENABLE_OLLAMA_API: "false"
+      OPENAI_API_BASE_URLS: "http://llama-cpp:8080/v1"
+      OPENAI_API_KEYS: "sk-not-required"   # 占位值，llama.cpp 默认不校验 key，不是真密钥
+    volumes:
+      - /etc/openwebui/data:/app/backend/data
+    networks:
+      - proxy
+    depends_on:
+      - llama-cpp
+    # NPM 反代配置: Forward Hostname/IP = open-webui, Forward Port = 8080（未发布到宿主机）
+    # 首次部署：先访问域名注册第一个账号（自动成为管理员），
+    # 之后在 environment 里加一行 ENABLE_SIGNUP: "false" 并 up -d 重启，关闭后续注册。
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy
