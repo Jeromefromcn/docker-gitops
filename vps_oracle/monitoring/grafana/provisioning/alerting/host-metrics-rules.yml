@@ -179,3 +179,61 @@ groups:
                 - evaluator:
                     type: gt
                     params: [85]
+
+      - uid: load_warning
+        title: Load Average Warning
+        condition: B
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Load average (5m) above 1.0 per core for 15 minutes on vps_oracle"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'node_load5 / count(count(node_cpu_seconds_total) by (cpu))'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+
+      - uid: load_critical
+        title: Load Average Critical
+        condition: B
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Load average (5m) above 2.0 per core for 10 minutes on vps_oracle"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'node_load5 / count(count(node_cpu_seconds_total) by (cpu))'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [2]
