@@ -95,9 +95,14 @@ services:
     # http://llama-cpp:8080/v1，跟 open-webui 共用同一个 llama-cpp。
     # NPM 反代配置: Forward Hostname/IP = sillytavern, Forward Port = 8000（未发布到宿主机），
     # Access List 选 self-only（跟 open-webui 同级保护）。
-    # 首次启动会在 config 卷里生成默认 config.yaml：ST 自带的 IP whitelistMode 在 docker 网络里
-    # 会因为容器 IP 不固定而不好维护，安全统一交给 NPM 的 self-only 名单来把关，所以要把
-    # config.yaml 里的 whitelistMode 改成 false，然后 up -d 重启这个服务生效。
+    # 首次启动会在 config 卷里生成默认 config.yaml，实测过两个坑：
+    #  1. ST 自己有个安全闸门 —— listen:true 时如果 whitelistMode/basicAuthMode/账号密码全都没开，
+    #     直接 process.exit(1) 拒绝启动，不是仅仅打个警告。
+    #  2. IP whitelistMode 配 whitelistDockerHosts:true 也没用，它只认默认 bridge 网关，
+    #     不认我们这种自定义 proxy 网络里的容器 IP，实测请求照样被 403。
+    # 所以没有走"关掉 whitelist 纯靠 NPM"这条路，而是关 whitelistMode、开 basicAuthMode，
+    # 在 config.yaml 里的 basicAuthUser 设了用户名+随机密码（NPM 反代的 http 客户端要带这组 Basic Auth
+    # 才能过，账号信息只在宿主机的 config.yaml 里，不在这个仓库里）。
 
 networks:
   proxy:
