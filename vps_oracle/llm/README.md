@@ -1,4 +1,11 @@
-# ollama-openwebui
+# llm
+
+## 后端说明（2026-08-01 记录）
+
+原本用 `ollama` 做后端，现在换成 Ampere 官方针对 Ampere Altra（OCI A1 用的这颗 CPU）优化过的
+`amperecomputingai/llama.cpp`，走 router 模式（`--models-dir`），支持在已下载好的多个模型间不重启切换。
+`open-webui` 和 `sillytavern` 都通过它的 OpenAI 兼容端点（`http://llama-cpp:8080/v1`）接入，共享同一个后端。
+细节和取舍看 `docker-compose.yml` 里 `llama-cpp` 服务的注释。
 
 ## 内存占用现状（2026-08-01 记录）
 
@@ -21,13 +28,6 @@ ollama       ~30MiB（还没 pull/load 任何模型）
 ## 可选：如果以后要压内存，能关掉的
 
 以 `env_file`/`environment` 加到 `open-webui` 服务里，改完 `docker compose up -d` 生效：
-
-- **把 embedding 交给 Ollama 算**，不在 open-webui 进程里加载 `torch`/`sentence-transformers`（省内存最大的一块）：
-  ```yaml
-  RAG_EMBEDDING_ENGINE: "ollama"
-  RAG_EMBEDDING_MODEL: "nomic-embed-text"   # 需要额外 ollama pull nomic-embed-text
-  ```
-  代价：知识库检索改成调用 Ollama API，多一次网络往返；不用知识库/RAG 功能的话直接设这个也没副作用。
 
 - **语音转文字改用远程引擎，不在本地跑 faster-whisper**：
   ```yaml
