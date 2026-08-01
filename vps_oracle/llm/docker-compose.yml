@@ -66,6 +66,37 @@ services:
     # 首次部署：先访问域名注册第一个账号（自动成为管理员），
     # 之后在 environment 里加一行 ENABLE_SIGNUP: "false" 并 up -d 重启，关闭后续注册。
 
+  sillytavern:
+    image: ghcr.io/sillytavern/sillytavern:1.18.0
+    container_name: sillytavern
+    hostname: sillytavern
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /etc/sillytavern/config:/home/node/app/config
+      - /etc/sillytavern/data:/home/node/app/data
+      - /etc/sillytavern/plugins:/home/node/app/plugins
+      - /etc/sillytavern/extensions:/home/node/app/public/scripts/extensions/third-party
+    networks:
+      - proxy
+    depends_on:
+      - llama-cpp
+    # 接后端：界面里选 Chat Completion -> Custom (OpenAI-compatible)，Base URL 填
+    # http://llama-cpp:8080/v1，跟 open-webui 共用同一个 llama-cpp。
+    # NPM 反代配置: Forward Hostname/IP = sillytavern, Forward Port = 8000（未发布到宿主机），
+    # Access List 选 self-only（跟 open-webui 同级保护）。
+    # 首次启动会在 config 卷里生成默认 config.yaml：ST 自带的 IP whitelistMode 在 docker 网络里
+    # 会因为容器 IP 不固定而不好维护，安全统一交给 NPM 的 self-only 名单来把关，所以要把
+    # config.yaml 里的 whitelistMode 改成 false，然后 up -d 重启这个服务生效。
+
 networks:
   proxy:
     external: true   # 手动创建一次：docker network create proxy
