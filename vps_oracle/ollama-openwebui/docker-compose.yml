@@ -1,0 +1,52 @@
+services:
+  ollama:
+    image: ollama/ollama:0.32.5
+    container_name: ollama
+    hostname: ollama
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /etc/ollama/data:/root/.ollama
+    networks:
+      - proxy
+    # 无 GPU，纯 CPU 推理（4 核 ARM）：模型建议选 3B 参数以内（如 llama3.2:3b / qwen2.5:3b），
+    # 通过 Open WebUI 界面按需 pull，compose 不预置模型。
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:0.11.0
+    container_name: open-webui
+    hostname: open-webui
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    env_file:
+      - .env   # 需要一行 WEBUI_SECRET_KEY=<openssl rand -hex 32>，本目录下已生成，不提交
+    environment:
+      TZ: "Asia/Hong_Kong"
+      OLLAMA_BASE_URL: "http://ollama:11434"
+    volumes:
+      - /etc/openwebui/data:/app/backend/data
+    networks:
+      - proxy
+    depends_on:
+      - ollama
+    # NPM 反代配置: Forward Hostname/IP = open-webui, Forward Port = 8080（未发布到宿主机）
+    # 首次部署：先访问域名注册第一个账号（自动成为管理员），
+    # 之后在 environment 里加一行 ENABLE_SIGNUP: "false" 并 up -d 重启，关闭后续注册。
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy
