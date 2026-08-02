@@ -1,0 +1,395 @@
+# Dify 1.14.2, trimmed from the official docker/docker-compose.yaml:
+# - no bundled nginx (NPM does path-based routing instead, see README.md)
+# - no sandbox (Workflow "Code" node is unavailable until it's added back)
+# - no certbot (NPM manages TLS)
+# - vector store: pgvector (own Postgres container, not the same instance as db_postgres)
+# - skips 1.16.x's new agent_backend/local_sandbox/agent_ssrf_proxy/api_websocket subsystem
+#   by pinning below 1.16, since that feature isn't needed here.
+# - pinned to 1.14.2, not 1.15.x: 1.15.0 changed web/hooks/use-timestamp.ts to fire its
+#   own independent GET /console/api/account/profile via react-query (was: read from
+#   already-loaded app context, no network call). A transient 401 on that background call
+#   triggers an unconditional client-side redirect to /signin in web/service/base.ts (no
+#   "silent"/best-effort gating — a fix was proposed in dify PR #38273 but never merged),
+#   which reloads the page, re-fires the same hook, and can loop forever. Confirmed via
+#   diff against the 1.14.2 source (upstream issue #38457, same version, same symptom).
+#   1.14.2 doesn't have that background call at all, so the loop's trigger doesn't exist.
+# - no init_permissions one-shot container: api/worker run as uid 1001 (the "dify" user)
+#   and need write access to the storage bind mount, so instead of a container that just
+#   exits after a chown, that chown was done once on the host:
+#     sudo chown -R 1001:1001 /etc/dify/storage
+#   (this host's "ubuntu" user happens to be uid 1001; adjust if reused elsewhere)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+networks:
+  # Mirrors upstream: isolates api/worker/worker_beat/plugin_daemon's outbound
+  # traffic through ssrf_proxy, with no other route out.
+  ssrf_proxy_network:
+    driver: bridge
+    internal: true
+  proxy:
+    external: true
+
+services:
+  db_postgres:
+    image: postgres:15-alpine@sha256:3d0f7584ed7d04e27fa050d6683a74746608faf21f202be78460d679cc56461f
+    container_name: dify-db
+    hostname: dify-db
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    environment:
+      TZ: "Asia/Hong_Kong"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+      POSTGRES_DB: dify
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command: >
+      postgres -c 'max_connections=100'
+               -c 'shared_buffers=128MB'
+               -c 'work_mem=4MB'
+               -c 'maintenance_work_mem=64MB'
+               -c 'effective_cache_size=1024MB'
+    volumes:
+      - /etc/dify/db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "dify"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Vector store for knowledge-base embeddings. Deliberately a separate Postgres
+  # instance from db_postgres (upstream ships it that way, not a shared instance).
+  pgvector:
+    image: pgvector/pgvector:pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
+    container_name: dify-pgvector
+    hostname: dify-pgvector
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    environment:
+      TZ: "Asia/Hong_Kong"
+      PGUSER: postgres
+      POSTGRES_PASSWORD: "${PGVECTOR_PASSWORD}"
+      POSTGRES_DB: dify
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - /etc/dify/pgvector-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:6-alpine@sha256:ec5e187c913d422cdf60f4216a5fdfb95246792c6de6fe21ff5bed75cbfc8c23
+    container_name: dify-redis
+    hostname: dify-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    environment:
+      TZ: "Asia/Hong_Kong"
+    command: redis-server --requirepass "${REDIS_PASSWORD}"
+    volumes:
+      - /etc/dify/redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Forward proxy that api/worker/worker_beat/plugin_daemon route outbound HTTP
+  # through, so a workflow's HTTP-request node (or a plugin) can't be used to
+  # reach internal-network / metadata-endpoint targets (SSRF). Unrelated to sandbox.
+  ssrf_proxy:
+    image: ubuntu/squid@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029  # :latest as of 2026-08-02, no stable versioned tag upstream
+    container_name: dify-ssrf-proxy
+    hostname: dify-ssrf-proxy
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - ./ssrf_proxy/squid.conf.template:/etc/squid/squid.conf.template:ro
+      - ./ssrf_proxy/docker-entrypoint.sh:/docker-entrypoint-mount.sh:ro
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "cp /docker-entrypoint-mount.sh /docker-entrypoint.sh && sed -i 's/\r$$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh && /docker-entrypoint.sh",
+      ]
+    environment:
+      HTTP_PORT: "3128"
+      COREDUMP_DIR: "/var/spool/squid"
+    networks:
+      - ssrf_proxy_network
+      - default
+
+  # Plugin runtime. Mandatory in Dify 1.x: model providers (OpenAI, Anthropic, etc.)
+  # and most tools are implemented as plugins, not just optional extras.
+  plugin_daemon:
+    image: langgenius/dify-plugin-daemon:0.6.1-local@sha256:fa7ad45e1b2a777cd243b902609abecb4fd924adcd13d21ef4258b5090a09be5
+    container_name: dify-plugin-daemon
+    hostname: dify-plugin-daemon
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: "Asia/Hong_Kong"
+      DB_HOST: db_postgres
+      DB_PORT: "5432"
+      DB_USERNAME: postgres
+      DB_PASSWORD: "${DB_PASSWORD}"
+      DB_DATABASE: dify_plugin
+      # plugin_daemon connects here first, then issues CREATE DATABASE dify_plugin
+      # against it if dify_plugin doesn't exist yet (see its internal/db/pg/pg.go).
+      DB_DEFAULT_DATABASE: postgres
+      DB_SSL_MODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_USE_SSL: "false"
+      SERVER_PORT: "5002"
+      # Never exposed outside the docker network (no host port published below),
+      # so left at upstream's well-known internal default rather than randomized.
+      SERVER_KEY: "lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi"
+      MAX_PLUGIN_PACKAGE_SIZE: "52428800"
+      PPROF_ENABLED: "false"
+      DIFY_INNER_API_URL: "http://api:5001"
+      # Same reasoning as SERVER_KEY: internal-only, kept at upstream default.
+      DIFY_INNER_API_KEY: "QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1"
+      PLUGIN_REMOTE_INSTALLING_HOST: "0.0.0.0"
+      PLUGIN_REMOTE_INSTALLING_PORT: "5003"
+      FORCE_VERIFYING_SIGNATURE: "true"
+      PLUGIN_WORKING_PATH: /app/storage/cwd
+      PLUGIN_STORAGE_TYPE: local
+      PLUGIN_STORAGE_LOCAL_ROOT: /app/storage
+      PLUGIN_INSTALLED_PATH: plugin
+      PLUGIN_PACKAGE_CACHE_PATH: plugin_packages
+      PLUGIN_MEDIA_CACHE_PATH: assets
+    volumes:
+      - /etc/dify/plugin-daemon-storage:/app/storage
+    depends_on:
+      db_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - ssrf_proxy_network
+      - default
+      - proxy # NPM forwards /e/ (plugin webhook callbacks) here directly
+
+  api:
+    image: langgenius/dify-api:1.14.2@sha256:062815df8ed6fcf82285e55f3cb5586241b2828e6695a3fb8114bfb99b5e8517
+    container_name: dify-api
+    hostname: dify-api
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: "Asia/Hong_Kong"
+      MODE: api
+      SECRET_KEY: "${SECRET_KEY}"
+      INIT_PASSWORD: "${INIT_PASSWORD}"
+      DEPLOY_ENV: PRODUCTION
+      LOG_LEVEL: INFO
+      MIGRATION_ENABLED: "true"
+      CONSOLE_WEB_URL: "https://dify.jerome.cloudns.asia"
+      CONSOLE_API_URL: "https://dify.jerome.cloudns.asia"
+      SERVICE_API_URL: "https://dify.jerome.cloudns.asia"
+      APP_WEB_URL: "https://dify.jerome.cloudns.asia"
+      FILES_URL: "https://dify.jerome.cloudns.asia"
+      # Files served to plugin_daemon/internal callers use this instead of the
+      # public FILES_URL, so that traffic stays inside the docker network instead
+      # of round-tripping out through NPM/public DNS for a purely internal fetch.
+      INTERNAL_FILES_URL: "http://api:5001"
+      # Public webhook URL templates handed to users/external plugin providers
+      # (e.g. a Slack Endpoint's callback URL, or a Trigger's webhook URL) —
+      # left at upstream's "http://localhost/..." default these would be unusable
+      # from outside. Match the /e/ and /triggers locations wired in NPM.
+      ENDPOINT_URL_TEMPLATE: "https://dify.jerome.cloudns.asia/e/{hook_id}"
+      TRIGGER_URL: "https://dify.jerome.cloudns.asia"
+      DB_HOST: db_postgres
+      DB_PORT: "5432"
+      DB_USERNAME: postgres
+      DB_PASSWORD: "${DB_PASSWORD}"
+      DB_DATABASE: dify
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_USE_SSL: "false"
+      CELERY_BROKER_URL: "redis://:${REDIS_PASSWORD}@redis:6379/1"
+      VECTOR_STORE: pgvector
+      PGVECTOR_HOST: pgvector
+      PGVECTOR_PORT: "5432"
+      PGVECTOR_USER: postgres
+      PGVECTOR_PASSWORD: "${PGVECTOR_PASSWORD}"
+      PGVECTOR_DATABASE: dify
+      SSRF_PROXY_HTTP_URL: "http://ssrf_proxy:3128"
+      SSRF_PROXY_HTTPS_URL: "http://ssrf_proxy:3128"
+      PLUGIN_DAEMON_URL: "http://plugin_daemon:5002"
+      PLUGIN_DAEMON_KEY: "lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi"
+      # Remote plugin-debugging install feature: not reachable from outside since
+      # port 5003 isn't published (see plugin_daemon below), so this is unused
+      # rather than wrong — leaving at upstream default.
+      PLUGIN_REMOTE_INSTALL_HOST: localhost
+      PLUGIN_REMOTE_INSTALL_PORT: "5003"
+      PLUGIN_MAX_PACKAGE_SIZE: "52428800"
+      PLUGIN_DAEMON_TIMEOUT: "600.0"
+      INNER_API_KEY_FOR_PLUGIN: "QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1"
+    depends_on:
+      db_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      plugin_daemon:
+        condition: service_started
+    volumes:
+      - /etc/dify/storage:/app/api/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ssrf_proxy_network
+      - default
+      - proxy # NPM forwards /console/api, /api, /v1, /files, /mcp, /triggers, /openapi here
+
+  worker:
+    image: langgenius/dify-api:1.14.2@sha256:062815df8ed6fcf82285e55f3cb5586241b2828e6695a3fb8114bfb99b5e8517
+    container_name: dify-worker
+    hostname: dify-worker
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: "Asia/Hong_Kong"
+      MODE: worker
+      SECRET_KEY: "${SECRET_KEY}"
+      DEPLOY_ENV: PRODUCTION
+      LOG_LEVEL: INFO
+      # Needed here, not just on api: invite/register/reset-password emails are
+      # sent by Celery tasks running in *this* container (api/tasks/mail_*.py),
+      # and build their link text from these.
+      CONSOLE_WEB_URL: "https://dify.jerome.cloudns.asia"
+      CONSOLE_API_URL: "https://dify.jerome.cloudns.asia"
+      SERVICE_API_URL: "https://dify.jerome.cloudns.asia"
+      APP_WEB_URL: "https://dify.jerome.cloudns.asia"
+      FILES_URL: "https://dify.jerome.cloudns.asia"
+      INTERNAL_FILES_URL: "http://api:5001"
+      ENDPOINT_URL_TEMPLATE: "https://dify.jerome.cloudns.asia/e/{hook_id}"
+      TRIGGER_URL: "https://dify.jerome.cloudns.asia"
+      DB_HOST: db_postgres
+      DB_PORT: "5432"
+      DB_USERNAME: postgres
+      DB_PASSWORD: "${DB_PASSWORD}"
+      DB_DATABASE: dify
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_USE_SSL: "false"
+      CELERY_BROKER_URL: "redis://:${REDIS_PASSWORD}@redis:6379/1"
+      VECTOR_STORE: pgvector
+      PGVECTOR_HOST: pgvector
+      PGVECTOR_PORT: "5432"
+      PGVECTOR_USER: postgres
+      PGVECTOR_PASSWORD: "${PGVECTOR_PASSWORD}"
+      PGVECTOR_DATABASE: dify
+      SSRF_PROXY_HTTP_URL: "http://ssrf_proxy:3128"
+      SSRF_PROXY_HTTPS_URL: "http://ssrf_proxy:3128"
+      PLUGIN_DAEMON_URL: "http://plugin_daemon:5002"
+      PLUGIN_DAEMON_KEY: "lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi"
+      PLUGIN_MAX_PACKAGE_SIZE: "52428800"
+      INNER_API_KEY_FOR_PLUGIN: "QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1"
+      COMPOSE_WORKER_HEALTHCHECK_DISABLED: "true"
+    depends_on:
+      db_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      plugin_daemon:
+        condition: service_started
+    volumes:
+      - /etc/dify/storage:/app/api/storage
+    networks:
+      - ssrf_proxy_network
+      - default
+
+  worker_beat:
+    image: langgenius/dify-api:1.14.2@sha256:062815df8ed6fcf82285e55f3cb5586241b2828e6695a3fb8114bfb99b5e8517
+    container_name: dify-worker-beat
+    hostname: dify-worker-beat
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: "Asia/Hong_Kong"
+      MODE: beat
+      SECRET_KEY: "${SECRET_KEY}"
+      DEPLOY_ENV: PRODUCTION
+      LOG_LEVEL: INFO
+      CONSOLE_WEB_URL: "https://dify.jerome.cloudns.asia"
+      CONSOLE_API_URL: "https://dify.jerome.cloudns.asia"
+      SERVICE_API_URL: "https://dify.jerome.cloudns.asia"
+      APP_WEB_URL: "https://dify.jerome.cloudns.asia"
+      FILES_URL: "https://dify.jerome.cloudns.asia"
+      INTERNAL_FILES_URL: "http://api:5001"
+      ENDPOINT_URL_TEMPLATE: "https://dify.jerome.cloudns.asia/e/{hook_id}"
+      TRIGGER_URL: "https://dify.jerome.cloudns.asia"
+      DB_HOST: db_postgres
+      DB_PORT: "5432"
+      DB_USERNAME: postgres
+      DB_PASSWORD: "${DB_PASSWORD}"
+      DB_DATABASE: dify
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      REDIS_USE_SSL: "false"
+      CELERY_BROKER_URL: "redis://:${REDIS_PASSWORD}@redis:6379/1"
+      COMPOSE_WORKER_HEALTHCHECK_DISABLED: "true"
+    depends_on:
+      db_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - ssrf_proxy_network
+      - default
+
+  web:
+    image: langgenius/dify-web:1.14.2@sha256:db73434e185ac778f31f4cc1adcce0dbe84b41a95ea5af58216acf095eed5f67
+    container_name: dify-web
+    hostname: dify-web
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      TZ: "Asia/Hong_Kong"
+      # dify-web's server.js binds to $HOSTNAME (Docker auto-sets this from the
+      # `hostname:` field above), not 0.0.0.0. Left as-is it only listens on the
+      # `default` network's IP, refusing connections from `proxy` (i.e. from NPM).
+      HOSTNAME: "0.0.0.0"
+      # MUST match api's CONSOLE_WEB_URL/CONSOLE_API_URL scheme (both https) —
+      # web/config/index.ts computes CSRF_COOKIE_NAME()'s "isSecure" from
+      # API_PREFIX.startsWith('https://'), independently of the backend's own
+      # is_secure() (CONSOLE_WEB_URL/CONSOLE_API_URL on api). If these disagree,
+      # one side sets/expects a `__Host-csrf_token` cookie and the other side
+      # reads/sends plain `csrf_token` — the names never match, every CSRF-
+      # checked request gets rejected ("CSRF token is missing or invalid."),
+      # and login effectively never sticks. Leaving these empty here (relying on
+      # same-origin relative paths) is what caused that: empty doesn't start
+      # with "https://", so isSecure was false here while true on api.
+      CONSOLE_API_URL: "https://dify.jerome.cloudns.asia"
+      APP_API_URL: "https://dify.jerome.cloudns.asia"
+      # Server-side rendering runs inside this container, with no incoming-request
+      # host to infer "same origin" from, so it needs the api container reachable directly.
+      SERVER_CONSOLE_API_URL: "http://api:5001"
+      MARKETPLACE_API_URL: "https://marketplace.dify.ai"
+      MARKETPLACE_URL: "https://marketplace.dify.ai"
+    depends_on:
+      - api
+    networks:
+      - default
+      - proxy # NPM forwards everything else here (default location)
