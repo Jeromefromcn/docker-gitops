@@ -16,9 +16,11 @@ services:
       LLAMA_ARG_THREADS: "3"     # router 模式下每个子模型进程读这个环境变量决定线程数，命令行 -t 不会传给子进程
       LLAMA_ARG_CTX_SIZE: "8192" # 不设的话默认读模型原生最大上下文（Hermes-3.2 是 131072），
                                   # 实测 KV cache 直接要 21.5GB，把加载进程弄崩了；8192 对这台机器更现实
+      LLAMA_ARG_CACHE_RAM: "4096" # prompt cache 上限，退回只用 3B 后内存余量够，改回 4G，
+                                   # 能同时"记住"更多历史对话，减少长对话重新处理的概率
     command: >
       --models-dir /models
-      --models-max 2
+      --models-max 1
       --host 0.0.0.0
       --port 8080
     volumes:
@@ -29,13 +31,19 @@ services:
       resources:
         limits:
           cpus: "3"   # 留 1 核给 npm/3x-ui 等其他服务，避免生成时把它们饿死
+          memory: "9G" # cache 上限改回 4G 后理论最大约 7.44GB（权重+KV cache+4G cache），
+                       # 相应把上限从 8G 提到 9G，留够 ~1.5GB 余量；
+                       # 超出会被 OOM killer 直接杀掉，不是优雅降级，所以留够余量很重要
     # router 模式：/models 目录下每个 .gguf 文件就是一个可选模型，id = 文件名去掉 .gguf 后缀，
     # 通过 open-webui / sillytavern 请求里的 model 字段按需加载/卸载，模型之间切换不用重启容器。
     # 新增模型文件（而不是在已有模型间切换）需要重启容器才能被扫描到。
-    # --models-max 2：最多同时常驻 2 个模型（3 核算力不会因此翻倍，只是切换时不用反复冷加载）。
+    # --models-max 1：同时只常驻 1 个模型，加了 8B 模型后内存吃紧，改成不允许两个模型同时占内存；
+    # 代价是 /models 目录下如果有多个模型文件，来回切换会变成每次冷加载，不再是"切换不用重载"。
     # 首次部署前手动下载模型到 /etc/llama-cpp/models（router 模式不支持 -hf 自动下载），例如：
     #   curl -L -o /etc/llama-cpp/models/Hermes-3-Llama-3.2-3B.Q4_K_M.gguf \
     #     "https://huggingface.co/NousResearch/Hermes-3-Llama-3.2-3B-GGUF/resolve/main/Hermes-3-Llama-3.2-3B.Q4_K_M.gguf"
+    # 曾经短暂试过 Dolphin3.0-Llama3.1-8B（无审查倾向、盼着能更聪明一些），实测比 3B 慢一倍以上、
+    # 效果提升有限，已经卸载并删除模型文件，退回只用 3B。
     # 注：router 模式官方标注为 experimental，不建议在不受信任的环境暴露；这里只在 proxy 内网被
     # open-webui/sillytavern 两个自己的容器访问，不发布到宿主机端口，也不接 NPM。
 
