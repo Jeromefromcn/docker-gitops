@@ -74,6 +74,10 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 - `container` 填 compose 里的 `container_name`；`server` 固定 `my-docker`（对应 `config/docker.yaml` 里声明的本机 docker socket），用于展示容器状态小组件
 - **例外**：安全敏感的服务（如 3x-ui）不上卡片，加之前先问一句
 
+## 给 Vikunja 项目接 Telegram 通知（透过 vikunja-notify-relay + Apprise）
+
+Vikunja 的任务事件（指派/提醒到期/逾期）通过 webhook 转发给 `vikunja-notify-relay`（`vps_oracle/vikunja` 栈里的第二个 service，拼出带项目名/任务标题/任务超链接的消息），再转给 `apprise` 推到 Telegram 群组。原理、已知限制（没有真正的全局 webhook、没有"任务完成"通知）、以及给新 project 补 webhook 的脚本用法，见 [`docs/2026-08-03-vikunja-apprise-telegram-webhooks.md`](docs/2026-08-03-vikunja-apprise-telegram-webhooks.md)。relay 代码：[`vps_oracle/vikunja/notify-relay/`](vps_oracle/vikunja/notify-relay/)；注册脚本：[`vps_oracle/vikunja/register-telegram-webhooks.sh`](vps_oracle/vikunja/register-telegram-webhooks.sh)。
+
 ## 约定
 
 - 不提交任何密钥/密码/token。敏感配置放 `.env` 文件（已在 `.gitignore` 排除），compose 里通过 `env_file` 或环境变量引用
