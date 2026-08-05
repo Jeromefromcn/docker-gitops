@@ -59,6 +59,8 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 
 **⚠️ 已知坑**：创建时把 Force SSL / HTTP/2 Support 打开保存，有时会被静默重置回关闭状态。**保存后要重新打开这条记录复查一遍**，发现关掉了就再勾一次并保存。
 
+**⚠️ 已知坑（反代到 k3s NodePort 时）**：Forward Hostname/IP 必须直接填宿主机内网 IP（目前是 `10.0.0.95`），不能填 `host.docker.internal` 或其他主机名——NPM 的 nginx 生成的 proxy_pass 配置走 Docker 内嵌 DNS resolver 动态解析，不读容器的 `/etc/hosts`/`extra_hosts`，填主机名会报 "could not be resolved" 导致 502。另外这个 IP 是 DHCP 分配的（`ip -4 addr show enp0s6` 显示 `dynamic`），不是静态 IP——如果 Oracle 换了地址，所有指向 NodePort 的反代会静默变成 502，排查前先确认这个 IP 有没有变。详见 [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md) 和 [`vps_oracle/compose/npm/docker-compose.yml`](vps_oracle/compose/npm/docker-compose.yml) 里 `extra_hosts` 的注释。
+
 ## 给新服务加 homepage 卡片
 
 每新增一个服务，同步在 `vps_oracle/compose/homepage/config/services.yaml` 里加一张卡片，跟现有条目保持同样格式：

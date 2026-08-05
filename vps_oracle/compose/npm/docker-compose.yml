@@ -22,17 +22,19 @@ services:
     networks:
       - proxy
     extra_hosts:
-      # 桥接到宿主机端口（如 k3s NodePort），供反代临时/长期指向宿主机服务用。
-      # 注意：不能用 `host-gateway` 魔法值 —— 它解析到 docker0 网桥网关 172.17.0.1，
-      # 但 Cilium kube-proxy replacement 的 NodePort eBPF 程序只绑定在实际网卡 enp0s6
-      # （节点内网 IP，见 `cilium status --verbose` 的 KubeProxyReplacement Device），
-      # 连宿主机本机 curl 172.17.0.1:30080 都连不通。改成直接指向该内网 IP。
-      # 另一个坑：NPM 的 proxy host 若把 Forward Hostname/IP 填 `host.docker.internal`，
-      # nginx 生成的配置会走 resolver（Docker 内嵌 DNS 127.0.0.11）动态解析，而不是读
-      # /etc/hosts，会报 "host.docker.internal could not be resolved" 导致 502。
-      # 给 NPM 反代到宿主机端口时，Forward Hostname/IP 要直接填这个 IP（如 10.0.0.95），
-      # 不能填 host.docker.internal —— 这个 extra_hosts 条目只对容器内其他工具
-      # （curl/wget 等走 glibc 解析的场景）有效。
+      # 用途：仅供容器内 shell 调试用（如 docker exec npm curl/wget host.docker.internal:30080），
+      # 走 glibc 解析 /etc/hosts，方便进容器排查宿主机连通性时不用记 IP。
+      # 跟 NPM 实际反代流量无关 —— nginx 生成的 proxy_pass 配置走 Docker 内嵌 DNS resolver
+      # （127.0.0.11）动态解析，不读 /etc/hosts/extra_hosts，所以 NPM 面板里配置反代到
+      # 宿主机端口（如 k3s NodePort）时，Forward Hostname/IP 必须直接填宿主机内网 IP
+      # （如 10.0.0.95），不能填 host.docker.internal，否则报 "could not be resolved" 导致 502。
+      # 另一个坑：不能用 `host-gateway` 魔法值代替这个 IP —— 它解析到 docker0 网桥网关
+      # 172.17.0.1，但 Cilium kube-proxy replacement 的 NodePort eBPF 程序只绑定在实际
+      # 网卡 enp0s6（节点内网 IP，见 `cilium status --verbose` 的 KubeProxyReplacement
+      # Device），连宿主机本机 curl 172.17.0.1:30080 都连不通，必须直接指向该内网 IP。
+      # 这个 IP 是 DHCP 分配的（`ip -4 addr show enp0s6` 显示 dynamic）——如果 Oracle
+      # 换了地址，NPM 反代到 NodePort 的服务会静默变成 502，先查这个 IP 有没有变，
+      # 再排查别的。
       - "host.docker.internal:10.0.0.95"
 
 networks:
