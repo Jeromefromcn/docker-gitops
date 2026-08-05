@@ -4,20 +4,22 @@
 
 大部分掛在 NPM 後面的服務（grafana、homepage、dify、trilium、vikunja、apprise、portainer，以及 NPM 自己的管理面板）**不是公開給任何人訪問的**，而是刻意用 NPM 的 Access List 把來源鎖在「伺服器自己」或「`proxy` 這個 docker 網路裡的 IP」——一般公網訪客連過去只會拿到 403。
 
-**3x-ui 是唯一的例外**，故意不受 access list 限制，因為它就是進門用的鑰匙：先透過 3x-ui 的 VLESS/Reality 代理連上，流量經過伺服器解密、再打回 `*.jerome.cloudns.asia` 時，來源看起來就是伺服器自己（符合 access list 的放行條件），這樣才進得去被鎖住的那些服務。等於是「先連代理，才能訪問內網服務」的模式，把公網上的一台機器偽裝成一個只有連了代理才進得去的私有內網。
+**3x-ui 是唯一的例外**，故意不受 access list 限制，因為它就是進門用的鑰匙：3x-ui 自己的 xray 設定（`/app/bin/config.json` 裡的 `dns.hosts`）有一條 `"domain:jerome.cloudns.asia": "172.19.0.3"` 的覆寫規則——凡是透過 3x-ui 代理訪問任何 `*.jerome.cloudns.asia` 網域，xray **不走公網 DNS 解析**，而是直接在 `proxy` 這個 docker 網路內部把流量轉給 `172.19.0.3`（也就是 npm）。因為這段路徑完全不出宿主機、不會被 Docker 的 SNAT 改寫來源，nginx 看到的來源就是 **3x-ui 容器自己真正的 IP**——這正是 access list 放行 `172.19.0.2` 的原因。等於是「先連代理，才能訪問內網服務」的模式，把公網上的一台機器偽裝成一個只有連了代理才進得去的私有內網。
+
+**這兩個 IP 都要釘死靜態值，缺一不可**：
+- `3x-ui` 固定 `172.19.0.2`（對應 access list 放行的來源）
+- `npm` 固定 `172.19.0.3`（對應 xray DNS 覆寫指到的目標）
+
+兩邊都在各自 `docker-compose.yml` 的 `networks.proxy.ipv4_address` 寫死，不然 Docker 動態分配一旦重建容器就可能換掉 IP，這兩個服務只要有一個漂移，代理進來的流量就會被送錯地方或被 access list 擋下來（2026-08-06 發生過一次：npm 一度被單獨釘在 `172.19.0.2`，結果跟 xray 覆寫規則的 `172.19.0.3` 對不上，透過代理訪問任何服務都連不上，查了很久才發現是這兩個 IP 對調了）。
 
 ## 目前的 Access List（透過 NPM API 查證，2026-08-06）
 
 | Access List | 放行規則 | 用在幾個 proxy host | 額外要求 |
 |---|---|---|---|
-| `self-only`（id 1） | `172.19.0.2/32`（npm 自己在 `proxy` 網路的 IP）、`161.118.254.107`（伺服器目前的公網 IP） | 13 個 | 無 |
+| `self-only`（id 1） | `172.19.0.2/32`（3x-ui 在 `proxy` 網路的 IP）、`161.118.254.107`（伺服器目前的公網 IP） | 13 個 | 無 |
 | `self-only-and-auth`（id 2） | 同上兩條 | 4 個 | 還要過 Basic Auth（帳號 `jerome`） |
 
-`161.118.254.107` 是伺服器目前的公網出口 IP（`curl https://ifconfig.me` 查得到），**不是固定不變的**——如果哪天 Oracle 換了這台機器的公網 IP，這兩條 access list 都要跟著更新，不然連代理進來的流量也會被擋在外面。
-
-## 已知問題（待排查，2026-08-06 發現，尚未解決）
-
-透過 3x-ui 代理訪問 `*.jerome.cloudns.asia` 時遇到 `ERR_CONNECTION_CLOSED`，不是預期的行為（照設計應該要能連通）。研判跟 hairpin NAT 有關：流量從 3x-ui（在這台伺服器上）要打回同一台伺服器的公網域名，這種「繞一圈打回自己」的路由在 Oracle Cloud 環境有時候會被卡住。從伺服器本機直接 `curl https://npm.jerome.cloudns.asia/` 是通的（乾淨的 200），代表 nginx／access list 本身沒問題，問題出在代理那條路徑的路由。之後排查可以從這個方向下手。
+`161.118.254.107` 是伺服器目前的公網出口 IP（`curl https://ifconfig.me` 查得到），**不是固定不變的**——如果哪天 Oracle 換了這台機器的公網 IP，這兩條 access list 都要跟著更新，不然沒經過 3x-ui、直接從公網打進來的流量（例如 blackbox_exporter 自己的探測）會被擋在外面。
 
 ## 怎麼改 Access List
 
