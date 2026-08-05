@@ -10,8 +10,19 @@ Phase A cluster foundation for the [K3s roadmap](../../docs/superpowers/specs/20
 
 ## Install
 
-1. `sudo cp install/config.yaml /etc/rancher/k3s/config.yaml`
-2. `curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.36.2+k3s1" sh -`
-3. `sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown ubuntu:ubuntu ~/.kube/config && chmod 600 ~/.kube/config`
+1. `sudo mkdir -p /etc/rancher/k3s`
+2. `sudo cp install/config.yaml /etc/rancher/k3s/config.yaml`
+3. `curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.36.2+k3s1" sh -`
+4. `mkdir -p ~/.kube`
+5. `sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown ubuntu:ubuntu ~/.kube/config && chmod 600 ~/.kube/config`
+6. Add KUBECONFIG to `~/.bash_profile` so k3s's kubectl uses the user's config by default:
+   ```bash
+   cat > ~/.bash_profile << 'EOF'
+   # .bash_profile: login shell initialization
+   export KUBECONFIG=$HOME/.kube/config
+   [ -f ~/.bashrc ] && source ~/.bashrc
+   EOF
+   ```
+7. Verify kubectl works: `bash -lc 'kubectl get nodes'`
 
 Re-applying `install/config.yaml` after an edit: copy it to `/etc/rancher/k3s/config.yaml` again, then `sudo systemctl restart k3s`.
