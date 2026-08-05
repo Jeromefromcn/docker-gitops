@@ -51,6 +51,14 @@
 - Ambient 的 waypoint 是 namespace（或更細至 service account）層級的 Deployment，不是每個 pod 一份，可以把需要 L7（含金絲雀切流）的服務集中到同一個 namespace，共用一份單副本 waypoint，資源開銷小
 - 這與 F 階段「按 PR 泳道分 namespace」的隔離模型有潛在衝突：若某個做金絲雀的服務也會被 PR 泳道複製出獨立環境，需要在 G 階段決定——每條泳道各自起一個 waypoint，還是把金絲雀/L7 示例限定在主環境、不隨泳道複製
 
+## 待 H 階段細化的設計取捨
+
+- 宿主機 80/443 同時間只能被一個進程綁定：現在是 npm 佔著；若換 k3s ingress（k3s 預設 Traefik + 內建輕量 LoadBalancer「Klipper LB」）在前面，等於換一個進程去佔同一個端口，npm 必須讓出——要嘛直接退場，要嘛改綁到其他端口（如 8080/8443）只保留給還沒遷移到 ingress 規則的邊緣情況用。兩者不能同時持有 80/443，切換過程要設計成不中斷的 cutover，不是簡單的「兩邊同時開著」
+- ingress 能做到 npm 的核心功能，但走的是不同機制，不是圖形介面點選：
+  - HTTPS：靠 `cert-manager`（k8s 原生 ACME 客戶端）自動申請/續期 Let's Encrypt 證書，綁到 ingress 資源上。功能對等，且不會有 npm 已知的「SSL 開關自己重置」的 bug（見 README「給服務接入 NPM 反代」章節），但要另外學 Issuer/Certificate CRD、HTTP-01 vs DNS-01 challenge 這套概念
+  - Access List（IP 白名單/Basic Auth）：靠 ingress controller 的 annotation 或 Middleware CRD，例如 Traefik 的 `IPAllowList`/`BasicAuth` Middleware，或 nginx-ingress 的 `nginx.ingress.kubernetes.io/whitelist-source-range` 之類 annotation。功能對等，但配置方式是 YAML，不是表單勾選
+- npm 現有的每個 proxy host（SSL 設定、access list 規則等）到 H 階段需要**逐條手動翻譯**成 ingress 的 annotation/CRD，不是一鍵遷移，這是 H 階段實際工作量的主要來源
+
 ## 各階段設計文檔
 
 （隨階段推進逐一補上連結）
