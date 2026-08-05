@@ -21,9 +21,10 @@ services:
       - /etc/npm/letsencrypt:/etc/letsencrypt  # 证书持久化
     networks:
       proxy:
-        ipv4_address: 172.19.0.2  # 钉死静态 IP：NPM access list（self-only 等）里写死允许
-                                   # 172.19.0.2/32，容器重建时 Docker 的动态分配不保证拿回
-                                   # 同一个 IP，一旦漂移这些 access list 就会连自己都挡在外面
+        ipv4_address: 172.19.0.3  # 钉死静态 IP：3x-ui 的 xray 有条 DNS hosts 覆写规则
+                                   # （domain:jerome.cloudns.asia -> 172.19.0.3），把代理进来的
+                                   # *.jerome.cloudns.asia 流量直接在 proxy 网络内部转给这个 IP，
+                                   # 必须固定等于 npm 自己的位址，不然代理进来的流量会被送错地方
     extra_hosts:
       # 用途：仅供容器内 shell 调试用（如 docker exec npm curl/wget host.docker.internal:30080），
       # 走 glibc 解析 /etc/hosts，方便进容器排查宿主机连通性时不用记 IP。

@@ -32,7 +32,12 @@ services:
       # 面板 46213、订阅服务 51234 不再发布到宿主机,改走 NPM 反代:
       # https://panel.3x.jerome.cloudns.asia / https://sub.3x.jerome.cloudns.asia
     networks:
-      - proxy
+      proxy:
+        ipv4_address: 172.19.0.2  # 钉死静态 IP：xray 自己的 DNS hosts 覆写（config.json 里
+                                   # domain:jerome.cloudns.asia -> npm 的 172.19.0.3）让走代理的
+                                   # *.jerome.cloudns.asia 流量直接在 proxy 网络内部转给 npm，
+                                   # 不出宿主机、不会被 SNAT 改写来源 —— nginx 看到的来源就是
+                                   # 3x-ui 这个容器自己的 IP，NPM 的 access list 放行的正是这个位址
 
 networks:
   proxy:
