@@ -32,7 +32,7 @@
 
 ## 给服务接入 NPM 反代
 
-已通过 NPM API（`vps_oracle/npm/.npm-automation.env` 里的自动化账号）配好，proxy host id 24，证书 id 26。跟根目录 README 的通用约定不同 —— 这个服务需要**一个 proxy host + 多条 Custom Locations**，不是简单的单容器单端口转发。以下是实际配置，供之后对照/复查：
+已通过 NPM API（`vps_oracle/compose/npm/.npm-automation.env` 里的自动化账号）配好，proxy host id 24，证书 id 26。跟根目录 README 的通用约定不同 —— 这个服务需要**一个 proxy host + 多条 Custom Locations**，不是简单的单容器单端口转发。以下是实际配置，供之后对照/复查：
 
 **Details 标签页**
 
@@ -66,7 +66,7 @@ SSL 标签页照根目录 README 的通用配置走（Force SSL / HTTP2 / 邮箱
 
 ## 给新服务加 homepage 卡片
 
-已经按根目录 README 的格式加到 `vps_oracle/homepage/config/services.yaml`。
+已经按根目录 README 的格式加到 `vps_oracle/compose/homepage/config/services.yaml`。
 
 **踩过的坑**：`dify-web` 的 `server.js` 会绑定到 `$HOSTNAME`（Docker 从 compose 的 `hostname:` 字段自动注入），不是 `0.0.0.0`。不修的话它只监听 `default` 网络那个 IP，`proxy` 网络（也就是 NPM）连不上，表现为除了 `/console/api` 等转发到 `dify-api` 的路径外，首页固定 502。已经在 compose 里给 `web` 显式加了 `HOSTNAME: "0.0.0.0"` 环境变量覆盖掉。
 

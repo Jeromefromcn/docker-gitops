@@ -27,7 +27,7 @@ flowchart TB
             apprise["apprise"]
             grafana["grafana"]
 
-            subgraph LLM["vps_oracle/llm"]
+            subgraph LLM["vps_oracle/compose/llm"]
                 direction LR
                 llamacpp["llama-cpp<br/>router 模式・仅内部访问"]
                 openwebui["open-webui"]
@@ -39,7 +39,7 @@ flowchart TB
             difyplugin["dify-plugin-daemon"]
         end
 
-        subgraph DifyInternal["vps_oracle/dify · dify_default（内部网络，不接 proxy）"]
+        subgraph DifyInternal["vps_oracle/compose/dify · dify_default（内部网络，不接 proxy）"]
             direction TB
             difydb[("dify-db<br/>postgres:15")]
             difypgvector[("dify-pgvector<br/>pgvector:pg16")]
@@ -49,7 +49,7 @@ flowchart TB
             difyssrf["dify-ssrf-proxy<br/>squid"]
         end
 
-        subgraph Monitoring["vps_oracle/monitoring · monitoring_default（内部网络）"]
+        subgraph Monitoring["vps_oracle/compose/monitoring · monitoring_default（内部网络）"]
             direction TB
             prometheus[("prometheus")]
             nodeexp["node-exporter"]
@@ -130,22 +130,22 @@ flowchart TB
 ## 分区说明
 
 ### 入口层
-- **npm**（`vps_oracle/npm`）是唯一发布 80/443 的容器，所有 `*.jerome.cloudns.asia` 域名都先到它，再按 Forward Hostname/Port（或 Dify 的 Custom Locations）转发到 `proxy` 网络内的目标容器。管理面板走 `npm.jerome.cloudns.asia`，81 端口不发布到宿主机。
-- **3x-ui**（`vps_oracle/3x-ui`）例外地单独发布 `39876`（VLESS+Reality 节点端口，客户端直连，不能走 HTTP 反代），面板 `46213`/订阅 `51234` 则跟其他服务一样走 NPM。3x-ui 有意不上 homepage 卡片（敏感服务）。
+- **npm**（`vps_oracle/compose/npm`）是唯一发布 80/443 的容器，所有 `*.jerome.cloudns.asia` 域名都先到它，再按 Forward Hostname/Port（或 Dify 的 Custom Locations）转发到 `proxy` 网络内的目标容器。管理面板走 `npm.jerome.cloudns.asia`，81 端口不发布到宿主机。
+- **3x-ui**（`vps_oracle/compose/3x-ui`）例外地单独发布 `39876`（VLESS+Reality 节点端口，客户端直连，不能走 HTTP 反代），面板 `46213`/订阅 `51234` 则跟其他服务一样走 NPM。3x-ui 有意不上 homepage 卡片（敏感服务）。
 
 ### `proxy` 网络（外部 bridge，`docker network create proxy` 手动建一次）
 除 3x-ui 外，其余所有需要被 NPM 访问到的容器都挂在这张网络上：`portainer`、`homepage`、`trilium`、`vikunja`、`apprise`、`grafana`、以及 `llm`/`dify` 两个栈里对外的部分。除 npm/3x-ui 外均不发布宿主机端口，靠 Docker DNS（容器名）互相访问。
 
-### `vps_oracle/llm`
+### `vps_oracle/compose/llm`
 `llama-cpp` 是 Ampere Altra 优化版（非 ollama），router 模式，按需加载 `/models` 下的 `.gguf` 文件；`--models-max 1` 限制同时只常驻一个模型。它**不接 NPM、不发布端口**，只在 `proxy` 网络内被 `open-webui` 和 `sillytavern` 通过 OpenAI 兼容端点访问，两者共享同一个后端。资源上限 3 核 / 9G 内存，留给 npm/3x-ui 等其他服务余量。
 
-### `vps_oracle/dify`
+### `vps_oracle/compose/dify`
 只有 `dify-web`、`dify-api`、`dify-plugin-daemon` 三个容器加入 `proxy`（给 NPM 转发），其余全部只在内部网络：
 - `dify_default`：Dify 自己的默认网络，`api`/`worker`/`worker_beat`/`plugin_daemon` 访问 `db_postgres`（元数据）、`pgvector`（向量库，独立实例）、`redis`（缓存 + Celery broker）都走这里。
 - `dify_ssrf_proxy_network`（`internal: true`，无出网路由）：`api`/`worker`/`worker_beat`/`plugin_daemon` 的出站 HTTP 请求（workflow 的 HTTP 节点、插件请求）统一经 `ssrf-proxy`（squid）转发，防止被用来打内网/云元数据端点，跟 sandbox 无关。
-- 精简自官方 compose：去掉了官方自带 nginx（改用 NPM 做路径转发）、sandbox（Code 节点不可用）、certbot（证书交给 NPM）；锁定 1.14.2，不用 1.16.x 的 agent 子系统，也不用 1.15.x（该版本有个已知的登录重定向死循环 bug，详见 `vps_oracle/dify/README.md`）。
+- 精简自官方 compose：去掉了官方自带 nginx（改用 NPM 做路径转发）、sandbox（Code 节点不可用）、certbot（证书交给 NPM）；锁定 1.14.2，不用 1.16.x 的 agent 子系统，也不用 1.15.x（该版本有个已知的登录重定向死循环 bug，详见 `vps_oracle/compose/dify/README.md`）。
 
-### `vps_oracle/monitoring`
+### `vps_oracle/compose/monitoring`
 `prometheus`/`node-exporter`/`blackbox-exporter` 只在 `monitoring_default` 内部网络，没有登录认证，故意不接 `proxy`、不发布端口，需要临时调试就用 `docker exec` 或临时端口。只有 `grafana` 额外挂了 `proxy`，走 NPM 反代对外提供仪表盘。
 
 ### 特权挂载（`/var/run/docker.sock`）
@@ -156,6 +156,6 @@ flowchart TB
 
 ## 数据来源
 
-- 本仓库各 `vps_oracle/*/docker-compose.yml`
+- 本仓库各 `vps_oracle/compose/*/docker-compose.yml`
 - `docker ps` / `docker network ls` / `docker inspect`（实测容器与网络归属，2026-08-02）
-- `vps_oracle/homepage/config/services.yaml`（对外展示的服务卡片）
+- `vps_oracle/compose/homepage/config/services.yaml`（对外展示的服务卡片）

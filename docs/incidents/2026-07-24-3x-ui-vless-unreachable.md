@@ -18,10 +18,10 @@
 - 由于故障期间应用日志完全空白，无法 100% 锁定内部代码级根因
 
 ## 处理
-- `docker-gitops/vps_oracle/3x-ui/docker-compose.yml`：
+- `docker-gitops/vps_oracle/compose/3x-ui/docker-compose.yml`：
   - healthcheck 增加 `pgrep -f xray-linux-arm64` 判断，确认 xray 核心进程存活，不只测端口
   - 新增 `ulimits.nofile` 65535（原默认 1024），排除 FD 耗尽的可能
-- 把该 compose 文件纳入 `docker-gitops` 仓库管理（`vps_oracle/3x-ui/`），仓库目录本身即为运行目录，直接在该目录执行 `docker compose up -d` 部署
+- 把该 compose 文件纳入 `docker-gitops` 仓库管理（`vps_oracle/compose/3x-ui/`），仓库目录本身即为运行目录，直接在该目录执行 `docker compose up -d` 部署
 
 ## 后续
 - 下次再出现同类问题，**先抓现场再重启**：

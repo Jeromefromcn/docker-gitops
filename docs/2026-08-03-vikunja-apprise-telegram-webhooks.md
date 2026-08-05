@@ -1,6 +1,6 @@
 # 2026-08-03 Vikunja → Apprise → Telegram 通知打通
 
-把 Vikunja 的任务事件（指派给我、提醒到期、逾期）转发到 Telegram 群组 "Vikunja Notification"，消息里带项目名、任务标题、任务超链接。`vikunja-notify-relay` 是 `vps_oracle/vikunja` 这个 compose 栈里的第二个 service（跟 `vikunja` 本体同一个 `docker-compose.yml`，代码在 `vps_oracle/vikunja/notify-relay/`），另外还要有 `vps_oracle/apprise` 这个独立栈。
+把 Vikunja 的任务事件（指派给我、提醒到期、逾期）转发到 Telegram 群组 "Vikunja Notification"，消息里带项目名、任务标题、任务超链接。`vikunja-notify-relay` 是 `vps_oracle/compose/vikunja` 这个 compose 栈里的第二个 service（跟 `vikunja` 本体同一个 `docker-compose.yml`，代码在 `vps_oracle/compose/vikunja/notify-relay/`），另外还要有 `vps_oracle/compose/apprise` 这个独立栈。
 
 ## 架构
 
@@ -43,8 +43,8 @@ Vikunja (webhook, 每个 project 3 条)
 
 1. **没有"任务完成"通知**：见上面"没有注册 `task.updated`"，指派和完成没法同时保留而不重复，取舍后留了指派、丢了完成。
 2. **没有真正的"全局 webhook"**：Vikunja 的 Settings 里有一个 "Webhook Notifications" 面板，UI 上写明 "receive events from all your projects"，是真正跨 project 生效的全局 webhook，但只能通过浏览器登录态（JWT）配置和调用——`PUT /api/v1/user/settings/webhooks` 这个 API 端点，个人 API Token（即使勾了全部权限）访问一律被拒绝。而且这个全局面板本身能选的事件也只有 `task.overdue`、`task.reminder.fired`、`tasks.overdue` 三个，`task.assignee.created` 不在全局层级开放，本来就只能逐 project 注册。评估后决定不用全局面板：反正 `task.assignee.created` 得靠脚本逐 project 维护，`task.reminder.fired`/`task.overdue` 单独搬去全局面板管理只会多一套配置入口、多一个"全局+project 重复发送"的风险点，所以三个事件统一留在 `register-telegram-webhooks.sh` 里逐 project 注册。
-3. **`VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS=true`**：Vikunja 自带 SSRF 防护，默认拒绝把 webhook（以及头像下载、迁移导入）发到私网 IP 段（`172.16.0.0/12` 等），而 `vikunja-notify-relay`/`apprise` 都在同一个 `proxy` 网络的私网段里，所以必须放开这个开关才能投递成功。这个开关是全局的，不止影响 webhook，是本仓库单用户自托管场景下可接受的取舍，已加到 `vps_oracle/vikunja/docker-compose.yml`。
-4. **relay 和 vikunja 合并成一个 compose 栈**：最初 `vikunja-notify-relay` 是独立目录/独立栈，后来按要求合并进 `vps_oracle/vikunja/docker-compose.yml` 当第二个 service（这个仓库的约定本来就允许"一个 compose 栈可以定义多个 service"），代码搬到 `vps_oracle/vikunja/notify-relay/` 子目录，`build:` 指过去。容器名、网络行为都没变，只是文件位置从独立目录变成 vikunja 栈的一部分。
+3. **`VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS=true`**：Vikunja 自带 SSRF 防护，默认拒绝把 webhook（以及头像下载、迁移导入）发到私网 IP 段（`172.16.0.0/12` 等），而 `vikunja-notify-relay`/`apprise` 都在同一个 `proxy` 网络的私网段里，所以必须放开这个开关才能投递成功。这个开关是全局的，不止影响 webhook，是本仓库单用户自托管场景下可接受的取舍，已加到 `vps_oracle/compose/vikunja/docker-compose.yml`。
+4. **relay 和 vikunja 合并成一个 compose 栈**：最初 `vikunja-notify-relay` 是独立目录/独立栈，后来按要求合并进 `vps_oracle/compose/vikunja/docker-compose.yml` 当第二个 service（这个仓库的约定本来就允许"一个 compose 栈可以定义多个 service"），代码搬到 `vps_oracle/compose/vikunja/notify-relay/` 子目录，`build:` 指过去。容器名、网络行为都没变，只是文件位置从独立目录变成 vikunja 栈的一部分。
 
 ## 复现 / 给新 project 补 webhook
 
@@ -55,7 +55,7 @@ docker run --rm --network proxy curlimages/curl:8.10.1 -s -X POST \
   http://apprise:8000/add/vikunja-tg
 
 # 2. vikunja 栈：构建并启动（vikunja 本体 + vikunja-notify-relay 两个 service）
-cd vps_oracle/vikunja
+cd vps_oracle/compose/vikunja
 docker compose up -d --build
 
 # 3. 对指定 project（或不传参数=全部真实 project）注册三个事件的 webhook
@@ -67,7 +67,7 @@ VIKUNJA_TOKEN=tk_xxx ./register-telegram-webhooks.sh 5 7      # 只对 project 5
 
 **重跑脚本前记得先删旧的 webhook**：Vikunja 的 `PUT .../webhooks` 是"新建"不是"更新"，改了 `register-telegram-webhooks.sh` 里的内容后如果不删旧记录直接重跑，会导致每个事件被注册两次、收到重复消息。删除方式：`GET /api/v1/projects/{id}/webhooks` 列出 id，再逐个 `DELETE /api/v1/projects/{id}/webhooks/{webhook_id}`。
 
-**改 `notify-relay/app.py` 后要重新 build**：`docker compose up -d --build`（在 `vps_oracle/vikunja/` 下跑），不加 `--build` compose 不会重新打包镜像，容器还是跑旧代码。`docker compose up -d --build` 只会重建有变化的 service，不会动 `vikunja` 本体。
+**改 `notify-relay/app.py` 后要重新 build**：`docker compose up -d --build`（在 `vps_oracle/compose/vikunja/` 下跑），不加 `--build` compose 不会重新打包镜像，容器还是跑旧代码。`docker compose up -d --build` 只会重建有变化的 service，不会动 `vikunja` 本体。
 
 ## 验证方法
 

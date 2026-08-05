@@ -4,7 +4,7 @@
 
 **Goal:** Replace the torn-down Beszel/Uptime Kuma stack with Prometheus + Grafana for host-metrics monitoring and service-availability probing on the Oracle Cloud VPS, with two-tier (warning/critical) severity alerting and custom-formatted Telegram messages, per [docs/superpowers/specs/2026-07-30-server-monitoring-design.md](../specs/2026-07-30-server-monitoring-design.md).
 
-**Architecture:** Four tightly-coupled services in one compose stack (`vps_oracle/monitoring/`): Prometheus scrapes node_exporter (host metrics) and blackbox_exporter (service probes); Grafana queries Prometheus and owns alert evaluation + Telegram notification (Grafana's built-in Unified Alerting — no separate Alertmanager). Only Grafana is reverse-proxied through NPM; the other three are internal-only.
+**Architecture:** Four tightly-coupled services in one compose stack (`vps_oracle/compose/monitoring/`): Prometheus scrapes node_exporter (host metrics) and blackbox_exporter (service probes); Grafana queries Prometheus and owns alert evaluation + Telegram notification (Grafana's built-in Unified Alerting — no separate Alertmanager). Only Grafana is reverse-proxied through NPM; the other three are internal-only.
 
 **Tech Stack:** Docker Compose, `prom/prometheus:v3.13.1`, `prom/node-exporter:v1.12.1`, `prom/blackbox-exporter:v0.28.0`, `grafana/grafana:13.1.1` (all pinned by digest, arm64 since this host is `aarch64`), nginx-proxy-manager (already deployed), Telegram Bot API.
 
@@ -33,22 +33,23 @@
 
 ```
 vps_oracle/
-  monitoring/
-    docker-compose.yml
-    .env                                          # GRAFANA_ADMIN_PASSWORD — gitignored
-    prometheus/
-      prometheus.yml                              # scrape configs
-    blackbox/
-      blackbox.yml                                # probe module definitions
-    grafana/
-      provisioning/
-        datasources/
-          prometheus.yml                          # Prometheus datasource, fixed uid
-        alerting/
-          templates.yml                           # notification message template
-          policies.yml                             # notification policy (routes severity -> contact point)
-          host-metrics-rules.yml                   # 6 CPU/Memory/Disk warning+critical rules
-          probe-rules.yml                          # 5 service-availability rules
+  compose/
+    monitoring/
+      docker-compose.yml
+      .env                                          # GRAFANA_ADMIN_PASSWORD — gitignored
+      prometheus/
+        prometheus.yml                              # scrape configs
+      blackbox/
+        blackbox.yml                                # probe module definitions
+      grafana/
+        provisioning/
+          datasources/
+            prometheus.yml                          # Prometheus datasource, fixed uid
+          alerting/
+            templates.yml                           # notification message template
+            policies.yml                             # notification policy (routes severity -> contact point)
+            host-metrics-rules.yml                   # 6 CPU/Memory/Disk warning+critical rules
+            probe-rules.yml                          # 5 service-availability rules
 ```
 
 ---
@@ -56,10 +57,10 @@ vps_oracle/
 ### Task 1: Monitoring compose stack — Prometheus, node_exporter, blackbox_exporter, Grafana
 
 **Files:**
-- Create: `vps_oracle/monitoring/docker-compose.yml`
-- Create: `vps_oracle/monitoring/prometheus/prometheus.yml`
-- Create: `vps_oracle/monitoring/blackbox/blackbox.yml`
-- Create: `vps_oracle/monitoring/.env`
+- Create: `vps_oracle/compose/monitoring/docker-compose.yml`
+- Create: `vps_oracle/compose/monitoring/prometheus/prometheus.yml`
+- Create: `vps_oracle/compose/monitoring/blackbox/blackbox.yml`
+- Create: `vps_oracle/compose/monitoring/.env`
 
 **Interfaces:**
 - Produces: `prometheus` container reachable at `prometheus:9090` on the compose default network; `node-exporter:9100`; `blackbox-exporter:9115`. Task 3 depends on Prometheus's targets page showing all three scrape jobs UP. Task 3/4 depend on `grafana` being reachable at `grafana:3000` on the same default network and joined to `proxy`.
@@ -67,7 +68,7 @@ vps_oracle/
 - [ ] **Step 1: Write the blackbox exporter module config**
 
 ```yaml
-# vps_oracle/monitoring/blackbox/blackbox.yml
+# vps_oracle/compose/monitoring/blackbox/blackbox.yml
 modules:
   http_2xx:
     prober: http
@@ -89,7 +90,7 @@ modules:
 - [ ] **Step 2: Write the Prometheus scrape config**
 
 ```yaml
-# vps_oracle/monitoring/prometheus/prometheus.yml
+# vps_oracle/compose/monitoring/prometheus/prometheus.yml
 global:
   scrape_interval: 60s
 
@@ -149,10 +150,10 @@ scrape_configs:
 - [ ] **Step 3: Write the `.env` file (gitignored)**
 
 ```bash
-cat > vps_oracle/monitoring/.env <<'EOF'
+cat > vps_oracle/compose/monitoring/.env <<'EOF'
 GRAFANA_ADMIN_PASSWORD=<choose a strong password>
 EOF
-git check-ignore -v vps_oracle/monitoring/.env   # confirm it matches the repo's .env gitignore rule
+git check-ignore -v vps_oracle/compose/monitoring/.env   # confirm it matches the repo's .env gitignore rule
 ```
 
 - [ ] **Step 4: Write the compose file**
@@ -244,7 +245,7 @@ networks:
 - [ ] **Step 5: Confirm with the user, then deploy**
 
 ```bash
-cd vps_oracle/monitoring && docker compose up -d
+cd vps_oracle/compose/monitoring && docker compose up -d
 ```
 
 - [ ] **Step 6: Verify all four containers are healthy**
@@ -260,7 +261,7 @@ Expected: every target's `"health"` is `"up"`. If any blackbox target is `"down"
 - [ ] **Step 8: Commit**
 
 ```bash
-git add vps_oracle/monitoring/docker-compose.yml vps_oracle/monitoring/prometheus/prometheus.yml vps_oracle/monitoring/blackbox/blackbox.yml
+git add vps_oracle/compose/monitoring/docker-compose.yml vps_oracle/compose/monitoring/prometheus/prometheus.yml vps_oracle/compose/monitoring/blackbox/blackbox.yml
 git commit -m "Add Prometheus/node_exporter/blackbox_exporter/Grafana monitoring stack"
 ```
 
@@ -292,7 +293,7 @@ Expected: `HTTP/2 200` (or a login-page redirect), not a connection error or 502
 
 - [ ] **Step 3: Log in**
 
-Visit `https://grafana.jerome.cloudns.asia`, log in with username `admin` and the password from `vps_oracle/monitoring/.env`.
+Visit `https://grafana.jerome.cloudns.asia`, log in with username `admin` and the password from `vps_oracle/compose/monitoring/.env`.
 
 (No commit.)
 
@@ -301,7 +302,7 @@ Visit `https://grafana.jerome.cloudns.asia`, log in with username `admin` and th
 ### Task 3: Grafana datasource provisioning — Prometheus
 
 **Files:**
-- Create: `vps_oracle/monitoring/grafana/provisioning/datasources/prometheus.yml`
+- Create: `vps_oracle/compose/monitoring/grafana/provisioning/datasources/prometheus.yml`
 
 **Interfaces:**
 - Consumes: `prometheus:9090` from Task 1.
@@ -326,7 +327,7 @@ datasources:
 Grafana provisioning files are read at container start, so this requires a restart:
 
 ```bash
-cd vps_oracle/monitoring && docker compose up -d
+cd vps_oracle/compose/monitoring && docker compose up -d
 ```
 
 - [ ] **Step 3: Verify in the Grafana UI**
@@ -336,7 +337,7 @@ Connections → Data sources → Prometheus → click "Save & test". Expected: a
 - [ ] **Step 4: Commit**
 
 ```bash
-git add vps_oracle/monitoring/grafana/provisioning/datasources/prometheus.yml
+git add vps_oracle/compose/monitoring/grafana/provisioning/datasources/prometheus.yml
 git commit -m "Provision Prometheus as a Grafana datasource"
 ```
 
@@ -370,8 +371,8 @@ Use the "Test" button on the contact point. Confirm the message arrives in Teleg
 ### Task 5: Notification template + policy (severity/status-based formatting)
 
 **Files:**
-- Create: `vps_oracle/monitoring/grafana/provisioning/alerting/templates.yml`
-- Create: `vps_oracle/monitoring/grafana/provisioning/alerting/policies.yml`
+- Create: `vps_oracle/compose/monitoring/grafana/provisioning/alerting/templates.yml`
+- Create: `vps_oracle/compose/monitoring/grafana/provisioning/alerting/policies.yml`
 
 **Interfaces:**
 - Consumes: the `Telegram` contact point from Task 4 (referenced by name).
@@ -380,7 +381,7 @@ Use the "Test" button on the contact point. Confirm the message arrives in Teleg
 - [ ] **Step 1: Write the notification template**
 
 ```yaml
-# vps_oracle/monitoring/grafana/provisioning/alerting/templates.yml
+# vps_oracle/compose/monitoring/grafana/provisioning/alerting/templates.yml
 apiVersion: 1
 
 templates:
@@ -399,7 +400,7 @@ templates:
 - [ ] **Step 2: Write the notification policy, referencing the template**
 
 ```yaml
-# vps_oracle/monitoring/grafana/provisioning/alerting/policies.yml
+# vps_oracle/compose/monitoring/grafana/provisioning/alerting/policies.yml
 apiVersion: 1
 
 policies:
@@ -426,7 +427,7 @@ contactPoints:
 - [ ] **Step 3: Confirm with the user, then apply**
 
 ```bash
-cd vps_oracle/monitoring && docker compose up -d
+cd vps_oracle/compose/monitoring && docker compose up -d
 ```
 
 - [ ] **Step 4: Verify**
@@ -436,7 +437,7 @@ Alerting → Notification Templates: confirm `server_alert` appears. Alerting �
 - [ ] **Step 5: Commit**
 
 ```bash
-git add vps_oracle/monitoring/grafana/provisioning/alerting/templates.yml vps_oracle/monitoring/grafana/provisioning/alerting/policies.yml
+git add vps_oracle/compose/monitoring/grafana/provisioning/alerting/templates.yml vps_oracle/compose/monitoring/grafana/provisioning/alerting/policies.yml
 git commit -m "Add Grafana notification template and policy for severity-formatted Telegram alerts"
 ```
 
@@ -445,7 +446,7 @@ git commit -m "Add Grafana notification template and policy for severity-formatt
 ### Task 6: Host-metric alert rules (6 rules: CPU/Memory/Disk x warning/critical)
 
 **Files:**
-- Create: `vps_oracle/monitoring/grafana/provisioning/alerting/host-metrics-rules.yml`
+- Create: `vps_oracle/compose/monitoring/grafana/provisioning/alerting/host-metrics-rules.yml`
 
 **Interfaces:**
 - Consumes: `datasourceUid: prometheus` from Task 3.
@@ -634,7 +635,7 @@ Expected: each returns a non-empty `result` array with a plausible numeric value
 - [ ] **Step 3: Confirm with the user, then apply**
 
 ```bash
-cd vps_oracle/monitoring && docker compose up -d
+cd vps_oracle/compose/monitoring && docker compose up -d
 ```
 
 - [ ] **Step 4: Verify in the Grafana UI**
@@ -644,7 +645,7 @@ Alerting → Alert rules → Monitoring folder → host_metrics group: confirm a
 - [ ] **Step 5: Commit**
 
 ```bash
-git add vps_oracle/monitoring/grafana/provisioning/alerting/host-metrics-rules.yml
+git add vps_oracle/compose/monitoring/grafana/provisioning/alerting/host-metrics-rules.yml
 git commit -m "Add Grafana alert rules for CPU/memory/disk warning and critical thresholds"
 ```
 
@@ -653,7 +654,7 @@ git commit -m "Add Grafana alert rules for CPU/memory/disk warning and critical 
 ### Task 7: Service-availability probe alert rules (5 rules, no severity tier)
 
 **Files:**
-- Create: `vps_oracle/monitoring/grafana/provisioning/alerting/probe-rules.yml`
+- Create: `vps_oracle/compose/monitoring/grafana/provisioning/alerting/probe-rules.yml`
 
 **Interfaces:**
 - Consumes: `probe_success` metric produced by Task 1's blackbox scrape jobs, `datasourceUid: prometheus`.
@@ -804,7 +805,7 @@ Expected: 5 results, each with an `instance` label. Confirm they match the strin
 - [ ] **Step 3: Confirm with the user, then apply**
 
 ```bash
-cd vps_oracle/monitoring && docker compose up -d
+cd vps_oracle/compose/monitoring && docker compose up -d
 ```
 
 - [ ] **Step 4: Verify in the Grafana UI**
@@ -814,7 +815,7 @@ Alerting → Alert rules → Monitoring folder → service_probes group: confirm
 - [ ] **Step 5: Commit**
 
 ```bash
-git add vps_oracle/monitoring/grafana/provisioning/alerting/probe-rules.yml
+git add vps_oracle/compose/monitoring/grafana/provisioning/alerting/probe-rules.yml
 git commit -m "Add Grafana alert rules for service-availability probes"
 ```
 
@@ -833,7 +834,7 @@ git commit -m "Add Grafana alert rules for service-availability probes"
 Temporarily lower `disk_warning`'s threshold (edit `host-metrics-rules.yml`'s `params: [75]` to a value below the current actual disk usage — check with `df -h /` first), then re-apply:
 
 ```bash
-cd vps_oracle/monitoring && docker compose up -d
+cd vps_oracle/compose/monitoring && docker compose up -d
 ```
 
 - [ ] **Step 2: Confirm Telegram delivery and formatting**
