@@ -1,3 +1,9 @@
+# Reusable connectivity verification workload (Deployment + NodePort Service +
+# netpol-tester pod). Usage: apply this file first, verify connectivity (see
+# README.md's "Verification runbook"), THEN apply netpol-test.yaml to test
+# NetworkPolicy enforcement, then delete netpol-test.yaml before testing any
+# external/NPM path again — the deny-all policy in netpol-test.yaml blocks
+# NPM's traffic too (NPM is `world` identity to Cilium, not in-cluster).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -61,15 +67,3 @@ spec:
         limits:
           cpu: 100m
           memory: 64Mi
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: deny-all-ingress
-  namespace: workloads
-spec:
-  podSelector:
-    matchLabels:
-      app: smoke-test
-  policyTypes:
-    - Ingress

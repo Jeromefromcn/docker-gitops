@@ -1,0 +1,18 @@
+# Deny-all NetworkPolicy for testing Cilium's enforcement, split out from
+# smoke-test.yaml so applying it doesn't self-block the connectivity checks
+# smoke-test.yaml exists to prove. Usage: apply smoke-test.yaml first, verify
+# connectivity (see README.md's "Verification runbook"), THEN apply this file
+# to test enforcement, then delete this file before testing any
+# external/NPM path again — this policy blocks NPM's traffic too (NPM is
+# `world` identity to Cilium, not in-cluster; see README.md's Cilium section).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+  namespace: workloads
+spec:
+  podSelector:
+    matchLabels:
+      app: smoke-test
+  policyTypes:
+    - Ingress
