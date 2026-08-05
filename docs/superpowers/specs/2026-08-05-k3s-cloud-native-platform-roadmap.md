@@ -22,7 +22,7 @@
 - 記憶體：23Gi 總量，已用 11Gi，可用約 6.4Gi；CPU 4 核心。既有負載（llm、dify 等）已佔用相當一部分 headroom
 - `npm`（Nginx Proxy Manager）是唯一發布宿主機 80/443 的容器，其餘服務靠 `proxy` 網路 + Docker DNS 被反代，不直接發布端口
 - `3x-ui` 例外：39876（VLESS+Reality）是原始 TCP，客戶端直連，不能走 HTTP 反代——遷移時這個端口不能斷。該服務有過真實故障（見 [2026-07-24-3x-ui-vless-unreachable.md](../../incidents/2026-07-24-3x-ui-vless-unreachable.md)）：淺層健康檢查（只測端口)測不出 xray-core 內部異常，以及默認 `ulimit -n 1024` 在長連接場景下可能耗盡。遷移到 k8s 時，probe 設計需要延續「檢查進程存活」而非只測端口，且 `ulimits.nofile` 等宿主機層面配置需要在 k8s 層找到對應（如 `securityContext` 或 initContainer）
-- 同機還跑著兩個不屬本 repo 管理的專案（`lab-environment`、`programming-learning-platform`），直接佔用 8080/9090/3001/3100 等宿主機端口，規劃時要避開
+- 同機還跑著兩個不屬本 repo 管理的專案（`lab-environment`、`programming-learning-platform`），直接佔用 8080/9090/3001/3100 等宿主機端口，與 k8s 生態常見默認端口（Grafana、Prometheus 等）撞車。**衝突時以 k8s 側為主**：k8s 內組件保持慣用默認端口，改由這兩個非 k8s 管理的容器讓出端口（改其 compose/配置裡發布的宿主機端口），而不是反過來讓 k8s 組件遷就它們
 
 ## 階段路線圖
 
