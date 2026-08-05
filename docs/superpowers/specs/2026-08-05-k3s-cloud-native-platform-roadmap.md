@@ -63,7 +63,7 @@
 
 （隨階段推進逐一補上連結）
 
-- A：待建立
+- A：[叢集基礎層設計](2026-08-05-k3s-phase-a-cluster-foundation-design.md)
 - B：待建立
 - C：待建立
 - D：待建立
