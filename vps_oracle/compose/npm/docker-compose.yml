@@ -21,6 +21,19 @@ services:
       - /etc/npm/letsencrypt:/etc/letsencrypt  # 证书持久化
     networks:
       - proxy
+    extra_hosts:
+      # 桥接到宿主机端口（如 k3s NodePort），供反代临时/长期指向宿主机服务用。
+      # 注意：不能用 `host-gateway` 魔法值 —— 它解析到 docker0 网桥网关 172.17.0.1，
+      # 但 Cilium kube-proxy replacement 的 NodePort eBPF 程序只绑定在实际网卡 enp0s6
+      # （节点内网 IP，见 `cilium status --verbose` 的 KubeProxyReplacement Device），
+      # 连宿主机本机 curl 172.17.0.1:30080 都连不通。改成直接指向该内网 IP。
+      # 另一个坑：NPM 的 proxy host 若把 Forward Hostname/IP 填 `host.docker.internal`，
+      # nginx 生成的配置会走 resolver（Docker 内嵌 DNS 127.0.0.11）动态解析，而不是读
+      # /etc/hosts，会报 "host.docker.internal could not be resolved" 导致 502。
+      # 给 NPM 反代到宿主机端口时，Forward Hostname/IP 要直接填这个 IP（如 10.0.0.95），
+      # 不能填 host.docker.internal —— 这个 extra_hosts 条目只对容器内其他工具
+      # （curl/wget 等走 glibc 解析的场景）有效。
+      - "host.docker.internal:10.0.0.95"
 
 networks:
   proxy:
