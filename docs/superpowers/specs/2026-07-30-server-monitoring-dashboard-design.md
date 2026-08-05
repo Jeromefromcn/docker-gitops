@@ -4,7 +4,7 @@
 
 ## 背景
 
-`vps_oracle/monitoring` 的 Prometheus + Grafana 告警系统（见 [server-monitoring-design.md](2026-07-30-server-monitoring-design.md)）已经部署完成：Prometheus 抓取 node_exporter/blackbox_exporter，Grafana 做告警评估 + Telegram 通知。告警解决的是"阈值突破时通知我"，但目前没有一个可以直接打开看"服务器现在整体状态怎么样"的可视化大盘。本次要补上这块——CPU、内存、磁盘、网络等常用指标的仪表盘。
+`vps_oracle/compose/monitoring` 的 Prometheus + Grafana 告警系统（见 [server-monitoring-design.md](2026-07-30-server-monitoring-design.md)）已经部署完成：Prometheus 抓取 node_exporter/blackbox_exporter，Grafana 做告警评估 + Telegram 通知。告警解决的是"阈值突破时通知我"，但目前没有一个可以直接打开看"服务器现在整体状态怎么样"的可视化大盘。本次要补上这块——CPU、内存、磁盘、网络等常用指标的仪表盘。
 
 ## 目标与范围
 
@@ -20,8 +20,8 @@
 
 延续本仓库对 Grafana 的声明式 provisioning 原则（数据源、告警规则都是 YAML 随仓库提交，容器启动时自动加载），dashboard 也走同样的模式，而不是手工在 UI 里点：
 
-- 新增 `vps_oracle/monitoring/grafana/provisioning/dashboards/dashboards.yml` — dashboard provider 配置，声明一个指向本地 JSON 目录的 provider，`updateIntervalSeconds` 设置为定期从磁盘重新加载（后续改 JSON 文件不需要重启容器）。
-- 新增 `vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json` — 从 Grafana 官方 dashboard 仓库（grafana.com）下载社区维护的 **Node Exporter Full**（dashboard ID `1860`）最新版本 JSON，固定版本提交进本仓库（不在 Grafana 运行时联网拉取，符合"配置即代码、可审计、离线可用"的原则）。
+- 新增 `vps_oracle/compose/monitoring/grafana/provisioning/dashboards/dashboards.yml` — dashboard provider 配置，声明一个指向本地 JSON 目录的 provider，`updateIntervalSeconds` 设置为定期从磁盘重新加载（后续改 JSON 文件不需要重启容器）。
+- 新增 `vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json` — 从 Grafana 官方 dashboard 仓库（grafana.com）下载社区维护的 **Node Exporter Full**（dashboard ID `1860`）最新版本 JSON，固定版本提交进本仓库（不在 Grafana 运行时联网拉取，符合"配置即代码、可审计、离线可用"的原则）。
 
 **下载后的适配点**：
 1. 把 JSON 里 datasource 相关的模板变量/输入项（社区仪表盘导入时一般会问"选择你的 Prometheus 数据源"）固定替换成 Task 3 已建好的 `uid: prometheus`，这样导入时不需要人工再选一次数据源。

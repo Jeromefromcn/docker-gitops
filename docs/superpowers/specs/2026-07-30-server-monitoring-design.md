@@ -28,7 +28,7 @@
 
 ## 架构
 
-一套紧耦合的监控系统，四个组件放进**同一个** compose 目录（`vps_oracle/monitoring/`），因为它们彼此就是单向依赖链、脱离彼此没有独立存在的意义：Grafana 唯一数据源是这个 Prometheus，Prometheus 唯一抓取对象是这两个 exporter。
+一套紧耦合的监控系统，四个组件放进**同一个** compose 目录（`vps_oracle/compose/monitoring/`），因为它们彼此就是单向依赖链、脱离彼此没有独立存在的意义：Grafana 唯一数据源是这个 Prometheus，Prometheus 唯一抓取对象是这两个 exporter。
 
 - **Prometheus**：抓取、存储、评估告警规则
 - **node_exporter**：本机宿主机指标采集（标准做法是只读挂载宿主机 `/proc`、`/sys`、`/` 到容器里读取，不需要 `network_mode: host`）

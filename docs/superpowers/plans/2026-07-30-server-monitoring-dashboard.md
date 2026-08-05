@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a Grafana dashboard to the existing `vps_oracle/monitoring` stack showing CPU, memory, disk, and network metrics for the vps_oracle host, provisioned declaratively (no manual UI import), per [docs/superpowers/specs/2026-07-30-server-monitoring-dashboard-design.md](../specs/2026-07-30-server-monitoring-dashboard-design.md).
+**Goal:** Add a Grafana dashboard to the existing `vps_oracle/compose/monitoring` stack showing CPU, memory, disk, and network metrics for the vps_oracle host, provisioned declaratively (no manual UI import), per [docs/superpowers/specs/2026-07-30-server-monitoring-dashboard-design.md](../specs/2026-07-30-server-monitoring-dashboard-design.md).
 
 **Architecture:** Reuse the community-maintained "Node Exporter Full" dashboard (grafana.com ID `1860`), downloaded once and committed as a pinned JSON file, adapted to reference the existing fixed `prometheus` datasource uid. Grafana's file-based dashboard provisioning (same declarative pattern already used for the datasource and alert rules) loads it automatically from the `provisioning/` directory that's already bind-mounted into the container — no `docker-compose.yml` changes needed.
 
@@ -13,7 +13,7 @@
 - Never commit secrets — use `.env` (gitignored), never inline values in compose files. (Not applicable to this plan — no secrets involved.)
 - Pin image tags/digests. No `latest`. (No new images in this plan.)
 - One change per commit, scoped to one compose stack.
-- After editing a file here, apply it: `cd vps_oracle/monitoring && docker compose up -d`.
+- After editing a file here, apply it: `cd vps_oracle/compose/monitoring && docker compose up -d`.
 - **Confirm with the user before running any `docker compose up -d` or other command that creates/recreates a container on the live VPS.**
 - Grafana dashboard titles/folder names are in **English**.
 - Do not modify `node-exporter`'s `network_mode` or any alert rule file (`host-metrics-rules.yml`, `probe-rules.yml`, `self-monitoring-rules.yml`) — out of scope per the design spec.
@@ -24,7 +24,7 @@
 ### Task 1: Dashboard provider provisioning config
 
 **Files:**
-- Create: `vps_oracle/monitoring/grafana/provisioning/dashboards/dashboards.yml`
+- Create: `vps_oracle/compose/monitoring/grafana/provisioning/dashboards/dashboards.yml`
 
 **Interfaces:**
 - Consumes: nothing new (the `./grafana/provisioning:/etc/grafana/provisioning:ro` bind mount already exists in `docker-compose.yml:79`).
@@ -33,7 +33,7 @@
 - [ ] **Step 1: Write the dashboard provider config**
 
 ```yaml
-# vps_oracle/monitoring/grafana/provisioning/dashboards/dashboards.yml
+# vps_oracle/compose/monitoring/grafana/provisioning/dashboards/dashboards.yml
 apiVersion: 1
 
 providers:
@@ -52,7 +52,7 @@ providers:
 - [ ] **Step 2: Confirm with the user, then apply**
 
 ```bash
-cd vps_oracle/monitoring && docker compose up -d
+cd vps_oracle/compose/monitoring && docker compose up -d
 ```
 
 - [ ] **Step 3: Verify Grafana picked up the provider**
@@ -65,7 +65,7 @@ Expected: a log line indicating the `Monitoring` file provider was registered, n
 - [ ] **Step 4: Commit**
 
 ```bash
-git add vps_oracle/monitoring/grafana/provisioning/dashboards/dashboards.yml
+git add vps_oracle/compose/monitoring/grafana/provisioning/dashboards/dashboards.yml
 git commit -m "Add Grafana dashboard provider for the Monitoring folder"
 ```
 
@@ -74,7 +74,7 @@ git commit -m "Add Grafana dashboard provider for the Monitoring folder"
 ### Task 2: Import and adapt the Node Exporter Full dashboard
 
 **Files:**
-- Create: `vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json`
+- Create: `vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json`
 
 **Interfaces:**
 - Consumes: the `Monitoring` dashboard provider from Task 1; the `prometheus` datasource uid from `grafana/provisioning/datasources/prometheus.yml` (already provisioned); the `node` job scraping `node-exporter:9100` from `prometheus/prometheus.yml`.
@@ -84,14 +84,14 @@ git commit -m "Add Grafana dashboard provider for the Monitoring folder"
 
 ```bash
 curl -sL https://grafana.com/api/dashboards/1860/revisions/latest/download \
-  -o vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
+  -o vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
 ```
 
 - [ ] **Step 2: Verify the download is valid JSON and check its size**
 
 ```bash
-jq empty vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json && echo "valid json"
-wc -l vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
+jq empty vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json && echo "valid json"
+wc -l vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
 ```
 Expected: `valid json` printed, no parse error. The file should be several thousand lines (this is a large community dashboard with dozens of panels — that's expected, don't manually rewrite it).
 
@@ -100,7 +100,7 @@ Expected: `valid json` printed, no parse error. The file should be several thous
 The downloaded JSON uses a template input placeholder (`${DS_PROMETHEUS}`) for the datasource, meant to be filled in by Grafana's UI import wizard. Since this is file-provisioned (no import wizard), replace it with the fixed `prometheus` datasource uid from Task 3 of the alerting plan, and clear the dashboard's internal `id` (so Grafana treats it as a fresh dashboard on first load) while giving it a stable `uid`:
 
 ```bash
-cd vps_oracle/monitoring/grafana/provisioning/dashboards
+cd vps_oracle/compose/monitoring/grafana/provisioning/dashboards
 
 sed -i 's/\${DS_PROMETHEUS}/prometheus/g' node-exporter-full.json
 
@@ -113,7 +113,7 @@ cd -
 - [ ] **Step 4: Confirm no `${DS_PROMETHEUS}` placeholders remain**
 
 ```bash
-grep -c 'DS_PROMETHEUS' vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
+grep -c 'DS_PROMETHEUS' vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
 ```
 Expected: `0`. If it's not 0, inspect the remaining matches with `grep -n 'DS_PROMETHEUS' <file>` — they're likely in the `__inputs`/`__requires` metadata blocks (harmless leftovers from the import-wizard format, safe to ignore since file provisioning doesn't use them), not in a `datasource` field. Only investigate further if a match is inside a `"datasource"` object.
 
@@ -122,7 +122,7 @@ Expected: `0`. If it's not 0, inspect the remaining matches with `grep -n 'DS_PR
 Since the provider's `updateIntervalSeconds: 30` (Task 1) means Grafana polls the directory, this may not require a restart — but confirm with the user before restarting, since this document doesn't assume the interval has already fired:
 
 ```bash
-cd vps_oracle/monitoring && docker compose up -d
+cd vps_oracle/compose/monitoring && docker compose up -d
 ```
 
 - [ ] **Step 6: Verify the dashboard loaded without errors**
@@ -139,10 +139,10 @@ Visit `https://grafana.jerome.cloudns.asia` → Dashboards → `Monitoring` fold
 - If a panel shows a plugin-not-found or Angular-related error (this dashboard has years of history and Grafana 13 dropped Angular panel support), that panel is incompatible — remove it from the JSON:
   ```bash
   jq 'del(.panels[] | select(.title == "<exact panel title from the error>"))' \
-    vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json \
-    > vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json.tmp
-  mv vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json.tmp \
-    vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
+    vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json \
+    > vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json.tmp
+  mv vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json.tmp \
+    vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
   ```
   Wait up to 30s (the provider's reload interval) and refresh the browser to confirm the panel is gone and no new errors appeared. Repeat for each broken panel.
 - Confirm at least one CPU panel, one memory panel, one disk panel, and one network panel are present and rendering real data.
@@ -150,7 +150,7 @@ Visit `https://grafana.jerome.cloudns.asia` → Dashboards → `Monitoring` fold
 - [ ] **Step 8: Commit**
 
 ```bash
-git add vps_oracle/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
+git add vps_oracle/compose/monitoring/grafana/provisioning/dashboards/node-exporter-full.json
 git commit -m "Import Node Exporter Full dashboard for CPU/memory/disk/network monitoring"
 ```
 

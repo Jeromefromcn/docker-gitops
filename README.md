@@ -7,23 +7,26 @@
 ```
 docker-gitops/
 └── <host>/                # 按服务器分组，如 vps_oracle
-    └── <compose>/          # 每个 compose 栈一个目录（可包含多个服务）
-        └── docker-compose.yml
+    └── compose/            # 该服务器上所有 docker compose 栈
+        └── <compose>/      # 每个 compose 栈一个目录（可包含多个服务）
+            └── docker-compose.yml
 ```
+
+`<host>/` 下除 `compose/` 外，也可能有其他不属于 docker compose 管理的子目录（如 `k3s/`），各自遵循自己的约定，见对应子目录的 README。
 
 ## 工作方式
 
 仓库目录本身就是服务运行目录，直接在仓库里对应的 compose 目录下执行 compose 命令：
 
 ```bash
-cd ~/jerome/docker-gitops/<host>/<compose> && docker compose up -d
+cd ~/jerome/docker-gitops/<host>/compose/<compose> && docker compose up -d
 ```
 
 compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`），因此工作目录搬到仓库里不影响容器内的数据位置。
 
 ## 新增一个服务
 
-1. 在对应 `<host>/` 目录下新建 `<compose>/docker-compose.yml`
+1. 在对应 `<host>/compose/` 目录下新建 `<compose>/docker-compose.yml`
 2. 在该目录下 `docker compose up -d` 启动
 3. `git add` + commit
 
@@ -58,7 +61,7 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 
 ## 给新服务加 homepage 卡片
 
-每新增一个服务，同步在 `vps_oracle/homepage/config/services.yaml` 里加一张卡片，跟现有条目保持同样格式：
+每新增一个服务，同步在 `vps_oracle/compose/homepage/config/services.yaml` 里加一张卡片，跟现有条目保持同样格式：
 
 ```yaml
     - <服务名>:
@@ -76,7 +79,7 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 
 ## 给 Vikunja 项目接 Telegram 通知（透过 vikunja-notify-relay + Apprise）
 
-Vikunja 的任务事件（指派/提醒到期/逾期）通过 webhook 转发给 `vikunja-notify-relay`（`vps_oracle/vikunja` 栈里的第二个 service，拼出带项目名/任务标题/任务超链接的消息），再转给 `apprise` 推到 Telegram 群组。原理、已知限制（没有真正的全局 webhook、没有"任务完成"通知）、以及给新 project 补 webhook 的脚本用法，见 [`docs/2026-08-03-vikunja-apprise-telegram-webhooks.md`](docs/2026-08-03-vikunja-apprise-telegram-webhooks.md)。relay 代码：[`vps_oracle/vikunja/notify-relay/`](vps_oracle/vikunja/notify-relay/)；注册脚本：[`vps_oracle/vikunja/register-telegram-webhooks.sh`](vps_oracle/vikunja/register-telegram-webhooks.sh)。
+Vikunja 的任务事件（指派/提醒到期/逾期）通过 webhook 转发给 `vikunja-notify-relay`（`vps_oracle/compose/vikunja` 栈里的第二个 service，拼出带项目名/任务标题/任务超链接的消息），再转给 `apprise` 推到 Telegram 群组。原理、已知限制（没有真正的全局 webhook、没有"任务完成"通知）、以及给新 project 补 webhook 的脚本用法，见 [`docs/2026-08-03-vikunja-apprise-telegram-webhooks.md`](docs/2026-08-03-vikunja-apprise-telegram-webhooks.md)。relay 代码：[`vps_oracle/compose/vikunja/notify-relay/`](vps_oracle/compose/vikunja/notify-relay/)；注册脚本：[`vps_oracle/compose/vikunja/register-telegram-webhooks.sh`](vps_oracle/compose/vikunja/register-telegram-webhooks.sh)。
 
 ## 约定
 

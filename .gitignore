@@ -22,4 +22,4 @@ docker-compose.*.local.yml
 .idea/
 
 # runtime logs written by containers into mounted config dirs
-vps_oracle/homepage/config/logs/
+vps_oracle/compose/homepage/config/logs/
