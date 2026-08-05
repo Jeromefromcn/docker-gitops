@@ -34,7 +34,7 @@
 | D. 剩餘服務遷移 | 有狀態服務（vikunja+pg、dify 全家桶）、llm 推理棧、3x-ui 的 39876 TCP 透傳 | 逐服務遷移 + compose 去留決策 | C |
 | E. 供應鏈安全加固 | Trivy 准入門禁、Cosign 驗簽、Sealed Secrets、Kyverno | 鏡像/部署有政策把關 | B、D 服務已上線 |
 | F. 多環境 PR 泳道 | ArgoCD ApplicationSet PR Generator + 泳道配額隔離 | PR 分支自動起隔離環境 | B |
-| G. 服務網格 | Istio Ambient，按 namespace 選擇性啟用，有狀態服務不進網格 | L4/L7 流量治理 | D 主要服務已穩定 |
+| G. 服務網格 + 漸進式發布 | Istio Ambient，按 namespace 選擇性啟用，有狀態服務不進網格；金絲雀發布（Argo Rollouts + waypoint 做 L7 流量切分） | L4/L7 流量治理 + 漸進式發布 | D 主要服務已穩定 |
 | H. compose 退場評估 | 逐服務判斷是否還需保留 compose | 最終環境收斂決策 | D |
 
 ## 遷移原則（貫穿全程）
@@ -42,6 +42,11 @@
 1. 域名/端口對外不變，NPM 繼續當外層入口（至少初期；是否最終也遷入叢集留到後期評估）
 2. 每階段走完整 spec → plan → implement → 驗證後，才開下一階段的詳細設計
 3. 遷移每個服務前，先在叢集內驗證通，再切流量，舊 compose 容器保留到確認穩定再退場
+
+## 待 G 階段細化的設計取捨
+
+- Ambient 的 waypoint 是 namespace（或更細至 service account）層級的 Deployment，不是每個 pod 一份，可以把需要 L7（含金絲雀切流）的服務集中到同一個 namespace，共用一份單副本 waypoint，資源開銷小
+- 這與 F 階段「按 PR 泳道分 namespace」的隔離模型有潛在衝突：若某個做金絲雀的服務也會被 PR 泳道複製出獨立環境，需要在 G 階段決定——每條泳道各自起一個 waypoint，還是把金絲雀/L7 示例限定在主環境、不隨泳道複製
 
 ## 各階段設計文檔
 
