@@ -56,7 +56,7 @@ Note: `kubectl get node -o yaml`'s `spec.podCIDR` shows k3s's own built-in defau
 
 ### NPM traffic is `world` identity, not in-cluster
 
-Cilium classifies any traffic entering from the `npm` docker container (via the compose-node-IP → NodePort bridge, see the root README's NPM section — not Docker's `host-gateway`, which doesn't reach a Cilium NodePort at all) as `world` identity — it never sees it as coming from something in-cluster, because it isn't. A namespace-level default-deny `NetworkPolicy` (like `manifests/netpol-test.yaml`'s `deny-all-ingress`) blocks `world` traffic exactly like any other non-selected source. This matters for every real service migrated behind NPM in a later phase: default-deny + NPM ingress needs an explicit ingress-allow rule for `world`/host-external traffic, not just intra-cluster pod/namespace selectors.
+Cilium classifies any traffic entering from the `npm` docker container (via the compose-node-IP → NodePort bridge, see the root README's NPM section — not Docker's `host-gateway`, which doesn't reach a Cilium NodePort at all) as `world` identity — it never sees it as coming from something in-cluster, because it isn't. A namespace-level default-deny `NetworkPolicy` (like `manifests/verification/netpol-test.yaml`'s `deny-all-ingress`) blocks `world` traffic exactly like any other non-selected source. This matters for every real service migrated behind NPM in a later phase: default-deny + NPM ingress needs an explicit ingress-allow rule for `world`/host-external traffic, not just intra-cluster pod/namespace selectors.
 
 **Known gotcha (fixed) — host firewall blocked pod → host-networked-service traffic.** This host's iptables `INPUT` chain (persisted at `/etc/iptables/rules.v4` via `iptables-persistent`) only allow-listed new inbound TCP on 22/80/443, default-REJECT otherwise. Cilium's kube-proxy replacement does socket-level load-balancing: any pod that connects to a ClusterIP backed by the node itself gets that connection transparently rewritten to `<node-ip>:<port>`. That rewritten packet leaves the pod via the node's physical NIC (Cilium's "Direct Routing" mode) and is filtered by the host's normal `INPUT` chain like any other inbound connection — so any port not on the 22/80/443 allow-list got ICMP `host-prohibited` rejected. This bit three host-networked ports during Phase A bring-up: `6443` (kube-apiserver — broke CoreDNS readiness, which cascaded into cluster DNS and Hubble Relay both failing), `4244` (cilium-agent's `hubble-peer` gRPC service — broke Hubble Relay directly), and `10250` (kubelet's metrics API — broke `metrics-server`).
 
@@ -104,18 +104,18 @@ Re-applying `argocd/values.yaml` after an edit: prefer editing the file and lett
    ```
 2. Smoke-test workload — Deployment + NodePort Service + `netpol-tester` pod:
    ```bash
-   kubectl apply -f manifests/smoke-test.yaml
+   kubectl apply -f manifests/verification/smoke-test.yaml
    ```
-   **Do not** also apply `manifests/netpol-test.yaml` yet — see the header comment in both files. Applying the NetworkPolicy first blocks the very connectivity this step exists to prove.
+   **Do not** also apply `manifests/verification/netpol-test.yaml` yet — see the header comment in both files. Applying the NetworkPolicy first blocks the very connectivity this step exists to prove.
 3. Run the four checks:
    - **NodePort:** `curl http://localhost:30080` → nginx welcome page.
    - **ResourceQuota usage:** `kubectl describe resourcequota workloads-quota -n workloads` → `Used` reflects the smoke-test pod's requests/limits.
-   - **NetworkPolicy enforcement:** `kubectl apply -f manifests/netpol-test.yaml`, then `kubectl -n workloads exec netpol-tester -- wget -qO- --timeout=3 http://smoke-test.workloads.svc.cluster.local` → times out (proves Cilium enforces `NetworkPolicy`, not just routes traffic). Then `kubectl delete -f manifests/netpol-test.yaml` before the NPM check below — NPM's traffic is `world` identity (see above) and the deny-all policy would block it too, which isn't what that check is testing.
+   - **NetworkPolicy enforcement:** `kubectl apply -f manifests/verification/netpol-test.yaml`, then `kubectl -n workloads exec netpol-tester -- wget -qO- --timeout=3 http://smoke-test.workloads.svc.cluster.local` → times out (proves Cilium enforces `NetworkPolicy`, not just routes traffic). Then `kubectl delete -f manifests/verification/netpol-test.yaml` before the NPM check below — NPM's traffic is `world` identity (see above) and the deny-all policy would block it too, which isn't what that check is testing.
    - **NPM end-to-end:** create a temporary NPM proxy host per the root README's "给服务接入 NPM 反代" section (note its NodePort gotcha: Forward Hostname/IP must be the node's literal IP, not a hostname), then `curl` the domain from outside. Delete the proxy host afterward.
 4. Teardown:
    ```bash
-   kubectl delete -f manifests/smoke-test.yaml
-   kubectl delete -f manifests/netpol-test.yaml   # only if still applied
+   kubectl delete -f manifests/verification/smoke-test.yaml
+   kubectl delete -f manifests/verification/netpol-test.yaml   # only if still applied
    kubectl get pods -n workloads                  # expect: No resources found
    ```
 
