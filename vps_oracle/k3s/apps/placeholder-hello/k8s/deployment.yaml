@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: placeholder-hello
-          image: ghcr.io/jeromefromcn/placeholder-hello:bootstrap
+          image: ghcr.io/jeromefromcn/placeholder-hello:0d3e52314b0950b893e32f684b5011ce8abdc798
           ports:
             - containerPort: 80
           resources:
