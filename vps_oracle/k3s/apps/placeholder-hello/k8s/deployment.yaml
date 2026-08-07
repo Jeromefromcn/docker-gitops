@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: placeholder-hello
+  namespace: workloads
+  labels:
+    app: placeholder-hello
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: placeholder-hello
+  template:
+    metadata:
+      labels:
+        app: placeholder-hello
+    spec:
+      containers:
+        - name: placeholder-hello
+          image: ghcr.io/jeromefromcn/placeholder-hello:bootstrap
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
