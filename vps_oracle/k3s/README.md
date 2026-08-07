@@ -72,11 +72,20 @@ Originally applied 2026-08-05 scoped to `10.0.0.0/24`; updated 2026-08-06 to `10
 
 ## ArgoCD
 
-Installed via Helm (`argo/argo-cd` chart) into the `argocd` namespace. Dex and the notifications controller are disabled (`argocd/values.yaml`) — auth is the built-in local admin account plus NPM's access list, no SSO; no alert-routing integration yet. Single replica everywhere, no HA — this is a single-node cluster.
+Installed via Helm (`argo/argo-cd` chart) into the `argocd` namespace. Dex and the notifications controller are disabled (`argocd/values.yaml`) — no SSO; no alert-routing integration yet. Single replica everywhere, no HA — this is a single-node cluster.
 
 The Helm release is bootstrapped once by hand (Install section below), then handed over to ArgoCD itself to self-manage via `argocd/apps/argocd.yaml` — see the "App of apps" section for the full layout.
 
-Get the admin password: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`.
+**Accounts:** the built-in `admin` superuser is disabled (`configs.cm.admin.enabled: "false"` in `argocd/values.yaml`, declarative). The only account is `jerome`, declared in the same file (`configs.cm.accounts.jerome: apiKey,login`) with full `role:admin` RBAC (`configs.rbac.policy.csv`) — grant is declarative, but the password itself is a secret and isn't in git.
+
+**Setting/resetting a local account's password:** `argocd account update-password` reliably fails when logged in via `--core` (`unable to extract token claims` — that RPC needs a real JWT session, which `--core` doesn't provide) and this cluster's Application-controlled Helm rendering has, at least once, regenerated an account's password server-side unprompted (seen in `argocd-server` logs as `user 'X' updated password` with no corresponding CLI command run) — so treat any password set through the normal API as unverified until you've confirmed login with it. The reliable method is a direct offline patch, bypassing the API entirely:
+```bash
+NEW_PW='<pick a password>'
+HASH=$(docker run --rm httpd:alpine htpasswd -nbBC 10 <account> "$NEW_PW" | cut -d: -f2)
+kubectl -n argocd patch secret argocd-secret --type merge -p \
+  "{\"stringData\": {\"accounts.<account>.password\": \"$HASH\", \"accounts.<account>.passwordMtime\": \"$(date -u +%FT%TZ)\"}}"
+```
+Then verify immediately: `argocd login argocd.jerome.cloudns.asia:443 --username <account> --password "$NEW_PW" --grpc-web`. Note this login needs the real domain (or a port-forward) and `--grpc-web` — `--core` never touches the password/session system at all, so it can't be used to confirm a password actually works.
 
 **CLI access:** `argocd login --core` talks to the cluster directly via the current kubeconfig context (make sure `kubectl config set-context --current --namespace=argocd` first) — this avoids `kubectl port-forward`, which works fine for plain `curl` against `argocd-server` but reliably resets the connection specifically for the `argocd` CLI's own login/gRPC-web traffic on this cluster (root cause not fully diagnosed; `--core` sidesteps it entirely and is simpler for a single-operator setup with local `kubectl` access anyway). If you do need the UI/API over a real network path (not just CLI), use `kubectl -n argocd port-forward svc/argocd-server <local-port>:80` — port `8080` is already taken on this host by an unrelated compose service, pick something else.
 
