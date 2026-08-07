@@ -80,6 +80,8 @@ Get the admin password: `kubectl -n argocd get secret argocd-initial-admin-secre
 
 **Known transient issue:** on first install, `argocd-server`'s logs may show a handful of `redis: ... connect: no route to host` errors in the first couple of seconds after the pods start, then nothing further — this looks like Cilium's service map not being fully programmed yet at the exact moment `argocd-server` opens its first Redis connection, not a persistent problem. It self-resolved without intervention and didn't recur; if it ever shows up as a *sustained* pattern (not just at startup), treat it like phase A's documented host-firewall-blocks-node-local-ClusterIP-traffic gotcha (see the Cilium section above) — check `cilium-dbg service list` for the backend and, if needed, scope an `iptables INPUT` allow rule for the current pod CIDR rather than one port at a time, since on a single-node cluster every ClusterIP's backend is node-local.
 
+**Never test self-heal by scaling `argocd-repo-server` to 0.** It's the component that renders manifests for every Application's sync, including reconciling itself — scaling it down deadlocks self-heal (nothing can compute the fix because the thing that computes fixes is what's down); `argocd app sync`/`diff` also fail outright while it's down for the same reason. Recovery requires a manual `kubectl -n argocd scale deployment argocd-repo-server --replicas=1`. To actually verify self-heal, break something in a regular workload Application instead (e.g. `placeholder-hello`, see below) — that has no such circularity.
+
 ### Install
 
 1. `helm repo add argo https://argoproj.github.io/argo-helm && helm repo update`
