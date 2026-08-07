@@ -9,8 +9,6 @@ spec:
     repoURL: https://github.com/Jeromefromcn/docker-gitops.git
     targetRevision: main
     path: vps_oracle/k3s/argocd/apps
-    directory:
-      recurse: false
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
