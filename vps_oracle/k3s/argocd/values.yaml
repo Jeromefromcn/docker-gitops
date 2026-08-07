@@ -9,6 +9,7 @@ configs:
     server.insecure: true
   cm:
     accounts.jerome: apiKey,login
+    admin.enabled: "false"
   rbac:
     policy.csv: |
       p, role:admin, applications, *, */*, allow
