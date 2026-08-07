@@ -1,6 +1,8 @@
 # vps_oracle/k3s
 
-Phase A cluster foundation for the [K3s roadmap](../../docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md). See the [phase A design doc](../../docs/superpowers/specs/2026-08-05-k3s-phase-a-cluster-foundation-design.md) and [phase B design doc](../../docs/superpowers/specs/2026-08-07-k3s-phase-b-gitops-design.md) for the full rationale.
+Cluster foundation (phase A) and GitOps bootstrap (phase B) for the [K3s roadmap](../../docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md). See the [phase A design doc](../../docs/superpowers/specs/2026-08-05-k3s-phase-a-cluster-foundation-design.md) and [phase B design doc](../../docs/superpowers/specs/2026-08-07-k3s-phase-b-gitops-design.md) for the full rationale.
+
+**As of phase B, don't `kubectl apply` anything under `manifests/` (except the one-time `argocd/apps/root.yaml` bootstrap) or `apps/*/k8s/` by hand** — those are GitOps-managed and ArgoCD's `selfHeal` will fight you. Edit the file, commit, push instead.
 
 ## Installed versions
 
@@ -90,6 +92,26 @@ Get the admin password: `kubectl -n argocd get secret argocd-initial-admin-secre
 
 Re-applying `argocd/values.yaml` after an edit: prefer editing the file and letting ArgoCD's own self-management (`argocd/apps/argocd.yaml`) sync it, once that's bootstrapped. Only fall back to `helm upgrade argocd argo/argo-cd --version "10.3.0" --namespace argocd -f argocd/values.yaml` if self-management itself is broken.
 
+### App of apps
+
+`argocd/apps/root.yaml` is the one Application applied by hand (`kubectl apply -f argocd/apps/root.yaml`) — nothing else exists yet to create it. Everything else in `argocd/apps/` is discovered automatically because `root` watches that whole directory (including `root.yaml` itself, which is why `root` shows up as one of its own managed resources — harmless, and means even `root` self-heals against manual edits). Children:
+
+- `argocd` — self-manages this Helm release (multi-source: the `argo-cd` chart + `argocd/values.yaml` from this repo as an external values source) plus `argocd/manifests/argocd-server-nodeport.yaml` (a third plain-directory source in the same Application, since it's infrastructure for exposing ArgoCD itself)
+- `phase-a-foundation` — the namespace/quota/limitrange from phase A (now GitOps-managed, no longer hand-applied)
+- `placeholder-hello` — the demo app proving the CI → GitOps loop (see `vps_oracle/k3s/apps/placeholder-hello/`)
+
+All Applications run `prune: true` / `selfHeal: true` — manual `kubectl` changes to anything they manage get reverted automatically, usually within seconds. **Editing `argocd.yaml` (or any other file directly under `argocd/apps/`) requires syncing `root`, not the Application the edit is about** — `root` is what applies changes to the Application *objects themselves*; syncing `argocd` only re-applies whatever `sources` are already live, silently ignoring an uncommitted-to-cluster edit to its own spec. To add a brand new Application, write its manifest into `argocd/apps/`, commit, push, and either wait for the next poll or force it: `argocd app sync root`.
+
+**CLI gotcha:** `argocd-repo-server` renders manifests for every Application's sync, including reconciling itself. Never test self-heal by scaling it to 0 — that deadlocks self-heal (and breaks `argocd app sync`/`diff` for everything) since the thing that would compute the fix is what's down. Recovery is a manual `kubectl -n argocd scale deployment argocd-repo-server --replicas=1`. Use a regular workload (e.g. `placeholder-hello`) to verify self-heal instead.
+
+### CI pipeline (placeholder-hello)
+
+`.github/workflows/placeholder-hello.yml` triggers on push to `vps_oracle/k3s/apps/placeholder-hello/**` (plus manual `workflow_dispatch`): builds `linux/arm64` on a standard `ubuntu-latest` x64 runner via QEMU emulation (no self-hosted runner, no server resource cost), Trivy-scans the result and fails the job on any `CRITICAL` finding, then signs it with keyless Cosign (GitHub OIDC → Sigstore Fulcio/Rekor — no key material anywhere). Verify a signature: `cosign verify ghcr.io/jeromefromcn/placeholder-hello:<sha> --certificate-identity-regexp '^https://github.com/Jeromefromcn/docker-gitops/.github/workflows/placeholder-hello.yml@refs/heads/main$' --certificate-oidc-issuer https://token.actions.githubusercontent.com`.
+
+Deploying a new image is a manual two-step, not automated: after CI signs and pushes a new tag, edit `apps/placeholder-hello/k8s/deployment.yaml` to point at it, commit, push. This is deliberate — it still satisfies "deploys go through git, not `kubectl apply`" without pulling in an image-updater's extra moving parts. Watch for the CI workflow's `paths:` filter also matching `k8s/deployment.yaml` itself — bumping the tag re-triggers a (harmless, redundant) rebuild of unchanged app source.
+
+The `placeholder-hello` GHCR package (`ghcr.io/jeromefromcn/placeholder-hello`) is public — its content is a static placeholder page with nothing sensitive, and public avoids needing an `imagePullSecret` in the cluster.
+
 ## Namespace & quota
 
 `manifests/namespace.yaml` creates the `workloads` namespace — where phase C+ deploys real services. `manifests/resourcequota.yaml` caps the namespace at `requests.cpu: "1"`, `requests.memory: 2Gi`, `limits.cpu: "1"`, `limits.memory: 2Gi` (request == limit, no slack — phase A's only tenant is the smoke-test workload; bump the quota directly if a later phase needs more, it won't disturb pods already running). `manifests/limitrange.yaml` gives any container that omits its own `resources` a default of `100m`/`128Mi` requests and `200m`/`256Mi` limits, so a workload that forgets to set resources can't silently eat the whole quota. Neither applies to `kube-system` (Cilium, Hubble, CoreDNS, local-path-provisioner) — the quota only governs `workloads`, that's expected, not a gap.
@@ -119,6 +141,6 @@ Re-applying `argocd/values.yaml` after an edit: prefer editing the file and lett
    kubectl get pods -n workloads                  # expect: No resources found
    ```
 
-## Handoff to phase B
+## Handoff to phase C
 
-Phase B (ArgoCD + CI skeleton) picks up from here: a reachable, empty cluster with CNI/NetworkPolicy/storage/quota already in place, and this `vps_oracle/k3s/` directory as the established convention for where its own non-secret config lands.
+Phase C (first real service migrations) picks up from here: a working GitOps loop (ArgoCD app-of-apps, `selfHeal`/`prune` on everything) and a proven CI pattern (`placeholder-hello.yml`) to copy for the first real service — same build→Trivy→Cosign→GHCR shape, just point it at a real Dockerfile and give the resulting Application its own entry under `argocd/apps/`. ArgoCD's UI is reachable at `https://argocd.jerome.cloudns.asia` (NPM, `self-only` access list) for watching syncs during migrations.
