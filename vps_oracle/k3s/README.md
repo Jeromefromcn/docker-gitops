@@ -1,6 +1,6 @@
 # vps_oracle/k3s
 
-Phase A cluster foundation for the [K3s roadmap](../../docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md). See the [phase A design doc](../../docs/superpowers/specs/2026-08-05-k3s-phase-a-cluster-foundation-design.md) for the full rationale.
+Phase A cluster foundation for the [K3s roadmap](../../docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md). See the [phase A design doc](../../docs/superpowers/specs/2026-08-05-k3s-phase-a-cluster-foundation-design.md) and [phase B design doc](../../docs/superpowers/specs/2026-08-07-k3s-phase-b-gitops-design.md) for the full rationale.
 
 ## Installed versions
 
@@ -8,6 +8,7 @@ Phase A cluster foundation for the [K3s roadmap](../../docs/superpowers/specs/20
 |---|---|---|
 | k3s | `v1.36.2+k3s1` | 2026-08-05 |
 | Cilium | `1.20.0` | 2026-08-05 |
+| ArgoCD | `10.3.0` (chart), `v3.5.0` (app/CLI) | 2026-08-07 |
 
 ## Install
 
@@ -66,6 +67,26 @@ sudo iptables -I INPUT 10 -p tcp -s 10.42.0.0/16 -m tcp --dport 4244 -j ACCEPT
 sudo iptables -I INPUT 11 -p tcp -s 10.42.0.0/16 -m tcp --dport 10250 -j ACCEPT
 ```
 Originally applied 2026-08-05 scoped to `10.0.0.0/24`; updated 2026-08-06 to `10.42.0.0/16` as part of the pod-CIDR fix above — the original scoping was accidentally as wide as the entire VCN subnet, not just the pod network, since `10.0.0.0/24` was both at the time. `/etc/iptables/rules.v4` was updated via `iptables-save` (previous version backed up alongside it, timestamped) so all three rules survive a reboot; no follow-up needed. Verify the current pod CIDR with `kubectl get ciliumnode -o jsonpath='{.items[0].spec.ipam.podCIDRs}'` before reusing this pattern after any future re-IPAM. If a future workload needs to reach some other host-networked port from a pod, the same pattern applies: check `cilium-dbg service list` for a backend on the node's own IP, and add the matching scoped `INPUT` rule against the current pod CIDR (`10.42.0.0/16`).
+
+## ArgoCD
+
+Installed via Helm (`argo/argo-cd` chart) into the `argocd` namespace. Dex and the notifications controller are disabled (`argocd/values.yaml`) — auth is the built-in local admin account plus NPM's access list, no SSO; no alert-routing integration yet. Single replica everywhere, no HA — this is a single-node cluster.
+
+The Helm release is bootstrapped once by hand (Install section below), then handed over to ArgoCD itself to self-manage via `argocd/apps/argocd.yaml` — see the "App of apps" section for the full layout.
+
+Get the admin password: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`.
+
+**CLI access:** `argocd login --core` talks to the cluster directly via the current kubeconfig context (make sure `kubectl config set-context --current --namespace=argocd` first) — this avoids `kubectl port-forward`, which works fine for plain `curl` against `argocd-server` but reliably resets the connection specifically for the `argocd` CLI's own login/gRPC-web traffic on this cluster (root cause not fully diagnosed; `--core` sidesteps it entirely and is simpler for a single-operator setup with local `kubectl` access anyway). If you do need the UI/API over a real network path (not just CLI), use `kubectl -n argocd port-forward svc/argocd-server <local-port>:80` — port `8080` is already taken on this host by an unrelated compose service, pick something else.
+
+**Known transient issue:** on first install, `argocd-server`'s logs may show a handful of `redis: ... connect: no route to host` errors in the first couple of seconds after the pods start, then nothing further — this looks like Cilium's service map not being fully programmed yet at the exact moment `argocd-server` opens its first Redis connection, not a persistent problem. It self-resolved without intervention and didn't recur; if it ever shows up as a *sustained* pattern (not just at startup), treat it like phase A's documented host-firewall-blocks-node-local-ClusterIP-traffic gotcha (see the Cilium section above) — check `cilium-dbg service list` for the backend and, if needed, scope an `iptables INPUT` allow rule for the current pod CIDR rather than one port at a time, since on a single-node cluster every ClusterIP's backend is node-local.
+
+### Install
+
+1. `helm repo add argo https://argoproj.github.io/argo-helm && helm repo update`
+2. `kubectl create namespace argocd`
+3. `helm install argocd argo/argo-cd --version "10.3.0" --namespace argocd -f argocd/values.yaml`
+
+Re-applying `argocd/values.yaml` after an edit: prefer editing the file and letting ArgoCD's own self-management (`argocd/apps/argocd.yaml`) sync it, once that's bootstrapped. Only fall back to `helm upgrade argocd argo/argo-cd --version "10.3.0" --namespace argocd -f argocd/values.yaml` if self-management itself is broken.
 
 ## Namespace & quota
 
