@@ -135,14 +135,12 @@ Expected: prints the client version, matching `$ARGOCD_CLI_VERSION`.
 - [ ] **Step 6: Retrieve the initial admin password and confirm CLI login**
 
 ```bash
-ARGOCD_ADMIN_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)
-kubectl -n argocd port-forward svc/argocd-server 8080:80 &
-sleep 2
-argocd login localhost:8080 --username admin --password "$ARGOCD_ADMIN_PASSWORD" --insecure
-kill %1
+argocd login --core
+kubectl config set-context --current --namespace=argocd
+argocd app list
 ```
 
-Expected: `'admin' logged in successfully`. Don't delete `argocd-initial-admin-secret` — later tasks re-derive this password the same way to log in from fresh shells; there's no other credential store set up in this phase.
+Expected: an empty table (headers only) — confirms `--core` login works and can reach the cluster; there's nothing to list yet. Use `argocd login --core` for every CLI step in this plan, not `kubectl port-forward` + `argocd login --insecure` — on this cluster, plain `curl` through a port-forward to `argocd-server` works fine, but the `argocd` CLI's own login/gRPC-web traffic reliably resets that connection (root cause not fully diagnosed), and port `8080` is separately already taken on this host by an unrelated compose service. `--core` talks to the cluster directly via the current kubeconfig context and needs no port-forward at all.
 
 - [ ] **Step 7: Record the resolved version and add an ArgoCD section to the README**
 
@@ -161,7 +159,11 @@ Installed via Helm (`argo/argo-cd` chart) into the `argocd` namespace. Dex and t
 
 The Helm release is bootstrapped once by hand (this README's Install section), then handed over to ArgoCD itself to self-manage via `vps_oracle/k3s/argocd/apps/argocd.yaml` — see the "App of apps" section below.
 
-Get the admin password: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`. Log in: `kubectl -n argocd port-forward svc/argocd-server 8080:80 &`, then `argocd login localhost:8080 --username admin --password "<password>" --insecure`.
+Get the admin password: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`.
+
+**CLI access:** `argocd login --core` talks to the cluster directly via the current kubeconfig context (make sure `kubectl config set-context --current --namespace=argocd` first) — this avoids `kubectl port-forward`, which works fine for plain `curl` against `argocd-server` but reliably resets the connection specifically for the `argocd` CLI's own login/gRPC-web traffic on this cluster (root cause not fully diagnosed; `--core` sidesteps it entirely and is simpler for a single-operator setup with local `kubectl` access anyway). If you do need the UI/API over a real network path (not just CLI), use `kubectl -n argocd port-forward svc/argocd-server <local-port>:80` — port `8080` is already taken on this host by an unrelated compose service, pick something else.
+
+**Never test self-heal by scaling `argocd-repo-server` to 0.** It's the component that renders manifests for every Application's sync, including reconciling itself — scaling it down deadlocks self-heal; `argocd app sync`/`diff` also fail outright while it's down for the same reason. Recovery requires a manual `kubectl -n argocd scale deployment argocd-repo-server --replicas=1`. To verify self-heal, break something in a regular workload Application instead (e.g. `placeholder-hello`).
 
 ### Install
 
@@ -205,16 +207,14 @@ read -rs GITHUB_READONLY_PAT
 - [ ] **Step 2: Register the repo with ArgoCD**
 
 ```bash
-kubectl -n argocd port-forward svc/argocd-server 8080:80 &
-sleep 2
-argocd login localhost:8080 --username admin --password "$ARGOCD_ADMIN_PASSWORD" --insecure
+argocd login --core
+kubectl config set-context --current --namespace=argocd
 
 argocd repo add https://github.com/Jeromefromcn/docker-gitops.git \
   --username Jeromefromcn \
   --password "$GITHUB_READONLY_PAT"
 
 argocd repo list
-kill %1
 ```
 
 Expected: `argocd repo list` shows the repo with `STATUS` `Successful`. This creates a Secret in the `argocd` namespace (`kubectl -n argocd get secrets -l argocd.argoproj.io/secret-type=repository`) — that Secret, not the repo, is what holds the credential; nothing touches the git working tree.
@@ -235,8 +235,6 @@ spec:
     repoURL: https://github.com/Jeromefromcn/docker-gitops.git
     targetRevision: main
     path: vps_oracle/k3s/argocd/apps
-    directory:
-      recurse: false
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -245,6 +243,8 @@ spec:
       prune: true
       selfHeal: true
 ```
+
+Do not add `directory: recurse: false` — Kubernetes strips explicit `false` on this field (it's `omitempty` in the CRD and `false` is the Go zero value), so the live object silently ends up without it while git still has it, and ArgoCD diffs that forever as `OutOfSync`. Omitting the field is functionally identical since `false` is already the default.
 
 - [ ] **Step 4: Write the self-managing ArgoCD Application**
 
@@ -292,13 +292,12 @@ git push
 ```
 
 ```bash
-kubectl -n argocd port-forward svc/argocd-server 8080:80 &
-sleep 2
-ARGOCD_ADMIN_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)
-argocd login localhost:8080 --username admin --password "$ARGOCD_ADMIN_PASSWORD" --insecure
+argocd login --core
+kubectl config set-context --current --namespace=argocd
 argocd app sync root
-kill %1
 ```
+
+Use `argocd login --core` (talks to the cluster directly via the current kubeconfig context) for every CLI step in this plan, not `kubectl port-forward` + `argocd login --insecure`. On this cluster, plain `curl` through a port-forward to `argocd-server` works fine, but the `argocd` CLI's own login/gRPC-web traffic reliably resets the port-forwarded connection (root cause not fully diagnosed) — `--core` sidesteps it and needs no port-forward at all. Port `8080` is also already taken on this host by an unrelated compose service if you do need a real port-forward for the UI later.
 
 - [ ] **Step 7: Verify both Applications are Synced and Healthy**
 
@@ -308,15 +307,9 @@ kubectl -n argocd get applications
 
 Expected: two rows, `root` and `argocd`, both `SYNC STATUS` = `Synced` and `HEALTH STATUS` = `Healthy`. If `argocd` shows `OutOfSync` on resources that already exist from Task 1's manual install, that's expected on the very first sync (ArgoCD is reconciling Task 1's manually-created objects into ones it now tracks) — it should settle to `Synced` within a minute or two of `automated.selfHeal` kicking in. A leftover Helm release Secret from Task 1's `helm install` (`kubectl -n argocd get secrets -l owner=helm`) is expected and harmless — ArgoCD's Helm-source Applications render via `helm template`, not classic `helm install`/`upgrade`, so they don't reuse or clean up that Secret.
 
-- [ ] **Step 8: Confirm ArgoCD itself survives a drift correction**
+- [ ] **Step 8: Do NOT drift-test by scaling `argocd-repo-server`**
 
-```bash
-kubectl -n argocd scale deployment argocd-repo-server --replicas=0
-sleep 15
-kubectl -n argocd get deployment argocd-repo-server -o jsonpath='{.spec.replicas}'
-```
-
-Expected: after the sleep, replicas is back to `1` — ArgoCD's `application-controller` noticed `argocd-repo-server` (which it manages via the `argocd` Application) drifted from the desired `1` replica and corrected it, without anyone running `kubectl apply` or `helm upgrade`. This is the first concrete proof of the phase's core goal.
+`argocd-repo-server` is the component that renders manifests for every Application's sync, including reconciling itself — scaling it to 0 deadlocks self-heal (nothing can compute the fix because the thing that computes fixes is what's down), and `argocd app sync`/`diff` fail outright while it's down for the same reason. This was tried during implementation and required a manual `kubectl -n argocd scale deployment argocd-repo-server --replicas=1` to recover — don't repeat it. The real self-heal proof for this phase is Task 4 Step 9, against `placeholder-hello` (a regular workload, no such circularity). Skip straight to Task 3.
 
 ---
 
@@ -362,8 +355,6 @@ spec:
     repoURL: https://github.com/Jeromefromcn/docker-gitops.git
     targetRevision: main
     path: vps_oracle/k3s/manifests
-    directory:
-      recurse: false
   destination:
     server: https://kubernetes.default.svc
     namespace: workloads
@@ -383,12 +374,9 @@ git push
 ```
 
 ```bash
-kubectl -n argocd port-forward svc/argocd-server 8080:80 &
-sleep 2
-ARGOCD_ADMIN_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)
-argocd login localhost:8080 --username admin --password "$ARGOCD_ADMIN_PASSWORD" --insecure
+argocd login --core
+kubectl config set-context --current --namespace=argocd
 argocd app sync root
-kill %1
 ```
 
 - [ ] **Step 5: Verify adoption didn't disturb the live resources**
@@ -534,8 +522,6 @@ spec:
     repoURL: https://github.com/Jeromefromcn/docker-gitops.git
     targetRevision: main
     path: vps_oracle/k3s/apps/placeholder-hello/k8s
-    directory:
-      recurse: false
   destination:
     server: https://kubernetes.default.svc
     namespace: workloads
@@ -554,12 +540,9 @@ git push
 ```
 
 ```bash
-kubectl -n argocd port-forward svc/argocd-server 8080:80 &
-sleep 2
-ARGOCD_ADMIN_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)
-argocd login localhost:8080 --username admin --password "$ARGOCD_ADMIN_PASSWORD" --insecure
+argocd login --core
+kubectl config set-context --current --namespace=argocd
 argocd app sync root
-kill %1
 ```
 
 - [ ] **Step 8: Verify it's running and serving content**
@@ -808,12 +791,9 @@ git push
 ```
 
 ```bash
-kubectl -n argocd port-forward svc/argocd-server 8080:80 &
-sleep 2
-ARGOCD_ADMIN_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)
-argocd login localhost:8080 --username admin --password "$ARGOCD_ADMIN_PASSWORD" --insecure
+argocd login --core
+kubectl config set-context --current --namespace=argocd
 argocd app sync placeholder-hello
-kill %1
 ```
 
 - [ ] **Step 7: Verify the new image is actually running**
@@ -883,12 +863,9 @@ git push
 ```
 
 ```bash
-kubectl -n argocd port-forward svc/argocd-server 8080:80 &
-sleep 2
-ARGOCD_ADMIN_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)
-argocd login localhost:8080 --username admin --password "$ARGOCD_ADMIN_PASSWORD" --insecure
+argocd login --core
+kubectl config set-context --current --namespace=argocd
 argocd app sync argocd
-kill %1
 ```
 
 ```bash
