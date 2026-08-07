@@ -8,6 +8,7 @@ configs:
   params:
     server.insecure: true
   cm:
+    url: https://argocd.jerome.cloudns.asia
     accounts.jerome: apiKey,login
     admin.enabled: "false"
   rbac:
