@@ -865,8 +865,11 @@ git push
 ```bash
 argocd login --core
 kubectl config set-context --current --namespace=argocd
+argocd app sync root
 argocd app sync argocd
 ```
+
+Sync `root` first, not just `argocd` — the edit above changed `argocd.yaml` itself (added a third `sources` entry), and that *file* is a manifest `root` applies, not something `argocd` manages about itself. Syncing only `argocd` re-applies whatever `sources` are already live on the Application object, silently ignoring your edit. (If `argocd app sync argocd` errors with `FailedPrecondition: another operation is already in progress`, that's harmless — it means self-heal already raced ahead and picked up the change on its own; just re-check the Service below instead of retrying the sync.)
 
 ```bash
 kubectl -n argocd get svc argocd-server-nodeport
