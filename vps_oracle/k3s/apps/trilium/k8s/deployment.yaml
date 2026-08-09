@@ -15,6 +15,10 @@ spec:
       labels:
         app: trilium
     spec:
+      # Without this, k8s injects TRILIUM_PORT=tcp://<clusterIP>:8080 (from the
+      # `trilium` Service) into the container's env, colliding with trilium's
+      # own TRILIUM_PORT config var (which expects a plain integer) and crashing it.
+      enableServiceLinks: false
       containers:
         - name: trilium
           image: triliumnext/trilium:v0.104.1
