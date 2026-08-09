@@ -188,3 +188,15 @@ Exposed via NodePort `30082` → NPM (`trilium.jerome.cloudns.asia`), same domai
 ## Handoff to phase C
 
 Phase C (first real service migrations) picks up from here: a working GitOps loop (ArgoCD app-of-apps, `selfHeal`/`prune` on everything) and a proven CI pattern (`placeholder-hello.yml`) to copy for the first real service — same build→Trivy→Cosign→GHCR shape, just point it at a real Dockerfile and give the resulting Application its own entry under `argocd/apps/`. ArgoCD's UI is reachable at `https://argocd.jerome.cloudns.asia` (NPM, `self-only` access list) for watching syncs during migrations.
+
+## Handoff to phase D
+
+Phase C (homepage + trilium migrated) leaves phase D two reusable templates: `apps/homepage/` (config-as-code via ConfigMap + initContainer→emptyDir, for services that don't hold real data) and `apps/trilium/` (dynamically-provisioned PVC + one-off seed-Pod data migration, for services that do). Both follow the same shape: manifests under `apps/<service>/k8s/`, one child Application under `argocd/apps/`, a fixed NodePort, and an NPM proxy host repointed from the compose container to that NodePort via the automation API (`vps_oracle/compose/npm/.npm-automation.env` + `vps_oracle/compose/npm/README.md`) — domain unchanged throughout.
+
+**Before starting phase D:** the `workloads` ResourceQuota is close to its `limits.cpu` cap (`900m` used of `1` — see phase C's verification). Raise it before deploying the next service, not after hitting the wall; phase C's own trilium rollout already hit this exact ceiling once (see the trilium section's "Quota headroom bit during the fix rollout" note) and had to free room by scaling down a broken ReplicaSet by hand.
+
+**Two gotchas found during phase C worth checking on every future migration, not just trilium's:**
+- If a Service's name matches a prefix the app's own image reads as a config env var (e.g. `trilium` Service → `TRILIUM_PORT`), Kubernetes' auto-injected `<SVCNAME>_PORT`/`<SVCNAME>_SERVICE_HOST` variables silently collide with it. Set `enableServiceLinks: false` on the pod spec, or check the app's env-var-derived config names against the Service name before naming it.
+- `local-path-provisioner`'s PV type is `local` (`spec.local.path`), not `hostPath` — don't assume `spec.hostPath.path` when scripting against a PV it created.
+
+Phase D's services introduce problems phase C deliberately didn't cover: multi-container stacks with inter-service dependencies (dify), database services where StatefulSet-vs-Deployment actually matters (vikunja+pg), the llm stack's much larger CPU/memory footprint, and 3x-ui's raw TCP passthrough on `39876` (can't go through an HTTP reverse proxy at all — see the roadmap's 現狀約束).
