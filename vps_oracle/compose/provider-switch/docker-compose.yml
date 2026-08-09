@@ -1,0 +1,31 @@
+services:
+  provider-switch:
+    build: .
+    image: provider-switch:1.0.0
+    container_name: provider-switch
+    hostname: provider-switch
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    user: "1001:1001"   # 需要以宿主机 ubuntu 用户写 ~/.claude-provider/ 下的文件，不能用 nobody
+    environment:
+      TZ: "Asia/Hong_Kong"
+      PORT: "8080"
+      CCR_BASE_URL: "http://127.0.0.1:3456"
+      CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # Task 6 生成的 CCR client key，走 .env
+    env_file:
+      - .env
+    volumes:
+      - /home/ubuntu/.claude-provider:/home/ubuntu/.claude-provider
+    networks:
+      - proxy
+    # NPM 反代配置见 vps_oracle/compose/ccr/README.md 里的 "接入 NPM" 一节
+
+networks:
+  proxy:
+    external: true
