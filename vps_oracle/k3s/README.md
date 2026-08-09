@@ -185,6 +185,22 @@ Exposed via NodePort `30082` → NPM (`trilium.jerome.cloudns.asia`), same domai
 
 **Known limitation:** there is no backup mechanism for this data beyond the original `/etc/trilium/data` on the host (pre-existing gap, not introduced by this migration). The PVC's `local-path` StorageClass has `reclaimPolicy: Delete` — removing `pvc.yaml` from git and letting ArgoCD prune it deletes the underlying data directory too. The original `/etc/trilium/data` is untouched by the migration (the copy only reads from it) so it's a recovery path today, but that stops being true whenever phase H decides to clean up decommissioned compose data.
 
+## Timezone
+
+The root README's convention (`TZ: "Asia/Hong_Kong"`) applies here too, but **whether it actually works depends entirely on whether the image ships `tzdata`** — setting `$TZ` on an image with no `/usr/share/zoneinfo` silently falls back to UTC instead of erroring, so a missing effect is easy to miss:
+
+| Component | `TZ` set? | Actual `date` output | Works? |
+|---|---|---|---|
+| ArgoCD (all components, incl. the `argocd-application-controller` StatefulSet) | `global.env` / `controller.env` in `argocd/values.yaml` | `HKT` | ✅ |
+| trilium | `environment.TZ` in its Deployment | `HKT` | ✅ |
+| Cilium (agent/operator/hubble-relay/hubble-ui) | `extraEnv` in `cilium/values.yaml` | `UTC` | ❌ image has no `/usr/share/zoneinfo` — left set anyway (harmless, and future Cilium image bumps may add tzdata) |
+| homepage | `environment.TZ` in its Deployment | `UTC` | ❌ same cause, not investigated further (low priority — see phase C's design doc) |
+| placeholder-hello, kube-system system pods (CoreDNS, local-path-provisioner, metrics-server) | not set | `UTC` | expected, never configured |
+
+**This isn't just cosmetic — it's a log-correlation risk.** Once more than one component prints timestamps in different zones, manually cross-referencing raw log text across services (e.g. "did the NPM cutover happen before or after this ArgoCD sync") gets error-prone: the same wall-clock moment prints as two different clock times depending on which service logged it. Two mitigations, deliberately not more:
+- `kubectl logs --timestamps` / `docker logs --timestamps` prepend the container runtime's own capture timestamp (RFC3339 with an explicit UTC offset) ahead of whatever the app itself printed — that prefix is always unambiguous and safe to cross-reference regardless of the app's own TZ handling. Use it, don't trust the app's printed text alone, when correlating across services.
+- No aggregated log/report system exists for the cluster yet (no Loki/ELK — only `vps_oracle/compose/monitoring` covers metrics, not logs), so this risk is latent, not active, today. If one gets added later, ingest and normalize to UTC at the collector — that's the standard fix for exactly this problem, not chasing tzdata into every image. Don't spend more effort forcing every k8s component to display HKT than this table already has.
+
 ## Handoff to phase C
 
 Phase C (first real service migrations) picks up from here: a working GitOps loop (ArgoCD app-of-apps, `selfHeal`/`prune` on everything) and a proven CI pattern (`placeholder-hello.yml`) to copy for the first real service — same build→Trivy→Cosign→GHCR shape, just point it at a real Dockerfile and give the resulting Application its own entry under `argocd/apps/`. ArgoCD's UI is reachable at `https://argocd.jerome.cloudns.asia` (NPM, `self-only` access list) for watching syncs during migrations.
