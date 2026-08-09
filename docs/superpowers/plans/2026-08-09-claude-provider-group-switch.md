@@ -387,7 +387,7 @@ EOF
 ```bash
 cat > vps_oracle/compose/ccr/.env <<EOF
 CCR_WEB_AUTH_TOKEN=<粘贴 Step 1 生成的值>
-ZHIPU_API_KEY=e909e5adf33b46dc847fa9c8b854d714.IIKjYDSIbQdBZ1Wz
+ZHIPU_API_KEY=<粘贴智谱后台的真实 key，不要照抄这个占位符>
 EOF
 ```
 
