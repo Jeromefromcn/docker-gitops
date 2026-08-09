@@ -153,7 +153,7 @@ claude 进程启动后对 `.envrc` 指定的 endpoint 发了连通性预检。**
 
 ```bash
 # 项目/顶层目录的 .envrc —— 写一次，永不再改
-source_env_if_exists ~/.claude-provider/premium.env
+source_env_if_exists ~/.claude-provider/jerome.env
 ```
 
 于是**切换一个分组 = 改一个文件**，而不是遍历 19 个项目重写 `settings.local.json`。连带解决三件事：
@@ -202,9 +202,9 @@ UI 要反复改写配置文件，必须先确认 direnv 的信任机制会不会
  └─ VSCode    → claudeCode.claudeProcessWrapper → direnv-load.sh
                         │
                         ↓ direnv 按 cwd 向上找最近的 .envrc
-   ~/jerome/.envrc          → source_env_if_exists ~/.claude-provider/premium.env
-   ~/jerome-budget/.envrc   → source_env_if_exists ~/.claude-provider/budget.env
-                        │                              ↑ UI 的唯一写入点
+   ~/jerome/.envrc      → source_env_if_exists ~/.claude-provider/jerome.env
+   ~/bridget/.envrc     → source_env_if_exists ~/.claude-provider/bridget.env
+                        │                          ↑ UI 的唯一写入点
                         ↓ ANTHROPIC_BASE_URL
               ├─ 未设置              → 官方订阅 OAuth（~/.claude/.credentials.json）
               └─ 127.0.0.1:3456     → CCR 容器 → 智谱 GLM（按规则分流）
@@ -213,21 +213,23 @@ UI 要反复改写配置文件，必须先确认 direnv 的信任机制会不会
 ### 3.2 目录布局
 
 ```
-~/jerome/                    premium 组，19 个项目原地不动
-    .envrc                   ← 新增，唯一改动；静态
+~/jerome/                 jerome 组，19 个项目原地不动
+    .envrc                ← 新增，唯一改动；静态
     quant-trading-system/
     betting-lab/
-        .envrc               ← 已存在，需在首行加 source_up
+        .envrc            ← 已存在，需在首行加 source_up
     ...
 
-~/jerome-budget/             budget 组
-    .envrc                   ← 静态
+~/bridget/                bridget 组
+    .envrc                ← 静态
     <项目>/
 
 ~/.claude-provider/
-    premium.env              ← UI 只改这两个文件
-    budget.env
+    jerome.env            ← UI 只改这两个文件
+    bridget.env
 ```
+
+**命名约定**：分组名 = 目录名 = env 文件名（`~/<组名>/` ↔ `~/.claude-provider/<组名>.env`）。加第三组时照此推广，见 3.11。
 
 项目自身**不需要** `.envrc`——direnv 会向上找到最近的一个。
 
@@ -267,9 +269,9 @@ exec "$@"          # 真 binary 由扩展当参数传进来
 
 ### 3.4 分组配置文件
 
-`~/.claude-provider/premium.env`、`~/.claude-provider/budget.env`。
+`~/.claude-provider/jerome.env`、`~/.claude-provider/bridget.env`。
 
-**初始状态**：`premium.env` 为官方，`budget.env` 为 CCR。
+**初始状态**：`jerome.env` 为官方，`bridget.env` 为 CCR。
 
 **官方状态** = 文件为空（或只有注释）。不设 `ANTHROPIC_*`，claude 走订阅 OAuth。
 
@@ -344,6 +346,31 @@ export ANTHROPIC_AUTH_TOKEN=<CCR 本地口令>
 - 两个服务都要加 homepage 卡片（`vps_oracle/compose/homepage/config/services.yaml`），描述用英文
 - CCR 的端口发布例外见 3.5
 
+### 3.11 交付物：`vps_oracle/compose/ccr/README.md`
+
+实施收尾必须写这份文档，目标读者是几个月后想加第三个分组的自己。内容要求：
+
+1. **整体原理速览**——一段话说清 direnv → wrapper → CCR 这条链，附 3.1 的数据流图
+2. **加一个新分组的完整步骤**，可照抄执行：
+   ```bash
+   # 以新增 ~/sandbox/ 组为例
+   mkdir -p ~/sandbox
+   echo 'source_env_if_exists ~/.claude-provider/sandbox.env' > ~/sandbox/.envrc
+   direnv allow ~/sandbox
+   touch ~/.claude-provider/sandbox.env          # 空 = 走官方订阅
+   # 最后在 UI 的分组配置里登记 ~/sandbox，重启 provider-switch 容器
+   ```
+3. **必须点名的四个坑**（每条一句话 + 后果）：
+   - `.envrc` 只能写那一行，**任何后续改动都要重新 `direnv allow`**，否则变量整个失效（依据 2.6）
+   - 组内项目若有自己的 `.envrc`，**会遮蔽组级的**，要加 `source_up`（依据 3.2）
+   - 切换**只对新开会话生效**，旧进程不受影响（依据 C1）
+   - 把已有项目搬进新组会**断开 `--resume` 的会话历史**（依据 C4）
+4. **验证方法**——`/proc/<pid>/environ` 那条零成本检查命令，以及怎么确认新组真的挂上了
+5. **改组名/删组的操作**，含 `direnv allow` 记录按绝对路径存这件事（依据 C5）
+6. **回滚**——怎么把某个组彻底摘掉、怎么停用 wrapper
+
+> 放在 `ccr/` 下是用户指定的位置。`provider-switch/` 那边只放一行指针链接过来，避免两份文档各说各话。
+
 ---
 
 ## 4. 已知约束与风险
@@ -363,9 +390,10 @@ export ANTHROPIC_AUTH_TOKEN=<CCR 本地口令>
 
 ## 5. 开放项
 
-1. **`~/jerome-budget/` 的目录名**——暂定，随时可改。改名成本见 C4 / C5，主要代价是会话历史，要改趁早
-2. **CCR 分流规则的具体模型**——background / think / longContext 各配哪一档，待定
-3. **哪些现有项目迁到 budget 组**——待用户决定，迁移会触发 C4
+1. **CCR 分流规则的具体模型**——background / think / longContext 各配哪一档，待定。缺省按「background 走便宜档，其余走主力档」实施
+2. **哪些现有项目迁到 bridget 组**——待用户决定。可以留空先跑起来，之后再迁；迁移会触发 C4
+
+> 已关闭：目录名定为 `~/bridget/`，分组名 `jerome` / `bridget`，env 文件名与目录名一致。智谱 key 已提供，存 `vps_oracle/compose/ccr/.env`（gitignored）。
 
 ---
 
