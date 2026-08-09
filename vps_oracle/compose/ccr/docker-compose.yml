@@ -1,0 +1,42 @@
+services:
+  ccr:
+    build:
+      context: https://github.com/musistudio/claude-code-router.git#v3.0.20
+    image: claude-code-router:3.0.20   # 构建自 pin 死的 git tag；上游没有发布镜像，这是等价的"锁版本"
+    container_name: ccr
+    hostname: ccr
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    env_file:
+      - .env   # 需要 CCR_WEB_AUTH_TOKEN（管理面板/RPC 口令）和 ZHIPU_API_KEY（智谱 key），见 .env.example
+    environment:
+      TZ: "Asia/Hong_Kong"
+      CCR_PUBLIC_BASE_URL: "http://127.0.0.1:3458"
+    ports:
+      # 例外：claude 进程跑在宿主机上、不在容器里，够不到 proxy 网络，只能发布到宿主机端口。
+      # 两个端口都只绑 127.0.0.1，不对外暴露；管理面板(3458)如需从别的机器访问，走 SSH 端口转发。
+      #
+      # 容器内只有一个公开入口：nginx 监听 8080，按 URL 路径转发到容器内部私有的
+      # gateway(127.0.0.1:3456) 或 management RPC(127.0.0.1:3459)，见上游 v3.0.20
+      # docker/entrypoint.sh 生成的 nginx server block。所以两条宿主机端口都指向
+      # 容器的 8080——不是两个不同的容器端口——nginx 自己按路径（/v1/*、/messages 等
+      # 走 gateway，/、/api/ccr/rpc 走管理面板）分流，跟请求从哪个宿主机端口进来无关。
+      - "127.0.0.1:3456:8080"   # gateway，jerome/bridget 的 .env 文件里 ANTHROPIC_BASE_URL 指这里
+      - "127.0.0.1:3458:8080"   # management UI/RPC
+    volumes:
+      - ccr-data:/data   # 装 SQLite 配置 + API key + 日志，属于敏感状态，故意不用仓库内可见的 bind mount
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+
+volumes:
+  ccr-data:
