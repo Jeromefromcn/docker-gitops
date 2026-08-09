@@ -64,7 +64,7 @@
 （隨階段推進逐一補上連結）
 
 - A：[叢集基礎層設計](2026-08-05-k3s-phase-a-cluster-foundation-design.md)
-- B：待建立
+- B：[GitOps 啟動設計](2026-08-07-k3s-phase-b-gitops-design.md)
 - C：待建立
 - D：待建立
 - E：待建立
