@@ -6,7 +6,6 @@ to never show a stale toggle position (R3/R4 in the design spec).
 """
 import os
 import re
-import subprocess
 import urllib.error
 import urllib.request
 
@@ -47,33 +46,17 @@ def check_connectivity(base_url, timeout=2.0):
         return False
 
 
-def count_pending_sessions(group_dir):
-    try:
-        pids = subprocess.run(
-            ["pgrep", "-f", "native-binary/claude"],
-            capture_output=True, text=True, check=False,
-        ).stdout.split()
-    except FileNotFoundError:
-        return 0
-    count = 0
-    for pid in pids:
-        try:
-            cwd = os.readlink(f"/proc/{pid}/cwd")
-        except OSError:
-            continue
-        if cwd == group_dir or cwd.startswith(group_dir + "/"):
-            count += 1
-    return count
-
-
-def scan_group(name, env_path, group_dir):
+def scan_group(name, env_path, ccr_base_url):
     config = read_config(env_path)
-    reachable = check_connectivity(config["base_url"])
-    pending = count_pending_sessions(group_dir)
+    # Probe the CCR service URL the container can actually reach (ccr:8080 on
+    # the proxy network), NOT the per-group base_url: that value points at the
+    # HOST's 127.0.0.1:3456 (what the host-side claude CLI uses), which is
+    # unreachable from this container's own namespace. ccr:8080 is the same
+    # nginx → same gateway, so its liveness == the host CLI's CCR liveness.
+    reachable = check_connectivity(ccr_base_url if config["routed"] else None)
     return {
         "name": name,
         "routed": config["routed"],
         "base_url": config["base_url"],
         "reachable": reachable,
-        "pending_official_sessions": pending,
     }

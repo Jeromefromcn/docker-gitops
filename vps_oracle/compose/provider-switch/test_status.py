@@ -56,23 +56,16 @@ class TestConnectivity(unittest.TestCase):
         self.assertFalse(status.check_connectivity("http://127.0.0.1:1", timeout=0.5))
 
 
-class TestPendingSessions(unittest.TestCase):
-    def test_counts_zero_when_nothing_running(self):
-        count = status.count_pending_sessions("/tmp/definitely-no-claude-here")
-        self.assertEqual(count, 0)
-
-
 class TestScanGroup(unittest.TestCase):
     def test_official_group_shape(self):
         path = "/tmp/test-scan-official.env"
         open(path, "w").write("")
         self.addCleanup(os.remove, path)
-        result = status.scan_group("jerome", path, "/tmp/nonexistent-group-dir")
+        result = status.scan_group("jerome", path, "http://ccr:8080")
         self.assertEqual(result["name"], "jerome")
         self.assertFalse(result["routed"])
         self.assertIsNone(result["base_url"])
         self.assertTrue(result["reachable"])
-        self.assertIsInstance(result["pending_official_sessions"], int)
 
 
 if __name__ == "__main__":

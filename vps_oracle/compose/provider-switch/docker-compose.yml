@@ -12,26 +12,34 @@ services:
         max-size: "10m"
         max-file: "5"
     user: "1001:1001"   # 需要以宿主机 ubuntu 用户写 ~/.claude-provider/ 下的文件，不能用 nobody
-    # network_mode: host（而不是加入 proxy 网络）：status.check_connectivity()
-    # 探测的是 bridget.env 里的 http://127.0.0.1:3456，这是 CCR 网关（Task 5）
-    # 特意只绑定宿主机 loopback 的地址——容器如果只挂在 proxy 这种 bridge
-    # 网络上，127.0.0.1 指向的是容器自己的 loopback，永远探测不到宿主机上的
-    # CCR，导致健康列一直显示 UNREACHABLE（哪怕 CCR 其实是好的）。改
-    # host 网络后容器的网络栈就是宿主机本身，127.0.0.1 才能正确解析到宿主机。
-    # 副作用：不能再用 hostname/networks，也不再挂 proxy 网络；app.py 相应把
-    # 监听地址从 0.0.0.0 收紧成 127.0.0.1（宿主机 loopback-only），维持最小
-    # 暴露——Task 10 要接 NPM 反代时得另外决定怎么从 NPM 容器打进来（NPM 不在
-    # host 网络里，打不到宿主机的 127.0.0.1），不是这次改动要解决的问题。
-    network_mode: host
+    # 挂在 proxy 网络上（和 grafana / vikunja / dify / ccr 等所有走 NPM 反代的
+    # 服务一致），NPM 直接用容器名 provider-switch:8091 反代进来。不再用
+    # network_mode: host：那条路要为 NPM 单独在宿主机 INPUT 链开 iptables 规则
+    # （host 网络监听走 INPUT，会被默认的 REJECT 挡掉；只有 docker published 端口
+    # 靠 PREROUTING DNAT 绕过 INPUT），不可从 compose 复现。proxy 网络走 docker
+    # FORWARD，容器互访天然放行，零 iptables。
+    networks:
+      - proxy
     environment:
       TZ: "Asia/Hong_Kong"
-      PORT: "8091"   # 8080 在宿主机上已经被 programming-learning-platform-nginx-1 占用（host 网络下端口是宿主机全局共享的）
-      BIND_HOST: "127.0.0.1"
-      CCR_BASE_URL: "http://127.0.0.1:3456"
+      PORT: "8091"
+      # 容器只在 proxy 网络上、端口不发布到宿主机，绑 0.0.0.0 也只有 proxy 网络
+      # 里的容器（NPM）+ 宿主机自己能连，LAN/公网都打不到——NPM 的 access list
+      # 再做第二层把关。
+      BIND_HOST: "0.0.0.0"
+      # 探测 CCR 用容器名（ccr 和本服务都在 proxy 网络上）。注意这跟各组 .env 里
+      # 的 ANTHROPIC_BASE_URL=http://127.0.0.1:3456 不同：那个是宿主机上的 claude
+      # CLI 用的地址（CCR 的 127.0.0.1:3456:8080 端口发布），容器够不到；但 ccr:8080
+      # 是同一个 nginx→gateway，活着与否等价。详见 status.scan_group 的注释。
+      CCR_BASE_URL: "http://ccr:8080"
       CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # Task 6 生成的 CCR client key，走 .env
     env_file:
       - .env
     volumes:
       - /home/ubuntu/.claude-provider:/home/ubuntu/.claude-provider
-    # NPM 反代配置见 vps_oracle/compose/ccr/README.md 里的 "接入 NPM" 一节
-    # （Task 10 待办：host 网络下 NPM 需要打宿主机真实 IP，不能走容器名）
+    # NPM 反代：provider.jerome.cloudns.asia → provider-switch:8091，access list=self-only。
+    # 配置方法见 vps_oracle/compose/npm/README.md 的自动化 API 一节。
+
+networks:
+  proxy:
+    external: true

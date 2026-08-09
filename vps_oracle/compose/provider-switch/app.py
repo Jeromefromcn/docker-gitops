@@ -34,14 +34,11 @@ def render_page(scans):
     for s in scans:
         state = "CCR (Zhipu)" if s["routed"] else "Official"
         health = "reachable" if s["reachable"] else "UNREACHABLE"
-        pending = s["pending_official_sessions"]
-        pending_note = f"{pending} session(s) still running with the old provider" if pending else "no running sessions"
         rows.append(f"""
         <tr>
           <td>{s['name']}</td>
           <td>{state}</td>
           <td>{health}</td>
-          <td>{pending_note}</td>
           <td><form method="post" action="/toggle"><input type="hidden" name="group" value="{s['name']}">
               <button type="submit">Switch to {"Official" if s["routed"] else "CCR (Zhipu)"}</button></form></td>
         </tr>""")
@@ -50,7 +47,7 @@ def render_page(scans):
 <h1>Claude Provider Switch</h1>
 <p>State is re-scanned on every page load — nothing here is cached.</p>
 <table border="1" cellpadding="6">
-<tr><th>Group</th><th>Provider</th><th>Endpoint</th><th>Pending sessions</th><th>Action</th></tr>
+<tr><th>Group</th><th>Provider</th><th>Endpoint</th><th>Action</th></tr>
 {''.join(rows)}
 </table>
 <p>Switching only affects sessions started after the switch.</p>
@@ -67,7 +64,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         scans = [
-            status.scan_group(name, cfg["env_path"], cfg["group_dir"])
+            status.scan_group(name, cfg["env_path"], CCR_BASE_URL)
             for name, cfg in status.GROUPS.items()
         ]
         body = render_page(scans).encode()
@@ -99,17 +96,13 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
-    # Runs under network_mode: host (see docker-compose.yml) so that
-    # status.check_connectivity() can actually reach the CCR gateway on
-    # the HOST's 127.0.0.1:3456 (Task 5 bound CCR to host loopback only).
-    # Bind here defaults to host loopback too, matching CCR's own
-    # exposure posture and this repo's minimal-port-exposure convention
-    # — under host networking, "0.0.0.0" would otherwise mean every
-    # interface on the host, not just the docker bridge. Task 10 will
-    # need to pick how NPM reaches this (e.g. bind on the host's real
-    # interface instead, or a tunnel) since NPM itself isn't on host
-    # networking and can't reach 127.0.0.1 on the host from its own
-    # container namespace.
+    # Runs on the proxy bridge network (see docker-compose.yml), alongside
+    # CCR (reached as http://ccr:8080) and behind NPM (which reaches this as
+    # provider-switch:8091). BIND_HOST defaults to 127.0.0.1 for ad-hoc local
+    # runs; the compose stack sets it to 0.0.0.0 — safe because the container
+    # is on the proxy bridge only (port not published to the host), so only
+    # proxy-network peers + the host itself can connect, and NPM's access list
+    # gates who reaches it from outside.
     bind_host = os.environ.get("BIND_HOST", "127.0.0.1")
     server = ThreadingHTTPServer((bind_host, port), Handler)
     print(f"listening on {bind_host}:{port}", flush=True)
