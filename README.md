@@ -14,6 +14,12 @@ docker-gitops/
 
 `<host>/` 下除 `compose/` 外，也可能有其他不属于 docker compose 管理的子目录（如 `k3s/`），各自遵循自己的约定，见对应子目录的 README。
 
+## k3s（雲原生實驗平台，进行中）
+
+`vps_oracle/k3s/` 是在同一台机器上用 K3s 复刻一套云原生开发运维实验平台的多阶段工程——目标是**逐服务**把 compose 栈迁到 k8s，对外域名/端口保持不变，compose 环境去留按服务单独判断，不是要整体推翻现有架构。完整背景、阶段拆解（A 叢集基礎層 → B GitOps 啟動 → C 遷移範本 → D 剩餘服務遷移 → E 供應鏈安全 → F 多環境泳道 → G 服務網格 → H compose 退場評估）见 [K3s 雲原生實驗平台路線圖](docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md)，各阶段的安装/操作细节见 [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md)。
+
+截至目前（phase C 完成）：叢集基礎（K3s + Cilium + local-path 存儲）、ArgoCD app-of-apps GitOps 迴路、以及 `homepage`/`trilium` 两个服务已经迁移完成并从 k3s 提供服务；其余服务仍在 `<host>/compose/` 下运行，见下方 Host 列表旁的说明。
+
 ## 工作方式
 
 仓库目录本身就是服务运行目录，直接在仓库里对应的 compose 目录下执行 compose 命令：
