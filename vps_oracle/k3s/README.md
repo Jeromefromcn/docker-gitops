@@ -152,6 +152,16 @@ The `placeholder-hello` GHCR package (`ghcr.io/jeromefromcn/placeholder-hello`) 
    kubectl get pods -n workloads                  # expect: No resources found
    ```
 
+## homepage
+
+Migrated from `vps_oracle/compose/homepage` in phase C. Config (`settings.yaml`/`widgets.yaml`/`services.yaml`/`bookmarks.yaml`/`custom.css`/`custom.js`) lives in `apps/homepage/k8s/configmap.yaml` — still git-versioned, just delivered as a ConfigMap instead of a bind mount. An initContainer copies it into a writable `emptyDir` at `/app/config` because homepage writes its own request log there and a ConfigMap volume is read-only.
+
+The docker-container-status widget (`config/docker.yaml`, and each service card's `container`/`server` keys) was dropped — it depended on a read-only `/var/run/docker.sock` mount with no k8s equivalent worth the RBAC to replace it. The global `resources`/`search`/`datetime` widgets are unaffected.
+
+Exposed via NodePort `30081` → NPM (`homepage.jerome.cloudns.asia`), same domain as before. The old compose container (`vps_oracle/compose/homepage`) is stopped, not removed — kept as a rollback path per the roadmap's migration principles.
+
+**NPM cutover was scripted, not manual.** `vps_oracle/compose/npm/.npm-automation.env` + the API pattern documented in `vps_oracle/compose/npm/README.md` (login → bearer token → `GET`/`PUT /api/nginx/proxy-hosts/{id}`) let a `PUT` update `forward_host`/`forward_port` on the existing proxy host in place, same effect as the manual UI steps but scriptable. Still re-verify `ssl_forced`/`http2_support` after the `PUT` — the known "resets itself" bug isn't specific to the UI path.
+
 ## Handoff to phase C
 
 Phase C (first real service migrations) picks up from here: a working GitOps loop (ArgoCD app-of-apps, `selfHeal`/`prune` on everything) and a proven CI pattern (`placeholder-hello.yml`) to copy for the first real service — same build→Trivy→Cosign→GHCR shape, just point it at a real Dockerfile and give the resulting Application its own entry under `argocd/apps/`. ArgoCD's UI is reachable at `https://argocd.jerome.cloudns.asia` (NPM, `self-only` access list) for watching syncs during migrations.
