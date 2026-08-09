@@ -1,3 +1,16 @@
+# TZ so pod-local log timestamps (where the underlying binary honors $TZ)
+# match the rest of the fleet — see root README.md's TZ convention.
+# global.env covers every Deployment (server/repo-server/dex/notifications/
+# applicationset); the application-controller is a StatefulSet and isn't
+# covered by global.env, so it needs its own controller.env.
+global:
+  env:
+    - name: TZ
+      value: "Asia/Hong_Kong"
+controller:
+  env:
+    - name: TZ
+      value: "Asia/Hong_Kong"
 dex:
   enabled: false
 notifications:
