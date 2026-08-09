@@ -27,3 +27,4 @@ vps_oracle/compose/homepage/config/logs/
 
 # superpowers subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/sdd/
+.worktrees/
