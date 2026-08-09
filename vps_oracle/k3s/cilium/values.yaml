@@ -10,11 +10,26 @@ ipam:
     clusterPoolIPv4PodCIDRList:
       - "10.42.0.0/16"
     clusterPoolIPv4MaskSize: 24
+# TZ so pod-local log timestamps (where the underlying binary honors $TZ)
+# match the rest of the fleet — see root README.md's TZ convention.
+extraEnv:
+  - name: TZ
+    value: "Asia/Hong_Kong"
 operator:
   replicas: 1
+  extraEnv:
+    - name: TZ
+      value: "Asia/Hong_Kong"
 hubble:
   enabled: true
   relay:
     enabled: true
+    extraEnv:
+      - name: TZ
+        value: "Asia/Hong_Kong"
   ui:
     enabled: true
+    backend:
+      extraEnv:
+        - name: TZ
+          value: "Asia/Hong_Kong"
