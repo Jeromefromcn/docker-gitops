@@ -99,6 +99,18 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
-    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    print(f"listening on :{port}", flush=True)
+    # Runs under network_mode: host (see docker-compose.yml) so that
+    # status.check_connectivity() can actually reach the CCR gateway on
+    # the HOST's 127.0.0.1:3456 (Task 5 bound CCR to host loopback only).
+    # Bind here defaults to host loopback too, matching CCR's own
+    # exposure posture and this repo's minimal-port-exposure convention
+    # — under host networking, "0.0.0.0" would otherwise mean every
+    # interface on the host, not just the docker bridge. Task 10 will
+    # need to pick how NPM reaches this (e.g. bind on the host's real
+    # interface instead, or a tunnel) since NPM itself isn't on host
+    # networking and can't reach 127.0.0.1 on the host from its own
+    # container namespace.
+    bind_host = os.environ.get("BIND_HOST", "127.0.0.1")
+    server = ThreadingHTTPServer((bind_host, port), Handler)
+    print(f"listening on {bind_host}:{port}", flush=True)
     server.serve_forever()
