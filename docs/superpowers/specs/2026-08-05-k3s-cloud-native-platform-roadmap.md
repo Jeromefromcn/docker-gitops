@@ -30,8 +30,8 @@
 |---|---|---|---|
 | A. 叢集基礎層 | K3s + containerd + Cilium（CNI/NetworkPolicy）+ 存儲 + 資源預算（ResourceQuota/LimitRange） | 空的但可連通的叢集，NPM 能打進來 | — |
 | B. GitOps 啟動 | ArgoCD（app-of-apps）+ GitHub Actions CI 骨架（build→Trivy→Cosign） | 之後所有部署都走 GitOps，不手動 `kubectl apply` | A |
-| C. 遷移範本 + 首批 | 挑 1~2 個低風險無狀態服務（homepage、trilium）跑通 compose→k8s 範本，驗證域名/端口零變動 | 可複製的遷移 SOP | A、B |
-| D. 剩餘服務遷移 | 有狀態服務（vikunja+pg、dify 全家桶）、llm 推理棧、3x-ui 的 39876 TCP 透傳 | 逐服務遷移 + compose 去留決策 | C |
+| C. 遷移範本 + 首批 | 挑 2 個低風險服務跑通 compose→k8s 範本，驗證域名/端口零變動：homepage（配置類無狀態）+ trilium（帶真實資料，順帶跑通 PVC 與資料搬遷） | 可複製的遷移 SOP | A、B |
+| D. 剩餘服務遷移 | 資料庫類服務（vikunja+pg、dify 全家桶）、llm 推理棧、3x-ui 的 39876 TCP 透傳 | 逐服務遷移 + compose 去留決策 | C |
 | E. 供應鏈安全加固 | Trivy 准入門禁、Cosign 驗簽、Sealed Secrets、Kyverno | 鏡像/部署有政策把關 | B、D 服務已上線 |
 | F. 多環境 PR 泳道 | ArgoCD ApplicationSet PR Generator + 泳道配額隔離 | PR 分支自動起隔離環境 | B |
 | G. 服務網格 + 漸進式發布 | Istio Ambient，按 namespace 選擇性啟用，有狀態服務不進網格；金絲雀發布（Argo Rollouts + waypoint 做 L7 流量切分） | L4/L7 流量治理 + 漸進式發布 | D 主要服務已穩定 |
@@ -65,7 +65,7 @@
 
 - A：[叢集基礎層設計](2026-08-05-k3s-phase-a-cluster-foundation-design.md)
 - B：[GitOps 啟動設計](2026-08-07-k3s-phase-b-gitops-design.md)
-- C：待建立
+- C：[遷移範本 + 首批服務設計](2026-08-09-k3s-phase-c-migration-template-design.md)
 - D：待建立
 - E：待建立
 - F：待建立
