@@ -22,6 +22,9 @@ docker-compose.*.local.yml
 .vscode/
 .idea/
 
+# python
+__pycache__/
+
 # runtime logs written by containers into mounted config dirs
 vps_oracle/compose/homepage/config/logs/
 
