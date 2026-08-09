@@ -162,6 +162,29 @@ Exposed via NodePort `30081` → NPM (`homepage.jerome.cloudns.asia`), same doma
 
 **NPM cutover was scripted, not manual.** `vps_oracle/compose/npm/.npm-automation.env` + the API pattern documented in `vps_oracle/compose/npm/README.md` (login → bearer token → `GET`/`PUT /api/nginx/proxy-hosts/{id}`) let a `PUT` update `forward_host`/`forward_port` on the existing proxy host in place, same effect as the manual UI steps but scriptable. Still re-verify `ssl_forced`/`http2_support` after the `PUT` — the known "resets itself" bug isn't specific to the UI path.
 
+## trilium
+
+Migrated from `vps_oracle/compose/trilium` in phase C. Unlike homepage, trilium holds real user data (notes), so this wasn't a config-only swap — the migration procedure was:
+
+1. Stop the compose container (no writes during migration).
+2. Apply `apps/trilium/k8s/pvc.yaml` plus a disposable seed Pod (`apps/trilium/migration/seed-pod.yaml`) that mounts the same PVC — needed because the `local-path` StorageClass is `WaitForFirstConsumer`, so the PV's host directory doesn't get created until something actually mounts the PVC.
+3. Copy the old `/etc/trilium/data` into the PV's host directory (`sudo cp -a` — this host doesn't have `rsync` installed), then `chown` it to uid 1000 (the PV directory is created root-owned; trilium's process runs as uid 1000).
+4. Delete the seed Pod, commit the PVC, then deploy the real Application — ArgoCD adopts the already-populated PVC instead of creating an empty one.
+
+**Correction to the original plan:** `local-path-provisioner`'s PV uses `spec.local.path`, not `spec.hostPath.path` — the volume type is `local`, not `hostPath`. `kubectl get pv <name> -o jsonpath='{.spec.local.path}'` is the right lookup.
+
+**Data-integrity check gotcha:** a `find -type f | wc -l` taken immediately after stopping the compose container (15 files) didn't match a re-check taken a minute later (13 files) — SQLite's `-wal`/`-shm` files got consolidated during the last moments of container shutdown. A full path listing diff between source and destination matched exactly, and re-querying the source again also settled at 13 — the first count was just taken too early, not evidence of a bad copy. Don't trust a file count taken in the same breath as stopping the container; re-check a few seconds later before treating it as the baseline.
+
+The container intentionally has no `securityContext.runAsUser` — the image's entrypoint starts as root and self-drops to uid 1000 via `su`, and forcing a different startup UID breaks that.
+
+**`enableServiceLinks: false` is required on the pod spec.** Without it, Kubernetes injects a `TRILIUM_PORT=tcp://<clusterIP>:8080` env var into the container (auto-generated from the `trilium` Service's name), colliding with trilium's own `TRILIUM_PORT` config variable — which expects a plain integer — and crash-looping the app with `FATAL ERROR: Invalid port value "tcp://...". This is a general risk any time a Service name matches an app's own env-var naming convention, not trilium-specific; worth checking for on every future migration.
+
+**Quota headroom bit during the fix rollout.** After correcting `enableServiceLinks`, the Deployment's rolling update tried to run both the old (crash-looping) and new pod briefly, and `workloads-quota`'s `limits.cpu` had no room for both trilium pods (500m each) on top of homepage/placeholder-hello's existing usage. Manually scaling the old (broken) ReplicaSet to 0 freed the quota and let the new pod get admitted — a direct instance of the tight-headroom risk already flagged in the phase C design doc.
+
+Exposed via NodePort `30082` → NPM (`trilium.jerome.cloudns.asia`), same domain as before. The old compose container is stopped, not removed.
+
+**Known limitation:** there is no backup mechanism for this data beyond the original `/etc/trilium/data` on the host (pre-existing gap, not introduced by this migration). The PVC's `local-path` StorageClass has `reclaimPolicy: Delete` — removing `pvc.yaml` from git and letting ArgoCD prune it deletes the underlying data directory too. The original `/etc/trilium/data` is untouched by the migration (the copy only reads from it) so it's a recovery path today, but that stops being true whenever phase H decides to clean up decommissioned compose data.
+
 ## Handoff to phase C
 
 Phase C (first real service migrations) picks up from here: a working GitOps loop (ArgoCD app-of-apps, `selfHeal`/`prune` on everything) and a proven CI pattern (`placeholder-hello.yml`) to copy for the first real service — same build→Trivy→Cosign→GHCR shape, just point it at a real Dockerfile and give the resulting Application its own entry under `argocd/apps/`. ArgoCD's UI is reachable at `https://argocd.jerome.cloudns.asia` (NPM, `self-only` access list) for watching syncs during migrations.
