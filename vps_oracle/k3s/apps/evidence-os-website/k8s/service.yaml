@@ -4,8 +4,10 @@ metadata:
   name: evidence-os-website
   namespace: workloads
 spec:
+  type: NodePort
   selector:
     app: evidence-os-website
   ports:
     - port: 80
       targetPort: 80
+      nodePort: 30083
