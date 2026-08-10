@@ -33,7 +33,7 @@
 
 1. **静态 `.envrc`**：每个分组目录（`~/jerome/`、`~/bridget/`）根部一个 `.envrc`，内容只有一行 `source_env_if_exists /home/ubuntu/.claude-provider/<组名>.env`。它**永远不变**——所以 `direnv allow` 只在第一次需要，之后切换 provider 不用再 allow。
 2. **动态 `.claude-provider/<组名>.env`**：真正被改写的文件。空（或只有注释）= 走官方订阅；有两行 `export ANTHROPIC_BASE_URL=… / ANTHROPIC_AUTH_TOKEN=…` = 走 CCR。**provider-switch UI 是唯一应该改写这个文件的东西。**
-3. **CCR**（本目录的 compose 栈）：网关 `127.0.0.1:3456`，管理面板 `127.0.0.1:3458`，容器内 nginx:8080 按路径分流（`/v1/*`、`/messages` 走 gateway，`/`、`/api/ccr/rpc` 走管理面板）。两个宿主端口都只绑 `127.0.0.1`——claude 进程跑在宿主机上、不在容器里，够不到 proxy 网络，只能靠发布的宿主端口；不对外暴露，管理面板要从别的机器访问就走 SSH 端口转发。
+3. **CCR**（本目录的 compose 栈）：网关 `127.0.0.1:3456`，管理面板 `127.0.0.1:3458`，容器内 nginx:8080 按路径分流（`/v1/*`、`/messages` 走 gateway，`/`、`/api/ccr/rpc` 走管理面板）。两个宿主端口都只绑 `127.0.0.1`——claude 进程跑在宿主机上、不在容器里，够不到 proxy 网络，只能靠发布的宿主端口；这两个宿主端口本身不对外暴露；管理面板从别的机器访问的两条路（NPM 反代 / SSH 端口转发）见下面「CCR 管理面板」一节。
 4. **provider-switch UI**（`../provider-switch/`）：挂在 `proxy` 网络上的小 HTTP 服务，通过 NPM 反代成 `https://provider.jerome.cloudns.asia`（access list=self-only）。每次打开页面都**实时重扫**（不缓存）各组的 `.env` 状态 + 探测 CCR 是否可达，点按钮就原子地改写对应 `.env`。
 
 direnv 怎么进 claude 进程的两条路：
@@ -109,15 +109,32 @@ cd ~/jerome && BASH_ENV=/home/ubuntu/.claude/direnv-bash-env.sh bash -c 'echo "$
 
 ## CCR 管理面板（改路由 / 加 provider / 生成 client key）
 
-CCR 把管理面板发布在宿主机 `127.0.0.1:3458`（loopback only），需要从本机或 SSH 隧道访问：
+两条路都能到：
+
+- **NPM 反代**：`https://ccr.jerome.cloudns.asia`（homepage 上的 `CCR Admin` 卡片就是这个），`access_list_id=1`（`self-only`：只放行 3x-ui 容器 IP `172.19.0.2` 和服务器自己的公网出口 IP）挡住一般公网访客。用 `.env` 里 `CCR_WEB_AUTH_TOKEN` 的值登录。
+- **SSH 隧道**（不经过 3x-ui 时的备用路径）：
+
+  ```bash
+  ssh -L 3458:127.0.0.1:3458 <server>
+  # 然后本地浏览器打开 http://127.0.0.1:3458 ，用 .env 里 CCR_WEB_AUTH_TOKEN 的值登录
+  ```
+
+> 2026-08-10 之前没有给 CCR 管理面板单独做 NPM 反代：CCR 容器内 nginx:8080 把 `/v1/*`（模型网关）和 `/`（管理面板）复用在一个端口上，反代过去会把模型网关也一并暴露到公网域名。后来还是决定接上——跟仓库里其它管理面板（npm 自己、portainer、grafana……）同样的姿势用 `self-only` 挡住一般公网访客，暴露的只是"域名存在"这件事，不是无限制访问。
+
+## CCR 的 NPM 反代（可复现）
+
+跟 provider-switch 一样的标准姿势：挂在 `proxy` 网络，NPM 用容器名 `ccr:8080` 反代（**不是**宿主机端口 3456/3458——NPM 跟 ccr 都在 `proxy` 网络上，走 Docker 内嵌 DNS，直接用容器名+容器内部端口），access list=`self-only`，HTTPS 用 NPM 自己申请的 Let's Encrypt 证书：
 
 ```bash
-# 在你本地机器上开隧道
-ssh -L 3458:127.0.0.1:3458 <server>
-# 然后本地浏览器打开 http://127.0.0.1:3458 ，用 .env 里 CCR_WEB_AUTH_TOKEN 的值登录
+cd ../npm && source .npm-automation.env
+docker run --rm --network proxy curlimages/curl:latest sh -c "
+TOKEN=\$(curl -sS -X POST http://npm:81/api/tokens -H 'Content-Type: application/json' -d '{\"identity\":\"\$NPM_AUTOMATION_EMAIL\",\"secret\":\"\$NPM_AUTOMATION_PASSWORD\"}' | sed -n 's/.*\"token\":\"\([^\"]*\)\".*/\1/p')
+# 1. 先建证书
+curl -sS -X POST http://npm:81/api/nginx/certificates -H \"Authorization: Bearer \$TOKEN\" -H 'Content-Type: application/json' -d '{\"provider\":\"letsencrypt\",\"nice_name\":\"ccr.jerome.cloudns.asia\",\"domain_names\":[\"ccr.jerome.cloudns.asia\"],\"meta\":{\"letsencrypt_email\":\"jeromefromcn@gmail.com\",\"letsencrypt_agree\":true,\"dns_challenge\":false}}'
+# 2. 再建 proxy host（certificate_id 换成上一步的 id，access_list_id=1 是 self-only）
+curl -sS -X POST http://npm:81/api/nginx/proxy-hosts -H \"Authorization: Bearer \$TOKEN\" -H 'Content-Type: application/json' -d '{\"domain_names\":[\"ccr.jerome.cloudns.asia\"],\"forward_scheme\":\"http\",\"forward_host\":\"ccr\",\"forward_port\":8080,\"certificate_id\":<id>,\"ssl_forced\":true,\"http2_support\":true,\"block_exploits\":true,\"allow_websocket_upgrade\":true,\"access_list_id\":1,\"caching_enabled\":false,\"locations\":[],\"meta\":{\"letsencrypt_agree\":false,\"dns_challenge\":false}}'
+"
 ```
-
-> 没有给 CCR 管理面板单独做 NPM 反代：CCR 容器内 nginx:8080 把 `/v1/*`（模型网关）和 `/`（管理面板）复用在一个端口上，反代过去会把模型网关也一并暴露到公网域名（即便有 access list）。管理面板是低频一次性操作，SSH 隧道够用。所以 homepage 上只有 Provider Switch 卡片，没有 CCR Admin 卡片。
 
 ## provider-switch 的 NPM 反代（可复现）
 
