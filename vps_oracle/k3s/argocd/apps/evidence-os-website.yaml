@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: evidence-os-website
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Jeromefromcn/docker-gitops.git
+    targetRevision: main
+    path: vps_oracle/k3s/apps/evidence-os-website/k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: workloads
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

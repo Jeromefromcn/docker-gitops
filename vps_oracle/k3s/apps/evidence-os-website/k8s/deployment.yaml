@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: evidence-os-website
+  namespace: workloads
+  labels:
+    app: evidence-os-website
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: evidence-os-website
+  template:
+    metadata:
+      labels:
+        app: evidence-os-website
+    spec:
+      containers:
+        - name: evidence-os-website
+          image: ghcr.io/bridgetlai/evidence-os-website:REPLACE_WITH_CI_SHA
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

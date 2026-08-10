@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: evidence-os-website
+  namespace: workloads
+spec:
+  selector:
+    app: evidence-os-website
+  ports:
+    - port: 80
+      targetPort: 80
