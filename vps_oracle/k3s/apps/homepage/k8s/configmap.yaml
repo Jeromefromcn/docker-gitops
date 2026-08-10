@@ -78,6 +78,11 @@ data:
             href: https://provider.jerome.cloudns.asia
             description: Claude provider group toggle (Official ↔ CCR/Zhipu)
 
+        - Argo CD:
+            icon: argocd.png
+            href: https://argocd.jerome.cloudns.asia
+            description: GitOps CD for the k3s cluster
+
     - Apps:
         - Trilium:
             icon: trilium.png
