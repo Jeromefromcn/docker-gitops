@@ -4,6 +4,8 @@
 
 本目录放 CCR 本体；配套的切换 UI 在 `../provider-switch/`。这份 README 是整个分组切换系统的总文档。
 
+> 想给不同分组绑**不同的 Claude 订阅账号**（目录隔离）？见 [`ACCOUNTS.md`](ACCOUNTS.md)——靠 `CLAUDE_CONFIG_DIR`，和 provider 切换正交、可叠加。
+
 ## 为什么这样设计
 
 - 订阅 token 不够用，想给「不重要的项目组」改用便宜的智谱 GLM，同时「要高级模型的项目组」继续走官方订阅。
