@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: evidence-os-website
-          image: ghcr.io/bridgetlai/evidence-os-website:REPLACE_WITH_CI_SHA
+          image: ghcr.io/bridgetlai/evidence-os-website:21aab6e7a2ec2d7a7afeb57519186fa934d92cd9
           ports:
             - containerPort: 80
           resources:
