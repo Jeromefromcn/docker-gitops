@@ -69,21 +69,21 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 
 ## 给新服务加 homepage 卡片
 
-每新增一个服务，同步在 `vps_oracle/compose/homepage/config/services.yaml` 里加一张卡片，跟现有条目保持同样格式：
+homepage 从 phase C 起已迁到 k3s（见上面「k3s」一节），配置源文件是 **`vps_oracle/k3s/apps/homepage/k8s/configmap.yaml`**（`vps_oracle/compose/homepage/config/services.yaml` 是迁移前的旧路径，容器已停但目录保留作为回滚路径，phase H 才决定去留——不要再改这份）。每新增一个服务，在 configmap 的 `services.yaml` 块里加一张卡片，跟现有条目保持同样格式：
 
 ```yaml
     - <服务名>:
         icon: <icon-name>.png
         href: https://<service>.jerome.cloudns.asia
         description: <一句话描述，英文>
-        container: <container_name>
-        server: my-docker
 ```
 
-- `icon`：用 [walkxcode/dashboard-icons](https://github.com/walkxcode/dashboard-icons) 里对应的文件名，homepage 会自动去 CDN 拉
+- `icon`：优先用 [walkxcode/dashboard-icons](https://github.com/walkxcode/dashboard-icons) 里对应的文件名（homepage 会自动去 CDN 拉）；没有专门图标的用 `si-<name>`（simple-icons）顶替，如 `si-anthropic`
 - `description`：访客可见，按下面"暴露内容用英文"的约定用英文
-- `container` 填 compose 里的 `container_name`；`server` 固定 `my-docker`（对应 `config/docker.yaml` 里声明的本机 docker socket），用于展示容器状态小组件
+- 没有 `container`/`server` 字段——k8s 里没挂 docker socket，容器状态小组件在迁移时已去掉，只剩卡片本身
 - **例外**：安全敏感的服务（如 3x-ui）不上卡片，加之前先问一句
+
+**改完之后要 `git push` 到 GitHub 的 `main` 分支才会生效**——ArgoCD 的 `homepage` Application（`vps_oracle/k3s/argocd/apps/homepage.yaml`）跟踪的是 GitHub remote（`repoURL`），不是本地工作区；本地 commit 不 push 的话 ArgoCD 看不到。`syncPolicy.automated`（`prune: true`, `selfHeal: true`）开着，push 后 ArgoCD 会在下个轮询周期自动 sync + 重启 pod 应用新 configmap，不用手动操作；等不及可以在 ArgoCD UI（`https://argocd.jerome.cloudns.asia`）里对 `homepage` app 点 "Sync" 立即触发，或者 `argocd app sync homepage`（需要先 `argocd login`）。
 
 ## 给 Vikunja 项目接 Telegram 通知（透过 vikunja-notify-relay + Apprise）
 
