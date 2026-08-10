@@ -83,7 +83,15 @@ homepage 从 phase C 起已迁到 k3s（见上面「k3s」一节），配置源�
 - 没有 `container`/`server` 字段——k8s 里没挂 docker socket，容器状态小组件在迁移时已去掉，只剩卡片本身
 - **例外**：安全敏感的服务（如 3x-ui）不上卡片，加之前先问一句
 
-**改完之后要 `git push` 到 GitHub 的 `main` 分支才会生效**——ArgoCD 的 `homepage` Application（`vps_oracle/k3s/argocd/apps/homepage.yaml`）跟踪的是 GitHub remote（`repoURL`），不是本地工作区；本地 commit 不 push 的话 ArgoCD 看不到。`syncPolicy.automated`（`prune: true`, `selfHeal: true`）开着，push 后 ArgoCD 会在下个轮询周期自动 sync + 重启 pod 应用新 configmap，不用手动操作；等不及可以在 ArgoCD UI（`https://argocd.jerome.cloudns.asia`）里对 `homepage` app 点 "Sync" 立即触发，或者 `argocd app sync homepage`（需要先 `argocd login`）。
+**改完之后要 `git push` 到 GitHub 的 `main` 分支才会生效**——ArgoCD 的 `homepage` Application（`vps_oracle/k3s/argocd/apps/homepage.yaml`）跟踪的是 GitHub remote（`repoURL`），不是本地工作区；本地 commit 不 push 的话 ArgoCD 看不到。`syncPolicy.automated`（`prune: true`, `selfHeal: true`）开着，push 后 ArgoCD 会在下个轮询周期（或手动 `argocd app sync homepage` / UI 点 "Sync"）自动把新 ConfigMap 同步到集群——**但同步 ConfigMap 不等于 pod 生效**：
+
+```bash
+kubectl rollout restart deployment homepage -n workloads
+```
+
+这一步是必须的，手动执行。原因：`deployment.yaml` 里配置内容是靠 initContainer 在 pod 启动时把 ConfigMap 拷进一份可写的 emptyDir（homepage 要在 `/app/config` 写请求日志，ConfigMap 挂载是只读的），deployment 本身没有 configmap-checksum 注解或 Reloader 之类的机制，所以 ConfigMap 内容变了、deployment spec 没变——ArgoCD 认为"没有需要同步的东西"，不会自动重启 pod。
+
+**⚠️ 已知坑**：`workloads` namespace 的 `ResourceQuota`（`limits.cpu` 上限 1 核）目前很紧，滚动重启用的 surge pod（多出的 25%）可能因为配额不够而卡在 `FailedCreate`（`kubectl describe rs` 能看到 `exceeded quota` 事件），新旧 pod 都起不来。遇到这种情况：`kubectl delete pod <old-pod> -n workloads` 腾出配额，再确认新 ReplicaSet 是否顶上；如果被同名旧 ReplicaSet 抢先重新拉起（旧 RS 的 desired 还没归零），额外 `kubectl scale rs <old-rs> -n workloads --replicas=0` 手动收尾。
 
 ## 给 Vikunja 项目接 Telegram 通知（透过 vikunja-notify-relay + Apprise）
 
