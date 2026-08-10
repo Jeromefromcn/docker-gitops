@@ -78,6 +78,11 @@ data:
             href: https://provider.jerome.cloudns.asia
             description: Claude provider group toggle (Official ↔ CCR/Zhipu)
 
+        - CCR Admin:
+            icon: si-anthropic
+            href: https://ccr.jerome.cloudns.asia
+            description: Claude Code Router gateway & admin panel
+
         - Argo CD:
             icon: argocd.png
             href: https://argocd.jerome.cloudns.asia
