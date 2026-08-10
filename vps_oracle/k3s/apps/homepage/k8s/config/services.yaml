@@ -59,3 +59,8 @@
         icon: si-dify
         href: https://dify.jerome.cloudns.asia
         description: LLM app builder (chat / workflow / agent)
+
+    - Evidence OS:
+        icon: si-html5
+        href: https://evidence.jerome.cloudns.asia
+        description: Evidence OS marketing site
