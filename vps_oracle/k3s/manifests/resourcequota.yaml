@@ -5,7 +5,7 @@ metadata:
   namespace: workloads
 spec:
   hard:
-    requests.cpu: "1"
-    requests.memory: 2Gi
-    limits.cpu: "1"
-    limits.memory: 2Gi
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "2"
+    limits.memory: 4Gi
