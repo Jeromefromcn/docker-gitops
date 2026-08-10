@@ -12,15 +12,16 @@ import urllib.request
 GROUPS = {
     "jerome": {
         "env_path": "/home/ubuntu/.claude-provider/jerome.env",
-        "group_dir": "/home/ubuntu/jerome",
     },
     "bridget": {
         "env_path": "/home/ubuntu/.claude-provider/bridget.env",
-        "group_dir": "/home/ubuntu/bridget",
     },
 }
 
-_BASE_URL_RE = re.compile(r'^\s*(?:export\s+)?ANTHROPIC_BASE_URL=(\S+)\s*$')
+# Matches up to the value token only — deliberately doesn't anchor on what
+# follows it, so a trailing inline comment (`... # note`) or a quoted value
+# (`="http://..."`) don't make a routed group misreport as Official.
+_BASE_URL_RE = re.compile(r'^\s*(?:export\s+)?ANTHROPIC_BASE_URL=(\S+)')
 
 
 def read_config(env_path):
@@ -30,7 +31,7 @@ def read_config(env_path):
         for line in f:
             m = _BASE_URL_RE.match(line)
             if m:
-                return {"routed": True, "base_url": m.group(1)}
+                return {"routed": True, "base_url": m.group(1).strip("'\"")}
     return {"routed": False, "base_url": None}
 
 
@@ -46,14 +47,13 @@ def check_connectivity(base_url, timeout=2.0):
         return False
 
 
-def scan_group(name, env_path, ccr_base_url):
+def scan_group(name, env_path, ccr_reachable):
+    # ccr_reachable is precomputed once by the caller (see app.py's do_GET)
+    # via check_connectivity, rather than re-probed per group here — every
+    # routed group shares the same CCR gateway, so probing it once per
+    # request instead of once per group avoids redundant identical requests.
     config = read_config(env_path)
-    # Probe the CCR service URL the container can actually reach (ccr:8080 on
-    # the proxy network), NOT the per-group base_url: that value points at the
-    # HOST's 127.0.0.1:3456 (what the host-side claude CLI uses), which is
-    # unreachable from this container's own namespace. ccr:8080 is the same
-    # nginx → same gateway, so its liveness == the host CLI's CCR liveness.
-    reachable = check_connectivity(ccr_base_url if config["routed"] else None)
+    reachable = ccr_reachable if config["routed"] else True
     return {
         "name": name,
         "routed": config["routed"],

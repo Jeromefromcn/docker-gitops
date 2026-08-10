@@ -61,7 +61,7 @@ touch /home/ubuntu/.claude-provider/alice.env
 
 # 3. 在 provider-switch 的 status.GROUPS 里登记这个组
 #    （编辑 vps_oracle/compose/provider-switch/status.py 的 GROUPS 字典，
-#     加 "alice": {"env_path": ".../alice.env", "group_dir": "/home/ubuntu/alice"}）
+#     加 "alice": {"env_path": ".../alice.env"}）
 
 # 4. 重建 provider-switch 让新组出现在 UI 里
 cd vps_oracle/compose/provider-switch && docker compose up -d --build

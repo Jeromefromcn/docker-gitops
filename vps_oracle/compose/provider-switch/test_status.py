@@ -39,6 +39,20 @@ class TestReadConfig(unittest.TestCase):
         result = status.read_config(path)
         self.assertTrue(result["routed"])
 
+    def test_trailing_inline_comment_still_parses(self):
+        path = "/tmp/test-comment.env"
+        open(path, "w").write("export ANTHROPIC_BASE_URL=http://127.0.0.1:3456  # ccr\n")
+        self.addCleanup(os.remove, path)
+        result = status.read_config(path)
+        self.assertEqual(result, {"routed": True, "base_url": "http://127.0.0.1:3456"})
+
+    def test_quoted_value_has_quotes_stripped(self):
+        path = "/tmp/test-quoted.env"
+        open(path, "w").write('export ANTHROPIC_BASE_URL="http://127.0.0.1:3456"\n')
+        self.addCleanup(os.remove, path)
+        result = status.read_config(path)
+        self.assertEqual(result, {"routed": True, "base_url": "http://127.0.0.1:3456"})
+
 
 class TestConnectivity(unittest.TestCase):
     def test_official_always_reachable(self):
@@ -57,15 +71,22 @@ class TestConnectivity(unittest.TestCase):
 
 
 class TestScanGroup(unittest.TestCase):
-    def test_official_group_shape(self):
+    def test_official_group_is_always_reachable_regardless_of_ccr_state(self):
         path = "/tmp/test-scan-official.env"
         open(path, "w").write("")
         self.addCleanup(os.remove, path)
-        result = status.scan_group("jerome", path, "http://ccr:8080")
+        result = status.scan_group("jerome", path, False)
         self.assertEqual(result["name"], "jerome")
         self.assertFalse(result["routed"])
         self.assertIsNone(result["base_url"])
         self.assertTrue(result["reachable"])
+
+    def test_routed_group_reflects_precomputed_ccr_reachable(self):
+        path = "/tmp/test-scan-routed.env"
+        open(path, "w").write("export ANTHROPIC_BASE_URL=http://127.0.0.1:3456\n")
+        self.addCleanup(os.remove, path)
+        self.assertTrue(status.scan_group("bridget", path, True)["reachable"])
+        self.assertFalse(status.scan_group("bridget", path, False)["reachable"])
 
 
 if __name__ == "__main__":

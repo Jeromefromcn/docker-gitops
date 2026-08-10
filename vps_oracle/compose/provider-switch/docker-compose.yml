@@ -27,11 +27,16 @@ services:
       # 里的容器（NPM）+ 宿主机自己能连，LAN/公网都打不到——NPM 的 access list
       # 再做第二层把关。
       BIND_HOST: "0.0.0.0"
-      # 探测 CCR 用容器名（ccr 和本服务都在 proxy 网络上）。注意这跟各组 .env 里
-      # 的 ANTHROPIC_BASE_URL=http://127.0.0.1:3456 不同：那个是宿主机上的 claude
-      # CLI 用的地址（CCR 的 127.0.0.1:3456:8080 端口发布），容器够不到；但 ccr:8080
-      # 是同一个 nginx→gateway，活着与否等价。详见 status.scan_group 的注释。
+      # 两个不同用途的 CCR 地址，不能混用：
+      # - CCR_BASE_URL: 探测用，容器名（ccr 和本服务都在 proxy 网络上）。
+      #   跟各组 .env 里的 ANTHROPIC_BASE_URL 不同——那是宿主机上的 claude CLI
+      #   要用的地址，容器够不到；但 ccr:8080 是同一个 nginx→gateway，活着与否等价。
+      # - CCR_HOST_BASE_URL: 写入各组 .env 的 ANTHROPIC_BASE_URL 用，必须是宿主机
+      #   能连到的地址（CCR 的 127.0.0.1:3456:8080 端口发布），因为 .env 是给宿主机
+      #   上的 claude CLI 读的，不是给这个容器读的。写错成 CCR_BASE_URL 会让切换
+      #   后的 claude CLI 去连一个只在容器网络里存在的地址，直接连不上。
       CCR_BASE_URL: "http://ccr:8080"
+      CCR_HOST_BASE_URL: "http://127.0.0.1:3456"
       CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # Task 6 生成的 CCR client key，走 .env
     env_file:
       - .env
