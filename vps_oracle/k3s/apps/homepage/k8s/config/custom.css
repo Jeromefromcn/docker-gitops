@@ -1,0 +1,12 @@
+html {
+  font-size: 137.5%; /* scales all rem-based text site-wide, ~22px base instead of 16px */
+}
+
+body {
+  background-color: #08090d;
+  background-image:
+    radial-gradient(at 15% 20%, rgba(56, 189, 248, 0.28) 0px, transparent 50%),
+    radial-gradient(at 85% 15%, rgba(168, 85, 247, 0.24) 0px, transparent 50%),
+    radial-gradient(at 50% 90%, rgba(236, 72, 153, 0.16) 0px, transparent 50%);
+  background-attachment: fixed;
+}

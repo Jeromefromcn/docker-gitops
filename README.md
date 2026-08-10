@@ -69,7 +69,7 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 
 ## 给新服务加 homepage 卡片
 
-homepage 从 phase C 起已迁到 k3s（见上面「k3s」一节），配置源文件是 **`vps_oracle/k3s/apps/homepage/k8s/configmap.yaml`**（`vps_oracle/compose/homepage/config/services.yaml` 是迁移前的旧路径，容器已停但目录保留作为回滚路径，phase H 才决定去留——不要再改这份）。每新增一个服务，在 configmap 的 `services.yaml` 块里加一张卡片，跟现有条目保持同样格式：
+homepage 从 phase C 起已迁到 k3s（见上面「k3s」一节），配置源文件是 **`vps_oracle/k3s/apps/homepage/k8s/config/services.yaml`**（`vps_oracle/compose/homepage/config/services.yaml` 是迁移前的旧路径，容器已停但目录保留作为回滚路径，phase H 才决定去留——不要再改这份）。每新增一个服务，在对应分类（`Infra Services` / `Apps`）下加一张卡片，跟现有条目保持同样格式：
 
 ```yaml
     - <服务名>:
@@ -83,15 +83,11 @@ homepage 从 phase C 起已迁到 k3s（见上面「k3s」一节），配置源�
 - 没有 `container`/`server` 字段——k8s 里没挂 docker socket，容器状态小组件在迁移时已去掉，只剩卡片本身
 - **例外**：安全敏感的服务（如 3x-ui）不上卡片，加之前先问一句
 
-**改完之后要 `git push` 到 GitHub 的 `main` 分支才会生效**——ArgoCD 的 `homepage` Application（`vps_oracle/k3s/argocd/apps/homepage.yaml`）跟踪的是 GitHub remote（`repoURL`），不是本地工作区；本地 commit 不 push 的话 ArgoCD 看不到。`syncPolicy.automated`（`prune: true`, `selfHeal: true`）开着，push 后 ArgoCD 会在下个轮询周期（或手动 `argocd app sync homepage` / UI 点 "Sync"）自动把新 ConfigMap 同步到集群——**但同步 ConfigMap 不等于 pod 生效**：
+**改完之后要 `git push` 到 GitHub 的 `main` 分支才会生效**——ArgoCD 的 `homepage` Application（`vps_oracle/k3s/argocd/apps/homepage.yaml`）跟踪的是 GitHub remote（`repoURL`），不是本地工作区；本地 commit 不 push 的话 ArgoCD 看不到。`syncPolicy.automated`（`prune: true`, `selfHeal: true`）开着，push 后 ArgoCD 会在下个轮询周期（或手动 `argocd app sync homepage` / UI 点 "Sync"）自动同步。
 
-```bash
-kubectl rollout restart deployment homepage -n workloads
-```
+`vps_oracle/k3s/apps/homepage/k8s/` 是一个 Kustomize 目录（`kustomization.yaml` 用 `configMapGenerator` 从 `config/*` 生成 ConfigMap），不是普通 plain-manifest 目录：每次 `config/` 下任何文件内容变化，生成的 ConfigMap 名字都会带上内容 hash 自动改变（如 `homepage-config-d647d5gd7m`），`kustomization.yaml` 里全局 `namespace: workloads` 会让 kustomize 把这个新名字同步改到 `deployment.yaml` 的 volume 引用里——**这让 pod template 本身跟着变，ArgoCD 会像平时改镜像 tag 一样自动做一次滚动更新，不需要手动 `kubectl rollout restart`**。旧的 ConfigMap 会被 `prune: true` 自动清掉。
 
-这一步是必须的，手动执行。原因：`deployment.yaml` 里配置内容是靠 initContainer 在 pod 启动时把 ConfigMap 拷进一份可写的 emptyDir（homepage 要在 `/app/config` 写请求日志，ConfigMap 挂载是只读的），deployment 本身没有 configmap-checksum 注解或 Reloader 之类的机制，所以 ConfigMap 内容变了、deployment spec 没变——ArgoCD 认为"没有需要同步的东西"，不会自动重启 pod。
-
-**⚠️ 已知坑**：`workloads` namespace 的 `ResourceQuota`（`limits.cpu` 上限 1 核）目前很紧，滚动重启用的 surge pod（多出的 25%）可能因为配额不够而卡在 `FailedCreate`（`kubectl describe rs` 能看到 `exceeded quota` 事件），新旧 pod 都起不来。遇到这种情况：`kubectl delete pod <old-pod> -n workloads` 腾出配额，再确认新 ReplicaSet 是否顶上；如果被同名旧 ReplicaSet 抢先重新拉起（旧 RS 的 desired 还没归零），额外 `kubectl scale rs <old-rs> -n workloads --replicas=0` 手动收尾。
+**⚠️ 已知坑**：`workloads` namespace 的 `ResourceQuota`（`limits.cpu` 上限 2 核）如果被其他服务占得比较满，这次自动触发的滚动更新，其 surge pod（多出的 25%）可能因为配额不够而卡在 `FailedCreate`（`kubectl describe rs` 能看到 `exceeded quota` 事件），新旧 pod 都起不来。遇到这种情况：`kubectl delete pod <old-pod> -n workloads` 腾出配额，再确认新 ReplicaSet 是否顶上；如果被同名旧 ReplicaSet 抢先重新拉起（旧 RS 的 desired 还没归零），额外 `kubectl scale rs <old-rs> -n workloads --replicas=0` 手动收尾。
 
 ## 给 Vikunja 项目接 Telegram 通知（透过 vikunja-notify-relay + Apprise）
 
