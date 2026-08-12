@@ -24,7 +24,7 @@ CCR_TOKEN = os.environ["CCR_TOKEN"]
 # Labels for the two provider states, keyed by "routed". Both the state cell
 # and the toggle button's target label are derived from this single mapping
 # so they can't drift out of sync with each other.
-PROVIDER_LABELS = {True: "CCR (Zhipu)", False: "Official"}
+PROVIDER_LABELS = {True: "CCR", False: "Official"}
 
 
 def toggle_group(env_path, ccr_base_url, ccr_token):
