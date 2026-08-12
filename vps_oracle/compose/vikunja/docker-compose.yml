@@ -30,7 +30,7 @@ services:
 
   vikunja-notify-relay:
     build: ./notify-relay
-    image: vikunja-notify-relay:1.0.0
+    image: vikunja-notify-relay:1.1.0
     container_name: vikunja-notify-relay
     hostname: vikunja-notify-relay
     restart: unless-stopped
@@ -44,7 +44,7 @@ services:
     environment:
       TZ: "Asia/Hong_Kong"
       VIKUNJA_BASE_URL: "https://vikunja.jerome.cloudns.asia"
-      APPRISE_NOTIFY_URL: "http://apprise:8000/notify/vikunja-tg"
+      APPRISE_BASE_URL: "http://apprise:8000"
       PORT: "8080"
     networks:
       - proxy
