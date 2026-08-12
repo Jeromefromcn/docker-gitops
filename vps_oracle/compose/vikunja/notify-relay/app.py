@@ -89,6 +89,15 @@ def build_body(project_title, task_title, task_link):
     )
 
 
+def delivery_log_line(event_name, username, status):
+    if status == 200:
+        return f"forwarded {event_name} -> apprise ({username}): {status}"
+    return (
+        f"warning: apprise returned {status} for {event_name} -> {username} "
+        f"(target vikunja-tg-{username.strip().lower()} may not exist)"
+    )
+
+
 def send_to_apprise(username, title, body):
     url = apprise_target_url(username)
     notify_payload = json.dumps({"title": title, "body": body, "format": "html"}).encode()
@@ -158,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
         for username in recipients:
             try:
                 status = send_to_apprise(username, title, body)
-                print(f"forwarded {event_name} -> apprise ({username}): {status}", flush=True)
+                print(delivery_log_line(event_name, username, status), flush=True)
             except Exception as exc:
                 print(f"error forwarding {event_name} to apprise ({username}): {exc}", flush=True)
 
