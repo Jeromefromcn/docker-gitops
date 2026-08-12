@@ -99,6 +99,8 @@ Bot token 不进本文档、不进 git，运行时只存在 Apprise 的持久化
 - **relay 对 Vikunja 的响应行为不变**：一收到 POST 立刻回 200（现状代码已经是这样），Vikunja 不会重试，所以 relay 内部任何失败都只能靠 log 事后排查——延续现有设计，不在本次改动范围。
 - **已知限制：设了 `repeat_after` 的重复任务**：Vikunja 标记这类任务完成时，会在同一次更新里自动重新打开（`done` 又变回 `false`，顺便推后到期日/提醒），`task.updated` 事件到达 relay 时 `done` 字段有可能已经是 `false`，导致这类任务的"完成"检测不到、收不到通知。暂时接受这个限制，实测阶段用一个真实的重复任务验证影响范围，如果确实影响常用场景再另外处理。
 
+  **2026-08-12 Task 6 实测结论：限制属实。** 在 project 20 建了一个 `repeat_after=86400`（每日）、`repeat_mode=2`（从完成时间算，即 `TaskRepeatModeFromCurrentDate`）、`due_date` 设为次日的任务，指派给 jerome + bridget 后 `POST /api/v1/tasks/{id}` 带 `done:true` 标记完成。响应及随后的 `GET` 都显示 `done` 已经自动变回 `false`，`due_date` 被推到"当前时间 + 86400s"（符合"从完成时间算"的语义），`done_at` 字段保留了这次完成动作的时间戳。`vikunja-notify-relay` 日志显示 `ignored: task.updated for task 65 is not a completion`，Apprise 侧也没有对应这次操作的新发送记录——确认收不到完成通知，和文档预测的现象完全一致。这次实测的 `repeat_after`/`repeat_mode` 在同一次请求后也被清零（响应里变成 `0`/`0`），但这很可能是下面新发现的"部分字段更新会清空未提交字段"问题（详见 Task 6 报告）叠加造成的副作用，不一定是"重复任务完成后失去重复设置"的独立行为，需要用一次不受该问题干扰的请求（比如把 `repeat_after`/`repeat_mode` 也显式带在 body 里）才能确认，本次未展开验证，不影响上面"收不到完成通知"这个核心结论。目前维持"暂不处理"的决定不变；如果之后发现常用场景确实受影响，再考虑给完成检测加"忽略本次但记住上次 due_date，下次同 project 同 assignee 短时间内变化再判断"之类的补偿逻辑。
+
 ## 需要同步的配置改动
 
 - `register-telegram-webhooks.sh`：`EVENTS` 数组补回 `task.updated`（现在只有 assignee/reminder/overdue 三个）。
