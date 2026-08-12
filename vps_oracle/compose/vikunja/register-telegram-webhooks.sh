@@ -21,8 +21,8 @@ set -euo pipefail
 
 RELAY_URL="http://vikunja-notify-relay:8080/"
 
-# 三个事件都发到同一个 relay 地址，relay 自己根据 payload 里的 event_name 分流格式化。
-EVENTS=("task.assignee.created" "task.reminder.fired" "task.overdue")
+# 四个事件都发到同一个 relay 地址，relay 自己根据 payload 里的 event_name 分流格式化。
+EVENTS=("task.assignee.created" "task.reminder.fired" "task.overdue" "task.updated")
 
 curl_v() {
   docker run --rm --network proxy curlimages/curl:8.10.1 -s "$@"
