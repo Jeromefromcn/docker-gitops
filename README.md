@@ -91,7 +91,7 @@ homepage 从 phase C 起已迁到 k3s（见上面「k3s」一节），配置源�
 
 ## 给 Vikunja 项目接 Telegram 通知（透过 vikunja-notify-relay + Apprise）
 
-Vikunja 的任务事件（指派/提醒到期/逾期）通过 webhook 转发给 `vikunja-notify-relay`（`vps_oracle/compose/vikunja` 栈里的第二个 service，拼出带项目名/任务标题/任务超链接的消息），再转给 `apprise` 推到 Telegram 群组。原理、已知限制（没有真正的全局 webhook、没有"任务完成"通知）、以及给新 project 补 webhook 的脚本用法，见 [`docs/2026-08-03-vikunja-apprise-telegram-webhooks.md`](docs/2026-08-03-vikunja-apprise-telegram-webhooks.md)。relay 代码：[`vps_oracle/compose/vikunja/notify-relay/`](vps_oracle/compose/vikunja/notify-relay/)；注册脚本：[`vps_oracle/compose/vikunja/register-telegram-webhooks.sh`](vps_oracle/compose/vikunja/register-telegram-webhooks.sh)。
+Vikunja 的任务事件（指派/提醒到期/逾期/完成）通过 webhook 转发给 `vikunja-notify-relay`（`vps_oracle/compose/vikunja` 栈里的第二个 service，拼出带项目名/任务标题/任务超链接的消息），再转给 `apprise` 按 Vikunja 账号分别路由到各自的 Telegram（每个账号一个 target，不是共用一个）。原理、已知限制（没有真正的全局 webhook）、以及给新 project 补 webhook 的脚本用法，见 [`docs/2026-08-03-vikunja-apprise-telegram-webhooks.md`](docs/2026-08-03-vikunja-apprise-telegram-webhooks.md)。relay 代码：[`vps_oracle/compose/vikunja/notify-relay/`](vps_oracle/compose/vikunja/notify-relay/)；注册脚本：[`vps_oracle/compose/vikunja/register-telegram-webhooks.sh`](vps_oracle/compose/vikunja/register-telegram-webhooks.sh)。
 
 ## 约定
 

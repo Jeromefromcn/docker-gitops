@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # 给指定（或全部）Vikunja project 注册 Telegram 通知 webhook，转发给 vikunja-notify-relay
-# （拼好项目名/任务标题/任务超链接的 HTML 消息后，再转发给 apprise 的 vikunja-tg 持久化配置）。
+# （拼好项目名/任务标题/任务超链接的 HTML 消息后，再按 Vikunja 账号转发给 apprise 对应的
+#  vikunja-tg-{username} 持久化配置，一个账号一个 target，不是共用一个）。
 #
 # 前提：
-#   - apprise 容器已用 `POST /add/vikunja-tg` 存好 tgram:// 目标（见 docs/2026-08-03-vikunja-apprise-telegram-webhooks.md）
+#   - apprise 容器已给每个 Vikunja 账号各自用 `POST /add/vikunja-tg-<username>` 存好 tgram:// 目标（见 docs/2026-08-03-vikunja-apprise-telegram-webhooks.md）
 #   - vikunja 的 docker-compose.yml 已加 VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS=true 并 up -d 过
 #   - vps_oracle/vikunja-notify-relay 已经 docker compose up -d 过
 #   - 本机能跑 `docker run --network proxy curlimages/curl`（用于容器间调用，不依赖宿主机装 curl）
