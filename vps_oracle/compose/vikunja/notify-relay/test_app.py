@@ -76,5 +76,23 @@ class TestBuildBody(unittest.TestCase):
         self.assertIn('href="https://vikunja.example/tasks/5"', body)
 
 
+class TestDeliveryLogLine(unittest.TestCase):
+    def test_status_200_produces_forwarded_line(self):
+        line = app.delivery_log_line("task.assignee.created", "jerome", 200)
+        self.assertEqual(line, "forwarded task.assignee.created -> apprise (jerome): 200")
+
+    def test_status_204_produces_warning_line_with_target_name(self):
+        line = app.delivery_log_line("task.assignee.created", "nobody", 204)
+        self.assertIn("warning: apprise returned 204", line)
+        self.assertIn("task.assignee.created -> nobody", line)
+        self.assertIn("vikunja-tg-nobody", line)
+
+    def test_non_200_status_produces_warning_line(self):
+        line = app.delivery_log_line("task.reminder.fired", "jerome", 404)
+        self.assertIn("warning: apprise returned 404", line)
+        self.assertIn("task.reminder.fired -> jerome", line)
+        self.assertIn("vikunja-tg-jerome", line)
+
+
 if __name__ == "__main__":
     unittest.main()
