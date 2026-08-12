@@ -66,7 +66,7 @@
 - A：[叢集基礎層設計](2026-08-05-k3s-phase-a-cluster-foundation-design.md)
 - B：[GitOps 啟動設計](2026-08-07-k3s-phase-b-gitops-design.md)
 - C：[遷移範本 + 首批服務設計](2026-08-09-k3s-phase-c-migration-template-design.md)
-- D：待建立
+- D：[剩餘服務遷移設計](2026-08-12-k3s-phase-d-remaining-migrations-design.md)
 - E：待建立
 - F：待建立
 - G：待建立
