@@ -28,6 +28,13 @@ APPRISE_BASE_URL = os.environ["APPRISE_BASE_URL"].rstrip("/")
 
 DONE_WINDOW_SECONDS = 10
 
+# Keyed by raw Vikunja event_name -- except "task.updated": that entry's
+# title describes the derived "task completed" notification, not the raw
+# webhook event, and only applies to deliveries that pass
+# is_task_just_completed() below (the lookup happens before that filter
+# runs, not after; do_POST only sends when the filter passes). If a second
+# task.updated-derived notification is ever added (e.g. "task reopened"),
+# it needs its own routing, not a second meaning crammed into this key.
 EVENT_TITLES = {
     "task.assignee.created": "📌 Task assigned to you",
     "task.reminder.fired": "⏰ Task due soon",
@@ -51,8 +58,12 @@ def _parse_go_time(value):
     return datetime.fromisoformat(_FRACTION_RE.sub(r"\1", value))
 
 
+def _target_key(username):
+    return username.strip().lower()
+
+
 def apprise_target_url(username):
-    return f"{APPRISE_BASE_URL}/notify/vikunja-tg-{username.strip().lower()}"
+    return f"{APPRISE_BASE_URL}/notify/vikunja-tg-{_target_key(username)}"
 
 
 def single_event_recipient(event_name, data):
@@ -94,7 +105,7 @@ def delivery_log_line(event_name, username, status):
         return f"forwarded {event_name} -> apprise ({username}): {status}"
     return (
         f"warning: apprise returned {status} for {event_name} -> {username} "
-        f"(target vikunja-tg-{username.strip().lower()} may not exist)"
+        f"(target vikunja-tg-{_target_key(username)} may not exist)"
     )
 
 

@@ -1,7 +1,7 @@
 import os
 
-os.environ.setdefault("VIKUNJA_BASE_URL", "https://vikunja.example")
-os.environ.setdefault("APPRISE_BASE_URL", "http://apprise:8000")
+os.environ["VIKUNJA_BASE_URL"] = "https://vikunja.example"
+os.environ["APPRISE_BASE_URL"] = "http://apprise:8000"
 
 import unittest
 
@@ -13,6 +13,12 @@ class TestAppriseTargetUrl(unittest.TestCase):
         self.assertEqual(
             app.apprise_target_url("Jerome"),
             "http://apprise:8000/notify/vikunja-tg-jerome",
+        )
+
+    def test_strips_whitespace_and_lowercases_mixed_case_username(self):
+        self.assertEqual(
+            app.apprise_target_url("  Bridget  "),
+            "http://apprise:8000/notify/vikunja-tg-bridget",
         )
 
 
@@ -92,6 +98,11 @@ class TestDeliveryLogLine(unittest.TestCase):
         self.assertIn("warning: apprise returned 404", line)
         self.assertIn("task.reminder.fired -> jerome", line)
         self.assertIn("vikunja-tg-jerome", line)
+
+    def test_warning_line_normalizes_mixed_case_whitespace_username_in_target_name(self):
+        line = app.delivery_log_line("task.assignee.created", "  Bridget  ", 500)
+        self.assertIn("vikunja-tg-bridget", line)
+        self.assertNotIn("vikunja-tg-  Bridget  ", line)
 
 
 if __name__ == "__main__":
