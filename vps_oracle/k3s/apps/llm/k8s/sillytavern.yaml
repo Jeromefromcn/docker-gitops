@@ -20,6 +20,10 @@ metadata:
     app: sillytavern
 spec:
   replicas: 1
+  # See llama-cpp.yaml for why: llm-quota is sized for steady-state, a
+  # RollingUpdate surge pod deadlocks against it.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: sillytavern
