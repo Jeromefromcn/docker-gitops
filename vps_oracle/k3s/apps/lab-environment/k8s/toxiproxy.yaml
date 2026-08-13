@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: toxiproxy
+  namespace: lab-environment
+  labels:
+    app: toxiproxy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: toxiproxy
+  template:
+    metadata:
+      labels:
+        app: toxiproxy
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: toxiproxy
+          image: ghcr.io/shopify/toxiproxy:2.9.0
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: toxiproxy
+  namespace: lab-environment
+spec:
+  selector:
+    app: toxiproxy
+  ports:
+    - port: 8474
+      targetPort: 8474
+      name: api

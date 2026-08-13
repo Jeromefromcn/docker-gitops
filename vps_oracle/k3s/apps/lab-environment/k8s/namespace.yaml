@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-environment
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: lab-environment-quota
+  namespace: lab-environment
+spec:
+  hard:
+    requests.cpu: "2.5"
+    requests.memory: 3.5Gi
+    limits.cpu: "5"
+    limits.memory: 6Gi
