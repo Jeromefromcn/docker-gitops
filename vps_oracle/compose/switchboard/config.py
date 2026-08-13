@@ -9,6 +9,7 @@ cached, by design (the UI's whole point is to never show a stale state).
 import configparser
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 SWITCHES_DIR = os.path.join(os.path.dirname(__file__), "switches")
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "switches.ini")
@@ -57,3 +58,13 @@ def check_status(switch_id, switches_dir=None):
             break
     state = "on" if result.returncode == 0 else "off"
     return {"state": state, "detail": detail}
+
+
+def scan_all(switches, switches_dir=None):
+    if switches_dir is None:
+        switches_dir = SWITCHES_DIR
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        pairs = pool.map(
+            lambda s: (s["id"], check_status(s["id"], switches_dir)), switches,
+        )
+    return dict(pairs)
