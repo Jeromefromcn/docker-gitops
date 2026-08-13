@@ -18,7 +18,19 @@ docker-gitops/
 
 `vps_oracle/k3s/` 是在同一台机器上用 K3s 复刻一套云原生开发运维实验平台的多阶段工程——目标是**逐服务**把 compose 栈迁到 k8s，对外域名/端口保持不变，compose 环境去留按服务单独判断，不是要整体推翻现有架构。完整背景、阶段拆解（A 叢集基礎層 → B GitOps 啟動 → C 遷移範本 → D 剩餘服務遷移 → E 供應鏈安全 → F 多環境泳道 → G 服務網格 → H compose 退場評估）见 [K3s 雲原生實驗平台路線圖](docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md)，各阶段的安装/操作细节见 [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md)。
 
-截至目前（phase C 完成）：叢集基礎（K3s + Cilium + local-path 存儲）、ArgoCD app-of-apps GitOps 迴路、以及 `homepage`/`trilium` 两个服务已经迁移完成并从 k3s 提供服务；其余服务仍在 `<host>/compose/` 下运行，见下方 Host 列表旁的说明。
+截至目前（phase D 进行中）：叢集基礎（K3s + Cilium + local-path 存儲）、ArgoCD app-of-apps GitOps 迴路、以及 `homepage`/`trilium`/`vikunja`/`apprise` 已经迁移完成并从 k3s 提供服务；其余服务仍在 `<host>/compose/` 下运行，见下方「不会迁移到 k3s 的服务」。
+
+### 不会迁移到 k3s 的服务
+
+以下服务经评估后决定继续留在 compose，不排进任何迁移阶段：
+
+| 服务 | 不迁移的原因 |
+|---|---|
+| `npm` | 是「域名/端口对外不变」这个迁移承诺的锚点——A~D 每迁一个服务都是「k3s 先跑通，再改 NPM 转发规则」，NPM 自己不能同时也在变，否则等于同时挪动锚点和被固定的东西，风险疊加。且 NPM 的「迁移」实质上可能是换成 k8s-native ingress + cert-manager 而非把 NPM 容器化搬进去，这个定性判断要等 D 阶段全部服务迁完、稳定后才有依据。刻意留到 H 阶段才评估 |
+| `portainer` | 靠读写 docker socket 管理宿主机**全部** docker 容器（含两个不属本仓库管理的专案）。k3s 用 containerd 不是 docker，portainer 看不到 pod——把这个容器搬进 k3s 没有意义；k8s 侧要有等价的可视化管理面板，该找 k8s 原生方案（ArgoCD UI 已经是一个），而不是迁移 portainer 本身 |
+| `monitoring`（prometheus/node-exporter/blackbox-exporter/grafana） | node-exporter 靠 bind mount 读宿主机 `/proc`/`/sys`，监控的是**宿主机本身**；blackbox-exporter 探测的是外部端点存活。若把这套监控系统搬进 k3s，一旦叢集本身出问题，监控会跟着一起挂，违反「监控系统要独立于被监控对象」这个可观测性基本原则 |
+| `ccr` / `provider-switch` | CCR 的消费者是跑在**宿主机本身**（不是容器）的 `claude` CLI 进程，走不了 docker 网络，所以 CCR 例外地要发布端口，且刻意绑 `127.0.0.1` 不对外暴露（见 `docs/superpowers/specs/2026-08-09-claude-provider-group-switch-design.md`）。这条逻辑在 k3s 下同样成立：k3s 的 pod network 对宿主机进程来说一样是「外部」，要嘛发 NodePort 放弃 `127.0.0.1`-only 的隔离，要嘛留在宿主机层——架构上就不适合迁，跟风险评估无关。provider-switch 是 CCR 的配套开关，同理 |
+| `3x-ui` | 39876 是客户端直连的 VLESS+Reality 原始 TCP，不走 HTTP 反代，且有过真实故障史（见 `docs/incidents/2026-07-24-3x-ui-vless-unreachable.md`）。compose 里还有个关键设计：釘死静态 IP（`172.19.0.2`）+ xray 自己的 DNS hosts 覆写，让「透过 VLESS 隧道反过来访问自建服务」的流量留在 docker `proxy` 网络内部直通 NPM、不出宿主机也不被 SNAT，NPM 的 access list 放行的正是这个静态 IP。k3s 的 pod network（Cilium）跟 docker bridge 是两张独立的网，迁移会打断这条内部直通路径，需要额外重建（如改放行节点 IP）；再加上任何 k8s 方案（扩 NodePort 范围要重启 k3s、hostNetwork 又跟未来的 PSS/Kyverno 冲突）都要动到一个运作良好的线上端口，风险/收益不成比例，**暂时不迁移** |
 
 ## 工作方式
 
