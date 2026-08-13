@@ -7,16 +7,57 @@ global:
   env:
     - name: TZ
       value: "Asia/Hong_Kong"
+# Sized off observed idle usage (controller ~21m/192Mi, everything else
+# single-digit m / tens of Mi) with headroom for sync/reconcile bursts.
+# Previously unset on every component, meaning nothing bounded them.
 controller:
   env:
     - name: TZ
       value: "Asia/Hong_Kong"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+server:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+redis:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
 dex:
   enabled: false
 notifications:
   enabled: false
 applicationSet:
   enabled: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
 configs:
   params:
     server.insecure: true
