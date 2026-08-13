@@ -1,0 +1,27 @@
+# api/worker/worker-beat's outbound HTTP must go through ssrf-proxy (squid), same as
+# compose's ssrf_proxy_network. This is the network-layer half of that isolation: these
+# three pods may only reach other pods in this namespace (db-postgres/pgvector/redis/
+# ssrf-proxy/plugin-daemon) plus DNS — no direct route to the internet. ssrf-proxy,
+# plugin-daemon, and web are intentionally not selected by any policy, so they keep the
+# default full-open egress they need (squid itself, model-provider calls, marketplace).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-egress
+  namespace: dify
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [api, worker, worker-beat]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector: {}
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

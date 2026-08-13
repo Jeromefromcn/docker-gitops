@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dify
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dify-quota
+  namespace: dify
+spec:
+  hard:
+    requests.cpu: "2.5"
+    requests.memory: 2Gi
+    limits.cpu: "3"
+    limits.memory: 4Gi

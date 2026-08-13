@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ssrf-proxy
+  namespace: dify
+  labels:
+    app: ssrf-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ssrf-proxy
+  template:
+    metadata:
+      labels:
+        app: ssrf-proxy
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: ssrf-proxy
+          image: ubuntu/squid@sha256:6a097f68bae708cedbabd6188d68c7e2e7a38cedd05a176e1cc0ba29e3bbe029 # :latest as of 2026-08-02, no stable versioned tag upstream
+          command: ["sh", "-c"]
+          args:
+            - "cp /docker-entrypoint-mount.sh /docker-entrypoint.sh && sed -i 's/\r$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh && /docker-entrypoint.sh"
+          env:
+            - name: HTTP_PORT
+              value: "3128"
+            - name: COREDUMP_DIR
+              value: "/var/spool/squid"
+          ports:
+            - containerPort: 3128
+          volumeMounts:
+            - name: config
+              mountPath: /etc/squid/squid.conf.template
+              subPath: squid.conf.template
+              readOnly: true
+            - name: config
+              mountPath: /docker-entrypoint-mount.sh
+              subPath: docker-entrypoint.sh
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 150m
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: ssrf-proxy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ssrf-proxy
+  namespace: dify
+spec:
+  selector:
+    app: ssrf-proxy
+  ports:
+    - port: 3128
+      targetPort: 3128
