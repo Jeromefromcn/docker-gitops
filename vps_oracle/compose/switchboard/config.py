@@ -62,7 +62,12 @@ def check_status(switch_id, switches_dir=None):
         if line.strip():
             detail = line.strip()
             break
-    state = "on" if result.returncode == 0 else "off"
+    if result.returncode == 0:
+        state = "on"
+    elif result.returncode == 2:
+        state = "error"
+    else:
+        state = "off"
     return {"state": state, "detail": detail}
 
 
