@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sillytavern
+  namespace: llm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sillytavern
+  namespace: llm
+  labels:
+    app: sillytavern
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sillytavern
+  template:
+    metadata:
+      labels:
+        app: sillytavern
+    spec:
+      # Service 名 `sillytavern` 会注入 SILLYTAVERN_PORT，撞上 ST 自带的
+      # SILLYTAVERN_<path> 通用 env 覆盖机制，必须关掉自动注入。
+      enableServiceLinks: false
+      containers:
+        - name: sillytavern
+          image: ghcr.io/sillytavern/sillytavern:1.18.0
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            - name: SILLYTAVERN_BASICAUTHUSER_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: sillytavern
+                  key: SILLYTAVERN_BASICAUTHUSER_USERNAME
+            - name: SILLYTAVERN_BASICAUTHUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sillytavern
+                  key: SILLYTAVERN_BASICAUTHUSER_PASSWORD
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: data
+              mountPath: /home/node/app/config
+              subPath: config
+            - name: data
+              mountPath: /home/node/app/data
+              subPath: data
+            - name: data
+              mountPath: /home/node/app/plugins
+              subPath: plugins
+            - name: data
+              mountPath: /home/node/app/public/scripts/extensions/third-party
+              subPath: extensions
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: sillytavern
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sillytavern
+  namespace: llm
+spec:
+  type: NodePort
+  selector:
+    app: sillytavern
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30091

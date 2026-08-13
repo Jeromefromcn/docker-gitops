@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llama-cpp
+  namespace: llm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-cpp
+  namespace: llm
+  labels:
+    app: llama-cpp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llama-cpp
+  template:
+    metadata:
+      labels:
+        app: llama-cpp
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: llama-cpp
+          image: amperecomputingai/llama.cpp:3.4.2
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            - name: LLAMA_ARG_THREADS
+              value: "3"
+            - name: LLAMA_ARG_CTX_SIZE
+              value: "8192"
+            - name: LLAMA_ARG_CACHE_RAM
+              value: "4096"
+          args:
+            - --models-dir
+            - /models
+            - --models-max
+            - "1"
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8080"
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "3"
+              memory: 9Gi
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: llama-cpp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama-cpp
+  namespace: llm
+spec:
+  selector:
+    app: llama-cpp
+  ports:
+    - port: 8080
+      targetPort: 8080
