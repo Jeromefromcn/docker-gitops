@@ -39,7 +39,7 @@ spec:
               mountPath: /app/config
           resources:
             requests:
-              cpu: 100m
+              cpu: 25m
               memory: 192Mi
             limits:
               cpu: 300m
