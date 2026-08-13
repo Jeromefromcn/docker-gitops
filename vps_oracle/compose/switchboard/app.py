@@ -90,8 +90,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"bad Content-Length")
             return
+        if length < 0:
+            length = 0
         raw = self.rfile.read(length) if length else b""
-        fields = urllib.parse.parse_qs(raw.decode())
+        fields = urllib.parse.parse_qs(raw.decode("utf-8", "replace"))
         switch_id = (fields.get("id") or [""])[0]
         known_ids = {s["id"] for s in config.load_switches()}
         if switch_id not in known_ids:

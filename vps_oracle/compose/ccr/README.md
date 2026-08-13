@@ -162,7 +162,7 @@ curl -sS -X POST http://npm:81/api/nginx/proxy-hosts -H \"Authorization: Bearer 
 
 > 为什么 `forward_host` 是容器名 `switchboard` 而不是 IP：switchboard 和 NPM 都在 `proxy` 网络上，docker 内嵌 DNS 解析容器名。只有 k3s NodePort 那类宿主机服务才需要填宿主机内网 IP `10.0.0.95`（见根 README 的「反代到 k3s NodePort」坑）。
 >
-> 旧的 `provider.jerome.cloudns.asia` proxy host 和证书在完成 Manual Follow-up 的 NPM 切换后需要在 NPM 里手动删除/停用（仓库里没有对应的删除 API 调用记录）。
+> 旧的 `provider.jerome.cloudns.asia` proxy host 和证书在完成 NPM 反代切换到 switchboard 后需要在 NPM 里手动删除/停用（仓库里没有对应的删除 API 调用记录）。
 
 ## provider-switch → switchboard 首次部署收尾清单
 

@@ -75,10 +75,10 @@ def scan_all(switches, switches_dir=None):
     if switches_dir is None:
         switches_dir = SWITCHES_DIR
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        pairs = pool.map(
+        pairs = list(pool.map(
             lambda s: (s["id"], check_status(s["id"], switches_dir)), switches,
-        )
-    return dict(pairs)
+        ))
+        return dict(pairs)
 
 
 def toggle(switch_id, switches_dir=None, lock_dir=None):
