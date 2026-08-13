@@ -9,4 +9,5 @@ content = (
 )
 with open(tmp_path, "w") as f:
     f.write(content)
+os.chmod(tmp_path, 0o600)
 os.replace(tmp_path, env_path)
