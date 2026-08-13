@@ -19,7 +19,9 @@ metadata:
   labels:
     app: sillytavern
 spec:
-  replicas: 1
+  # Scaled to 0 by default — see llama-cpp.yaml for the reasoning and how
+  # to bring the stack back up.
+  replicas: 0
   # See llama-cpp.yaml for why: llm-quota is sized for steady-state, a
   # RollingUpdate surge pod deadlocks against it.
   strategy:
