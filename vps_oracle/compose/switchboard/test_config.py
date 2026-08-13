@@ -107,3 +107,56 @@ class TestScanAll(unittest.TestCase):
             scans = config.scan_all(switches, switches_dir=tmp)
             self.assertEqual(scans["a"]["state"], "on")
             self.assertEqual(scans["b"]["state"], "off")
+
+
+class TestToggle(unittest.TestCase):
+    def _write_switch(self, tmp, switch_id, status_exit, marker_path,
+                       on_body=None, off_body=None):
+        d = os.path.join(tmp, switch_id)
+        os.makedirs(d)
+        _write_script(os.path.join(d, "status.sh"), f"#!/bin/sh\nexit {status_exit}\n")
+        _write_script(
+            os.path.join(d, "on.sh"),
+            on_body or f"#!/bin/sh\necho on > {marker_path}\nexit 0\n",
+        )
+        _write_script(
+            os.path.join(d, "off.sh"),
+            off_body or f"#!/bin/sh\necho off > {marker_path}\nexit 0\n",
+        )
+        return d
+
+    def test_currently_off_runs_on_script(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = os.path.join(tmp, "marker")
+            self._write_switch(tmp, "demo", status_exit="1", marker_path=marker)
+            ok, stderr = config.toggle("demo", switches_dir=tmp)
+            self.assertTrue(ok)
+            self.assertEqual(open(marker).read().strip(), "on")
+
+    def test_currently_on_runs_off_script(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = os.path.join(tmp, "marker")
+            self._write_switch(tmp, "demo", status_exit="0", marker_path=marker)
+            ok, stderr = config.toggle("demo", switches_dir=tmp)
+            self.assertTrue(ok)
+            self.assertEqual(open(marker).read().strip(), "off")
+
+    def test_action_failure_returns_stderr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_switch(
+                tmp, "demo", status_exit="1", marker_path=os.path.join(tmp, "marker"),
+                on_body="#!/bin/sh\necho boom >&2\nexit 1\n",
+            )
+            ok, stderr = config.toggle("demo", switches_dir=tmp)
+            self.assertFalse(ok)
+            self.assertIn("boom", stderr)
+
+    def test_unknown_status_refuses_to_toggle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "demo"))  # no status.sh at all
+            ok, stderr = config.toggle("demo", switches_dir=tmp)
+            self.assertFalse(ok)
+
+
+if __name__ == "__main__":
+    unittest.main()
