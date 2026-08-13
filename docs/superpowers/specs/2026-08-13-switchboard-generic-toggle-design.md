@@ -86,7 +86,7 @@ section 名对应 `switches/<id>/` 目录名（即开关 id）。`group` 缺省�
 
 | 脚本 | 调用时机 | 契约 |
 |---|---|---|
-| `status.sh` | 每次 `GET /`（状态必须现场查，见 R3） | exit 0 = **on**，非 0 = **off**。stdout 第一行（可选）作为 detail 文字显示在该行——用来承载原来写死的 endpoint/健康度信息，通用开关不一定有这类信息，留空即可。 |
+| `status.sh` | 每次 `GET /`（状态必须现场查，见 R3） | exit 0 = **on**；exit 2 = **error**（脚本自己发现的异常，比如读配置文件时的权限错误——跟超时/脚本不存在一样归入 ERROR，不当 off 处理）；其余非 0 = **off**。stdout 第一行（可选）作为 detail 文字显示在该行——用来承载原来写死的 endpoint/健康度信息，通用开关不一定有这类信息，留空即可。 |
 | `on.sh` | `POST /toggle`，当前状态为 off 时 | exit 0 = 成功，非 0 = 失败。 |
 | `off.sh` | `POST /toggle`，当前状态为 on 时 | 同上。 |
 

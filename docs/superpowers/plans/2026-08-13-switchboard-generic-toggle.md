@@ -982,12 +982,12 @@ This migrates the old `toggle_group()`/`read_config()`/`check_connectivity()` lo
 
 - [ ] **Step 1: Write `status.sh`**
 
+The script contract only requires an executable file — the interpreter is whatever the shebang says, not the `.sh` extension. Writing it directly as `#!/usr/bin/env python3` (rather than a `#!/bin/sh` wrapper that `exec`s into a nested `python3 - <<'PY'` heredoc) gets the same atomic-write/regex correctness this logic needs without the extra layer:
+
 ```bash
 mkdir -p vps_oracle/compose/switchboard/switches/jerome-ccr
-cat > vps_oracle/compose/switchboard/switches/jerome-ccr/status.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/jerome-ccr/status.sh <<'PY'
+#!/usr/bin/env python3
 import os
 import re
 import sys
@@ -1020,7 +1020,6 @@ except Exception:
 print(f"CCR {base_url} — {'reachable' if reachable else 'UNREACHABLE'}")
 sys.exit(0)
 PY
-SCRIPT
 chmod +x vps_oracle/compose/switchboard/switches/jerome-ccr/status.sh
 ```
 
@@ -1053,11 +1052,11 @@ cd /home/ubuntu/jerome/docker-gitops
 
 - [ ] **Step 3: Write `on.sh` and `off.sh`**
 
+Same reasoning as Step 1 — direct `#!/usr/bin/env python3` scripts, no shell wrapper:
+
 ```bash
-cat > vps_oracle/compose/switchboard/switches/jerome-ccr/on.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/jerome-ccr/on.sh <<'PY'
+#!/usr/bin/env python3
 import os
 
 env_path = "/home/ubuntu/.claude-provider/jerome.env"
@@ -1070,12 +1069,9 @@ with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
 PY
-SCRIPT
 
-cat > vps_oracle/compose/switchboard/switches/jerome-ccr/off.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/jerome-ccr/off.sh <<'PY'
+#!/usr/bin/env python3
 import os
 
 env_path = "/home/ubuntu/.claude-provider/jerome.env"
@@ -1085,7 +1081,6 @@ with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
 PY
-SCRIPT
 
 chmod +x vps_oracle/compose/switchboard/switches/jerome-ccr/on.sh
 chmod +x vps_oracle/compose/switchboard/switches/jerome-ccr/off.sh
@@ -1160,13 +1155,13 @@ git commit -m "Add jerome-ccr switch: migrate CCR provider toggle for the jerome
 
 - [ ] **Step 1: Write all three scripts (identical to Task 9's, only the env filename differs: `bridget.env` instead of `jerome.env`)**
 
+Same as Task 9: direct `#!/usr/bin/env python3` scripts, no shell wrapper.
+
 ```bash
 mkdir -p vps_oracle/compose/switchboard/switches/bridget-ccr
 
-cat > vps_oracle/compose/switchboard/switches/bridget-ccr/status.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/bridget-ccr/status.sh <<'PY'
+#!/usr/bin/env python3
 import os
 import re
 import sys
@@ -1199,12 +1194,9 @@ except Exception:
 print(f"CCR {base_url} — {'reachable' if reachable else 'UNREACHABLE'}")
 sys.exit(0)
 PY
-SCRIPT
 
-cat > vps_oracle/compose/switchboard/switches/bridget-ccr/on.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/bridget-ccr/on.sh <<'PY'
+#!/usr/bin/env python3
 import os
 
 env_path = "/home/ubuntu/.claude-provider/bridget.env"
@@ -1217,12 +1209,9 @@ with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
 PY
-SCRIPT
 
-cat > vps_oracle/compose/switchboard/switches/bridget-ccr/off.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/bridget-ccr/off.sh <<'PY'
+#!/usr/bin/env python3
 import os
 
 env_path = "/home/ubuntu/.claude-provider/bridget.env"
@@ -1232,7 +1221,6 @@ with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
 PY
-SCRIPT
 
 chmod +x vps_oracle/compose/switchboard/switches/bridget-ccr/status.sh
 chmod +x vps_oracle/compose/switchboard/switches/bridget-ccr/on.sh
@@ -1718,14 +1706,20 @@ git commit -m "Rename homepage card from Provider Switch to Switchboard"
 
 Everything above is safe to run unattended: it edits files and git-commits locally, and the one Docker action (`docker compose build` in Task 11) only builds an image without touching the live `provider-switch` container. The following three steps have real, harder-to-reverse effects on shared/live systems and must be confirmed with the user immediately before each one, one at a time:
 
-1. **Deploy switchboard, retiring provider-switch:**
+1. **Copy the gitignored `.env`:** `vps_oracle/compose/provider-switch/.env` (holds `CCR_CLIENT_TOKEN`) does not move with the `git mv` rename — it's gitignored, so it stays a filesystem-only artifact at the old path. Copy it to the new path before the next step, or `docker compose up -d --build` will hard-fail on the missing `env_file: .env`:
+   ```bash
+   cp vps_oracle/compose/provider-switch/.env vps_oracle/compose/switchboard/.env
+   ```
+   (Both paths are gitignored — this is a plain filesystem copy, not a git operation.)
+
+2. **Deploy switchboard, retiring provider-switch:**
    ```bash
    cd vps_oracle/compose/switchboard
    docker compose up -d --build
    docker compose -p provider-switch down   # or however the old stack is identified; confirm container name first with `docker ps`
    ```
-   This is the moment jerome/bridget's real Claude Code sessions start being served by the new container instead of the old one. Verify immediately after with the `curl` command in `ccr/README.md`'s "验证" section (now pointed at `switchboard.jerome.cloudns.asia` — which won't resolve until step 2 below, so verify via `docker exec switchboard` / `curl` against the container's internal port first, then again externally after step 2).
+   This is the moment jerome/bridget's real Claude Code sessions start being served by the new container instead of the old one. Verify immediately after with the `curl` command in `ccr/README.md`'s "验证" section (now pointed at `switchboard.jerome.cloudns.asia` — which won't resolve until step 3 below, so verify via `docker exec switchboard` / `curl` against the container's internal port first, then again externally after step 3).
 
-2. **NPM cutover:** run the "switchboard 的 NPM 反代" `curl` sequence from the updated `ccr/README.md` to create the new `switchboard.jerome.cloudns.asia` proxy host + certificate, then manually delete/disable the old `provider.jerome.cloudns.asia` proxy host and certificate in the NPM admin UI (no scripted delete exists for this yet). Recheck Force SSL / HTTP/2 after saving — the known "silently resets" gotcha from the root README applies here too.
+3. **NPM cutover:** run the "switchboard 的 NPM 反代" `curl` sequence from the updated `ccr/README.md` to create the new `switchboard.jerome.cloudns.asia` proxy host + certificate, then manually delete/disable the old `provider.jerome.cloudns.asia` proxy host and certificate in the NPM admin UI (no scripted delete exists for this yet). Recheck Force SSL / HTTP/2 after saving — the known "silently resets" gotcha from the root README applies here too.
 
-3. **Push for the homepage card:** `git push` to `main` on the GitHub remote so ArgoCD's `homepage` Application picks up the card rename (`syncPolicy.automated` will apply it within one polling cycle, or trigger `argocd app sync homepage` manually).
+4. **Push for the homepage card:** `git push` to `main` on the GitHub remote so ArgoCD's `homepage` Application picks up the card rename (`syncPolicy.automated` will apply it within one polling cycle, or trigger `argocd app sync homepage` manually).
