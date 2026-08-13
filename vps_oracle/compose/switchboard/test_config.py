@@ -129,7 +129,8 @@ class TestToggle(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             marker = os.path.join(tmp, "marker")
             self._write_switch(tmp, "demo", status_exit="1", marker_path=marker)
-            ok, stderr = config.toggle("demo", switches_dir=tmp)
+            lock_dir = os.path.join(tmp, "locks")
+            ok, stderr = config.toggle("demo", switches_dir=tmp, lock_dir=lock_dir)
             self.assertTrue(ok)
             self.assertEqual(open(marker).read().strip(), "on")
 
@@ -137,7 +138,8 @@ class TestToggle(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             marker = os.path.join(tmp, "marker")
             self._write_switch(tmp, "demo", status_exit="0", marker_path=marker)
-            ok, stderr = config.toggle("demo", switches_dir=tmp)
+            lock_dir = os.path.join(tmp, "locks")
+            ok, stderr = config.toggle("demo", switches_dir=tmp, lock_dir=lock_dir)
             self.assertTrue(ok)
             self.assertEqual(open(marker).read().strip(), "off")
 
@@ -147,15 +149,35 @@ class TestToggle(unittest.TestCase):
                 tmp, "demo", status_exit="1", marker_path=os.path.join(tmp, "marker"),
                 on_body="#!/bin/sh\necho boom >&2\nexit 1\n",
             )
-            ok, stderr = config.toggle("demo", switches_dir=tmp)
+            lock_dir = os.path.join(tmp, "locks")
+            ok, stderr = config.toggle("demo", switches_dir=tmp, lock_dir=lock_dir)
             self.assertFalse(ok)
             self.assertIn("boom", stderr)
 
     def test_unknown_status_refuses_to_toggle(self):
         with tempfile.TemporaryDirectory() as tmp:
-            os.makedirs(os.path.join(tmp, "demo"))  # no status.sh at all
-            ok, stderr = config.toggle("demo", switches_dir=tmp)
+            d = os.path.join(tmp, "demo")
+            os.makedirs(d)  # no status.sh at all
+            marker = os.path.join(tmp, "marker")
+            _write_script(os.path.join(d, "on.sh"), f"#!/bin/sh\necho on > {marker}\nexit 0\n")
+            _write_script(os.path.join(d, "off.sh"), f"#!/bin/sh\necho off > {marker}\nexit 0\n")
+            lock_dir = os.path.join(tmp, "locks")
+            ok, stderr = config.toggle("demo", switches_dir=tmp, lock_dir=lock_dir)
             self.assertFalse(ok)
+            # Refusal must happen before any action script runs — the marker
+            # file only gets written by on.sh/off.sh, so its absence proves
+            # neither ran.
+            self.assertFalse(os.path.exists(marker))
+
+    def test_lock_file_created_at_lock_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = os.path.join(tmp, "marker")
+            self._write_switch(tmp, "demo", status_exit="1", marker_path=marker)
+            lock_dir = os.path.join(tmp, "locks")
+            self.assertFalse(os.path.exists(lock_dir))
+            ok, stderr = config.toggle("demo", switches_dir=tmp, lock_dir=lock_dir)
+            self.assertTrue(ok)
+            self.assertTrue(os.path.exists(os.path.join(lock_dir, "demo.lock")))
 
 
 if __name__ == "__main__":

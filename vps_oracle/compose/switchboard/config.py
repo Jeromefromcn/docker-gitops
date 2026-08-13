@@ -14,6 +14,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 SWITCHES_DIR = os.path.join(os.path.dirname(__file__), "switches")
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "switches.ini")
+# Lock files live outside SWITCHES_DIR on purpose: switches/ is COPY'd into the
+# image as root:root, but the container runs as an unprivileged uid — a lock
+# file next to the scripts it protects would raise PermissionError on every
+# toggle. LOCK_DIR is a separate, writable-by-the-container location instead.
+LOCK_DIR = os.environ.get("LOCK_DIR", "/tmp/switchboard-locks")
 
 STATUS_TIMEOUT = 5
 ACTION_TIMEOUT = 15
@@ -71,11 +76,18 @@ def scan_all(switches, switches_dir=None):
     return dict(pairs)
 
 
-def toggle(switch_id, switches_dir=None):
+def toggle(switch_id, switches_dir=None, lock_dir=None):
     if switches_dir is None:
         switches_dir = SWITCHES_DIR
-    lock_path = _script_path(switch_id, ".lock", switches_dir)
-    with open(lock_path, "a+") as lock_file:
+    if lock_dir is None:
+        lock_dir = LOCK_DIR
+    lock_path = os.path.join(lock_dir, switch_id + ".lock")
+    try:
+        os.makedirs(lock_dir, exist_ok=True)
+        lock_file = open(lock_path, "a+")
+    except OSError as exc:
+        return False, str(exc)
+    with lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
         status = check_status(switch_id, switches_dir)
         if status["state"] == "error":
