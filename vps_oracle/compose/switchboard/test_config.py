@@ -46,3 +46,51 @@ class TestLoadSwitches(unittest.TestCase):
     def test_missing_config_file_is_empty_list(self):
         switches = config.load_switches("/tmp/does-not-exist-switches.ini")
         self.assertEqual(switches, [])
+
+
+import stat
+
+
+def _write_script(path, body):
+    with open(path, "w") as f:
+        f.write(body)
+    os.chmod(path, os.stat(path).st_mode | stat.S_IEXEC)
+
+
+class TestCheckStatus(unittest.TestCase):
+    def _switch_dir(self, tmp, switch_id):
+        path = os.path.join(tmp, switch_id)
+        os.makedirs(path)
+        return path
+
+    def test_exit_zero_is_on_with_detail_from_stdout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._switch_dir(tmp, "demo")
+            _write_script(os.path.join(d, "status.sh"), "#!/bin/sh\necho hello\nexit 0\n")
+            result = config.check_status("demo", switches_dir=tmp)
+            self.assertEqual(result, {"state": "on", "detail": "hello"})
+
+    def test_exit_nonzero_is_off_with_no_detail_required(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._switch_dir(tmp, "demo")
+            _write_script(os.path.join(d, "status.sh"), "#!/bin/sh\nexit 1\n")
+            result = config.check_status("demo", switches_dir=tmp)
+            self.assertEqual(result, {"state": "off", "detail": ""})
+
+    def test_timeout_is_error_not_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._switch_dir(tmp, "demo")
+            _write_script(os.path.join(d, "status.sh"), "#!/bin/sh\nsleep 10\n")
+            original_timeout = config.STATUS_TIMEOUT
+            config.STATUS_TIMEOUT = 0.2
+            try:
+                result = config.check_status("demo", switches_dir=tmp)
+            finally:
+                config.STATUS_TIMEOUT = original_timeout
+            self.assertEqual(result, {"state": "error", "detail": ""})
+
+    def test_missing_script_is_error_not_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._switch_dir(tmp, "demo")
+            result = config.check_status("demo", switches_dir=tmp)
+            self.assertEqual(result, {"state": "error", "detail": ""})

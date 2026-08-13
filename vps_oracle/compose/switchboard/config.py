@@ -8,6 +8,7 @@ cached, by design (the UI's whole point is to never show a stale state).
 """
 import configparser
 import os
+import subprocess
 
 SWITCHES_DIR = os.path.join(os.path.dirname(__file__), "switches")
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "switches.ini")
@@ -33,3 +34,26 @@ def load_switches(config_path=None):
             "off_label": section.get("off_label", "Off"),
         })
     return switches
+
+
+def _script_path(switch_id, name, switches_dir):
+    return os.path.join(switches_dir, switch_id, name)
+
+
+def check_status(switch_id, switches_dir=None):
+    if switches_dir is None:
+        switches_dir = SWITCHES_DIR
+    path = _script_path(switch_id, "status.sh", switches_dir)
+    try:
+        result = subprocess.run(
+            [path], capture_output=True, text=True, timeout=STATUS_TIMEOUT,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return {"state": "error", "detail": ""}
+    detail = ""
+    for line in result.stdout.splitlines():
+        if line.strip():
+            detail = line.strip()
+            break
+    state = "on" if result.returncode == 0 else "off"
+    return {"state": state, "detail": detail}
