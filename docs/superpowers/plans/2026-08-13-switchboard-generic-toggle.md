@@ -982,12 +982,12 @@ This migrates the old `toggle_group()`/`read_config()`/`check_connectivity()` lo
 
 - [ ] **Step 1: Write `status.sh`**
 
+The script contract only requires an executable file — the interpreter is whatever the shebang says, not the `.sh` extension. Writing it directly as `#!/usr/bin/env python3` (rather than a `#!/bin/sh` wrapper that `exec`s into a nested `python3 - <<'PY'` heredoc) gets the same atomic-write/regex correctness this logic needs without the extra layer:
+
 ```bash
 mkdir -p vps_oracle/compose/switchboard/switches/jerome-ccr
-cat > vps_oracle/compose/switchboard/switches/jerome-ccr/status.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/jerome-ccr/status.sh <<'PY'
+#!/usr/bin/env python3
 import os
 import re
 import sys
@@ -1020,7 +1020,6 @@ except Exception:
 print(f"CCR {base_url} — {'reachable' if reachable else 'UNREACHABLE'}")
 sys.exit(0)
 PY
-SCRIPT
 chmod +x vps_oracle/compose/switchboard/switches/jerome-ccr/status.sh
 ```
 
@@ -1053,11 +1052,11 @@ cd /home/ubuntu/jerome/docker-gitops
 
 - [ ] **Step 3: Write `on.sh` and `off.sh`**
 
+Same reasoning as Step 1 — direct `#!/usr/bin/env python3` scripts, no shell wrapper:
+
 ```bash
-cat > vps_oracle/compose/switchboard/switches/jerome-ccr/on.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/jerome-ccr/on.sh <<'PY'
+#!/usr/bin/env python3
 import os
 
 env_path = "/home/ubuntu/.claude-provider/jerome.env"
@@ -1070,12 +1069,9 @@ with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
 PY
-SCRIPT
 
-cat > vps_oracle/compose/switchboard/switches/jerome-ccr/off.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/jerome-ccr/off.sh <<'PY'
+#!/usr/bin/env python3
 import os
 
 env_path = "/home/ubuntu/.claude-provider/jerome.env"
@@ -1085,7 +1081,6 @@ with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
 PY
-SCRIPT
 
 chmod +x vps_oracle/compose/switchboard/switches/jerome-ccr/on.sh
 chmod +x vps_oracle/compose/switchboard/switches/jerome-ccr/off.sh
@@ -1160,13 +1155,13 @@ git commit -m "Add jerome-ccr switch: migrate CCR provider toggle for the jerome
 
 - [ ] **Step 1: Write all three scripts (identical to Task 9's, only the env filename differs: `bridget.env` instead of `jerome.env`)**
 
+Same as Task 9: direct `#!/usr/bin/env python3` scripts, no shell wrapper.
+
 ```bash
 mkdir -p vps_oracle/compose/switchboard/switches/bridget-ccr
 
-cat > vps_oracle/compose/switchboard/switches/bridget-ccr/status.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/bridget-ccr/status.sh <<'PY'
+#!/usr/bin/env python3
 import os
 import re
 import sys
@@ -1199,12 +1194,9 @@ except Exception:
 print(f"CCR {base_url} — {'reachable' if reachable else 'UNREACHABLE'}")
 sys.exit(0)
 PY
-SCRIPT
 
-cat > vps_oracle/compose/switchboard/switches/bridget-ccr/on.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/bridget-ccr/on.sh <<'PY'
+#!/usr/bin/env python3
 import os
 
 env_path = "/home/ubuntu/.claude-provider/bridget.env"
@@ -1217,12 +1209,9 @@ with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
 PY
-SCRIPT
 
-cat > vps_oracle/compose/switchboard/switches/bridget-ccr/off.sh <<'SCRIPT'
-#!/bin/sh
-set -eu
-exec python3 - <<'PY'
+cat > vps_oracle/compose/switchboard/switches/bridget-ccr/off.sh <<'PY'
+#!/usr/bin/env python3
 import os
 
 env_path = "/home/ubuntu/.claude-provider/bridget.env"
@@ -1232,7 +1221,6 @@ with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
 PY
-SCRIPT
 
 chmod +x vps_oracle/compose/switchboard/switches/bridget-ccr/status.sh
 chmod +x vps_oracle/compose/switchboard/switches/bridget-ccr/on.sh
