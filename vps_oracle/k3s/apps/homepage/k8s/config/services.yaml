@@ -14,10 +14,10 @@
         href: https://grafana.jerome.cloudns.asia/d/rYdddlPWk/node-exporter-full?orgId=1&from=now-24h&to=now&timezone=browser&var-job=node&var-nodename=node-exporter&var-node=node-exporter:9100&refresh=1m
         description: Monitoring dashboard
 
-    - Provider Switch:
+    - Switchboard:
         icon: si-anthropic
-        href: https://provider.jerome.cloudns.asia
-        description: Claude provider group toggle (Official ↔ CCR/Zhipu)
+        href: https://switchboard.jerome.cloudns.asia
+        description: Config-driven toggle framework (Claude provider switching, and more)
 
     - CCR Admin:
         icon: si-anthropic
@@ -28,6 +28,11 @@
         icon: argo-cd.png
         href: https://argocd.jerome.cloudns.asia
         description: GitOps CD for the k3s cluster
+
+    - Headlamp:
+        icon: headlamp.png
+        href: https://headlamp.jerome.cloudns.asia
+        description: Read-only Kubernetes cluster dashboard
 
 - Apps:
     - Trilium:
