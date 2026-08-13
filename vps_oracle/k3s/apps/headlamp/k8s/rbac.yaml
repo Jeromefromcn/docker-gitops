@@ -17,6 +17,31 @@ roleRef:
   name: view
   apiGroup: rbac.authorization.k8s.io
 ---
+# `view` covers namespaced resources (pods, deployments, ...) but not
+# cluster-scoped `nodes` — without this, the Overview page's Node/CPU/Memory
+# widgets 403 on listing nodes and never resolve.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: headlamp-node-read
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: headlamp-node-read
+subjects:
+  - kind: ServiceAccount
+    name: headlamp
+    namespace: headlamp
+roleRef:
+  kind: ClusterRole
+  name: headlamp-node-read
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: v1
 kind: Secret
 metadata:
