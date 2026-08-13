@@ -32,10 +32,18 @@
 | B. GitOps 啟動 | ArgoCD（app-of-apps）+ GitHub Actions CI 骨架（build→Trivy→Cosign） | 之後所有部署都走 GitOps，不手動 `kubectl apply` | A |
 | C. 遷移範本 + 首批 | 挑 2 個低風險服務跑通 compose→k8s 範本，驗證域名/端口零變動：homepage（配置類無狀態）+ trilium（帶真實資料，順帶跑通 PVC 與資料搬遷） | 可複製的遷移 SOP | A、B |
 | D. 剩餘服務遷移 | 資料庫類服務（vikunja+pg、dify 全家桶）、llm 推理棧、3x-ui 的 39876 TCP 透傳 | 逐服務遷移 + compose 去留決策 | C |
+| D+. 唯讀集群面板 | 裝 Headlamp（view-only RBAC），與 compose 側 portainer 並行互補——portainer 管 docker，Headlamp 管 k8s | Headlamp 經 NPM 反代（獨立子網域 + `self-only` ACL，比照 ArgoCD），不上 homepage 卡片；resources requests 100m/128Mi、limits 500m/256Mi | D |
 | E. 供應鏈安全加固 | Trivy 准入門禁、Cosign 驗簽、Sealed Secrets、Kyverno | 鏡像/部署有政策把關 | B、D 服務已上線 |
 | F. 多環境 PR 泳道 | ArgoCD ApplicationSet PR Generator + 泳道配額隔離 | PR 分支自動起隔離環境 | B |
 | G. 服務網格 + 漸進式發布 | Istio Ambient，按 namespace 選擇性啟用，有狀態服務不進網格；金絲雀發布（Argo Rollouts + waypoint 做 L7 流量切分） | L4/L7 流量治理 + 漸進式發布 | D 主要服務已穩定 |
 | H. compose 退場評估 | 逐服務判斷是否還需保留 compose | 最終環境收斂決策 | D |
+
+## D+ 選型備註
+
+- **為何是 Headlamp 而非 Kubernetes Dashboard/Rancher/Lens/K9s**：常駐 Web 面板是唯一符合「界面安裝」語意的形態——K9s、Lens 是本機客戶端工具，靠 kubeconfig 連線，不用裝進叢集；Rancher 是多叢集管理平台，額外的 etcd/controller 開銷在 4C/24G 已用掉一半的預算下風險過高；Kubernetes Dashboard 官方版是 kong gateway + api + web + metrics-scraper 四元件組合，量級接近 ArgoCD 那次安裝，Headlamp 是單一 Deployment、單一容器（Go 後端打包 React 前端），資源開銷小得多（社群常見配置 requests 100m CPU/128Mi、limits 500m CPU/256Mi；官方 chart 預設不設限制）
+- **權限範圍**：唯讀可視化為主，綁定一個只有 `view` ClusterRole 的 ServiceAccount token 登入——寫入操作在 API 層被 RBAC 擋掉，不只是 UI 隱藏按鈕，貫徹「變更走 GitOps、不走面板」的路線圖原則
+- **與 portainer 的關係**：並行互補，不是取代——portainer 靠 docker socket 只看得到宿主機 docker 容器（含兩個非本 repo 管理的專案），k3s 用 containerd，portainer 看不到 pod；Headlamp 補的是 portainer 看不到的 k8s 側，兩者管的是不同的執行環境
+- **對外曝露**：比照 ArgoCD 已驗證過的模式（NodePort → NPM → 獨立子網域，`self-only` access list，TLS 終止在 NPM），不另立新模式；不上 homepage 卡片，理由與 ArgoCD、3x-ui 相同——具備叢集可視化能力的服務歸類為安全敏感
 
 ## 遷移原則（貫穿全程）
 
@@ -67,6 +75,7 @@
 - B：[GitOps 啟動設計](2026-08-07-k3s-phase-b-gitops-design.md)
 - C：[遷移範本 + 首批服務設計](2026-08-09-k3s-phase-c-migration-template-design.md)
 - D：[剩餘服務遷移設計](2026-08-12-k3s-phase-d-remaining-migrations-design.md)
+- D+：待建立
 - E：待建立
 - F：待建立
 - G：待建立
