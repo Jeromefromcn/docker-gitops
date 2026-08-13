@@ -95,6 +95,13 @@ class TestCheckStatus(unittest.TestCase):
             result = config.check_status("demo", switches_dir=tmp)
             self.assertEqual(result, {"state": "error", "detail": ""})
 
+    def test_exit_two_is_error_not_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._switch_dir(tmp, "demo")
+            _write_script(os.path.join(d, "status.sh"), "#!/bin/sh\nexit 2\n")
+            result = config.check_status("demo", switches_dir=tmp)
+            self.assertEqual(result, {"state": "error", "detail": ""})
+
 
 class TestScanAll(unittest.TestCase):
     def test_scans_every_switch_and_keys_by_id(self):
