@@ -1706,14 +1706,20 @@ git commit -m "Rename homepage card from Provider Switch to Switchboard"
 
 Everything above is safe to run unattended: it edits files and git-commits locally, and the one Docker action (`docker compose build` in Task 11) only builds an image without touching the live `provider-switch` container. The following three steps have real, harder-to-reverse effects on shared/live systems and must be confirmed with the user immediately before each one, one at a time:
 
-1. **Deploy switchboard, retiring provider-switch:**
+1. **Copy the gitignored `.env`:** `vps_oracle/compose/provider-switch/.env` (holds `CCR_CLIENT_TOKEN`) does not move with the `git mv` rename — it's gitignored, so it stays a filesystem-only artifact at the old path. Copy it to the new path before the next step, or `docker compose up -d --build` will hard-fail on the missing `env_file: .env`:
+   ```bash
+   cp vps_oracle/compose/provider-switch/.env vps_oracle/compose/switchboard/.env
+   ```
+   (Both paths are gitignored — this is a plain filesystem copy, not a git operation.)
+
+2. **Deploy switchboard, retiring provider-switch:**
    ```bash
    cd vps_oracle/compose/switchboard
    docker compose up -d --build
    docker compose -p provider-switch down   # or however the old stack is identified; confirm container name first with `docker ps`
    ```
-   This is the moment jerome/bridget's real Claude Code sessions start being served by the new container instead of the old one. Verify immediately after with the `curl` command in `ccr/README.md`'s "验证" section (now pointed at `switchboard.jerome.cloudns.asia` — which won't resolve until step 2 below, so verify via `docker exec switchboard` / `curl` against the container's internal port first, then again externally after step 2).
+   This is the moment jerome/bridget's real Claude Code sessions start being served by the new container instead of the old one. Verify immediately after with the `curl` command in `ccr/README.md`'s "验证" section (now pointed at `switchboard.jerome.cloudns.asia` — which won't resolve until step 3 below, so verify via `docker exec switchboard` / `curl` against the container's internal port first, then again externally after step 3).
 
-2. **NPM cutover:** run the "switchboard 的 NPM 反代" `curl` sequence from the updated `ccr/README.md` to create the new `switchboard.jerome.cloudns.asia` proxy host + certificate, then manually delete/disable the old `provider.jerome.cloudns.asia` proxy host and certificate in the NPM admin UI (no scripted delete exists for this yet). Recheck Force SSL / HTTP/2 after saving — the known "silently resets" gotcha from the root README applies here too.
+3. **NPM cutover:** run the "switchboard 的 NPM 反代" `curl` sequence from the updated `ccr/README.md` to create the new `switchboard.jerome.cloudns.asia` proxy host + certificate, then manually delete/disable the old `provider.jerome.cloudns.asia` proxy host and certificate in the NPM admin UI (no scripted delete exists for this yet). Recheck Force SSL / HTTP/2 after saving — the known "silently resets" gotcha from the root README applies here too.
 
-3. **Push for the homepage card:** `git push` to `main` on the GitHub remote so ArgoCD's `homepage` Application picks up the card rename (`syncPolicy.automated` will apply it within one polling cycle, or trigger `argocd app sync homepage` manually).
+4. **Push for the homepage card:** `git push` to `main` on the GitHub remote so ArgoCD's `homepage` Application picks up the card rename (`syncPolicy.automated` will apply it within one polling cycle, or trigger `argocd app sync homepage` manually).
