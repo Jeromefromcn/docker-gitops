@@ -35,6 +35,26 @@ This is not new behavior introduced by the k8s migration — the original
 compose setup already required re-running this after every
 `docker compose up`, it's just pointed at a different Consul address now.
 
+## Host prerequisite: `fs.inotify.max_user_instances`
+
+promtail tails every pod's log file individually (one inotify watch per
+file, not per directory), and this node's default
+(`fs.inotify.max_user_instances=128`) was already ~70/128 consumed by
+everything else running as root on the box (containerd, cilium, other
+pods) before this stack's 13 log files pushed it over the edge —
+promtail crashed on startup with `too many open files` even though
+`ulimit -n` itself was effectively unlimited (this is a separate,
+unrelated kernel limit, not a per-container rlimit).
+
+Raised to 1024 host-wide via `/etc/sysctl.d/99-inotify-instances.conf`
+(persists across reboots). This is a node-level setting, not something
+expressible in a Pod spec — if this node is ever rebuilt, reapply:
+
+```bash
+echo "fs.inotify.max_user_instances = 1024" | sudo tee /etc/sysctl.d/99-inotify-instances.conf
+sudo sysctl --system
+```
+
 ## NodePorts
 
 | Service | NodePort | Was (compose host port) |
