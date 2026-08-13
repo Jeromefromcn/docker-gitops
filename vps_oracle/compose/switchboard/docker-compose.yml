@@ -1,8 +1,8 @@
 services:
-  provider-switch:
+  switchboard:
     build: .
-    image: provider-switch:1.0.0
-    container_name: provider-switch
+    image: switchboard:1.0.0
+    container_name: switchboard
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -11,9 +11,9 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-    user: "1001:1001"   # 需要以宿主机 ubuntu 用户写 ~/.claude-provider/ 下的文件，不能用 nobody
+    user: "1001:1001"   # jerome-ccr/bridget-ccr 开关需要以宿主机 ubuntu 用户写 ~/.claude-provider/ 下的文件，不能用 nobody
     # 挂在 proxy 网络上（和 grafana / vikunja / dify / ccr 等所有走 NPM 反代的
-    # 服务一致），NPM 直接用容器名 provider-switch:8091 反代进来。不再用
+    # 服务一致），NPM 直接用容器名 switchboard:8091 反代进来。不再用
     # network_mode: host：那条路要为 NPM 单独在宿主机 INPUT 链开 iptables 规则
     # （host 网络监听走 INPUT，会被默认的 REJECT 挡掉；只有 docker published 端口
     # 靠 PREROUTING DNAT 绕过 INPUT），不可从 compose 复现。proxy 网络走 docker
@@ -27,7 +27,7 @@ services:
       # 里的容器（NPM）+ 宿主机自己能连，LAN/公网都打不到——NPM 的 access list
       # 再做第二层把关。
       BIND_HOST: "0.0.0.0"
-      # 两个不同用途的 CCR 地址，不能混用：
+      # jerome-ccr/bridget-ccr 两个开关脚本要用的 CCR 地址，两个不同用途不能混用：
       # - CCR_BASE_URL: 探测用，容器名（ccr 和本服务都在 proxy 网络上）。
       #   跟各组 .env 里的 ANTHROPIC_BASE_URL 不同——那是宿主机上的 claude CLI
       #   要用的地址，容器够不到；但 ccr:8080 是同一个 nginx→gateway，活着与否等价。
@@ -37,12 +37,12 @@ services:
       #   后的 claude CLI 去连一个只在容器网络里存在的地址，直接连不上。
       CCR_BASE_URL: "http://ccr:8080"
       CCR_HOST_BASE_URL: "http://127.0.0.1:3456"
-      CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # Task 6 生成的 CCR client key，走 .env
+      CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # CCR client key，走 .env
     env_file:
       - .env
     volumes:
       - /home/ubuntu/.claude-provider:/home/ubuntu/.claude-provider
-    # NPM 反代：provider.jerome.cloudns.asia → provider-switch:8091，access list=self-only。
+    # NPM 反代：switchboard.jerome.cloudns.asia → switchboard:8091，access list=self-only。
     # 配置方法见 vps_oracle/compose/npm/README.md 的自动化 API 一节。
 
 networks:
