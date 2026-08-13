@@ -19,7 +19,10 @@ metadata:
   labels:
     app: postgres
 spec:
-  replicas: 1
+  # Held at 0 until the pre-existing postgres_data volume (real schema +
+  # data, not a fresh cluster) is seeded into the PVC — see migration/.
+  # Bump to 1 once seeding is done.
+  replicas: 0
   strategy:
     type: Recreate
   selector:
