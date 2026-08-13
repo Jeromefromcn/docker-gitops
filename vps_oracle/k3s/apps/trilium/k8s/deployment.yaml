@@ -32,7 +32,7 @@ spec:
               mountPath: /home/node/trilium-data
           resources:
             requests:
-              cpu: 100m
+              cpu: 25m
               memory: 320Mi
             limits:
               cpu: 500m
