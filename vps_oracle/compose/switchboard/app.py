@@ -79,7 +79,37 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        self.send_response(404)
+        if self.path != "/toggle":
+            self.send_response(404)
+            self.end_headers()
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"bad Content-Length")
+            return
+        raw = self.rfile.read(length) if length else b""
+        fields = urllib.parse.parse_qs(raw.decode())
+        switch_id = (fields.get("id") or [""])[0]
+        known_ids = {s["id"] for s in config.load_switches()}
+        if switch_id not in known_ids:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"unknown switch")
+            return
+        ok, stderr = config.toggle(switch_id)
+        if not ok:
+            body = render_error_page(switch_id, stderr).encode()
+            self.send_response(500)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(303)
+        self.send_header("Location", "/")
         self.end_headers()
 
 

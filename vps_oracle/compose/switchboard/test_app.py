@@ -86,3 +86,44 @@ class TestDoGet(SwitchboardTestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/nope")
         self.assertEqual(ctx.exception.code, 404)
+
+
+class TestDoPost(SwitchboardTestCase):
+    def test_toggle_runs_on_script_and_redirects(self):
+        self._write_ini("[demo]\nlabel = Demo\n")
+        marker = os.path.join(self.tmp.name, "marker")
+        self._write_switch("demo", status_exit="1", on_body=f"echo on > {marker}\nexit 0\n")
+        port = self.start_server()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/toggle", data=b"id=demo", method="POST",
+        )
+        resp = urllib.request.urlopen(req)  # urllib follows the 303 redirect
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(open(marker).read().strip(), "on")
+
+    def test_unknown_switch_id_is_rejected(self):
+        self._write_ini("[demo]\nlabel = Demo\n")
+        self._write_switch("demo", status_exit="1")
+        port = self.start_server()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/toggle", data=b"id=not-a-real-switch", method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req)
+        self.assertEqual(ctx.exception.code, 400)
+
+    def test_action_failure_renders_error_page(self):
+        self._write_ini("[demo]\nlabel = Demo\n")
+        self._write_switch("demo", status_exit="1", on_body="echo boom >&2\nexit 1\n")
+        port = self.start_server()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/toggle", data=b"id=demo", method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req)
+        self.assertEqual(ctx.exception.code, 500)
+        self.assertIn(b"boom", ctx.exception.read())
+
+
+if __name__ == "__main__":
+    unittest.main()
