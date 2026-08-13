@@ -72,11 +72,11 @@ spec:
               mountPath: /models
           resources:
             requests:
-              cpu: "1"
+              cpu: 500m
               memory: 2Gi
             limits:
               cpu: "3"
-              memory: 9Gi
+              memory: 10Gi
       volumes:
         - name: models
           persistentVolumeClaim:
