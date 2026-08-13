@@ -20,6 +20,14 @@ metadata:
     app: llama-cpp
 spec:
   replicas: 1
+  # RollingUpdate's default maxSurge needs 2x this pod's requests/limits to
+  # briefly coexist during a rollout — llm-quota is sized for steady-state
+  # (3 pods), not a surge pod on top, so a rolling update deadlocks against
+  # the quota (new pod FailedCreate forever, old pod never torn down).
+  # Recreate avoids ever needing double the resources at once. Also avoids
+  # two pods trying to mount the same RWO PVC simultaneously.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: llama-cpp
