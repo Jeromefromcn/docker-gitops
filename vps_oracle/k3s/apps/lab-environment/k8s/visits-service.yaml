@@ -28,6 +28,8 @@ spec:
               value: "consul"
             - name: SPRING_CLOUD_CONSUL_PORT
               value: "8500"
+            - name: SPRING_CLOUD_CONSUL_DISCOVERY_PREFER_IP_ADDRESS
+              value: "true"
           ports:
             - containerPort: 8082
           resources:

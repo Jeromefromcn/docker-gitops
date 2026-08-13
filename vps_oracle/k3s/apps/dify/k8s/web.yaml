@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: dify
+  labels:
+    app: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: web
+          image: langgenius/dify-web:1.14.2@sha256:db73434e185ac778f31f4cc1adcce0dbe84b41a95ea5af58216acf095eed5f67
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            # dify-web's server.js binds to $HOSTNAME, not 0.0.0.0 — same reasoning as
+            # the compose stack's comment: without this it only listens on its own pod
+            # IP's loopback-equivalent interface binding, refusing external connections.
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: CONSOLE_API_URL
+              value: "https://dify.jerome.cloudns.asia"
+            - name: APP_API_URL
+              value: "https://dify.jerome.cloudns.asia"
+            - name: SERVER_CONSOLE_API_URL
+              value: "http://api:5001"
+            - name: MARKETPLACE_API_URL
+              value: "https://marketplace.dify.ai"
+            - name: MARKETPLACE_URL
+              value: "https://marketplace.dify.ai"
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 350m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: dify
+spec:
+  type: NodePort
+  selector:
+    app: web
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30086
