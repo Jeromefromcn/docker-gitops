@@ -20,12 +20,13 @@ metadata:
     app: llama-cpp
 spec:
   # Scaled to 0 by default, same as the compose stack's normal "off" state —
-  # this whole stack is only turned on when actually needed. Bring it up
-  # with `kubectl scale deployment/llama-cpp -n llm --replicas=1` (and the
-  # other two Deployments in this app); selfHeal will leave it running until
-  # this file is edited back, so scale back down here when done, don't just
-  # kubectl scale --replicas=0 by hand.
-  replicas: 0
+  # this whole stack is only turned on when actually needed. Bring it up by
+  # setting replicas: 1 here (and the other two Deployments in this app),
+  # commit, push. `kubectl scale` does NOT work — no ignoreDifferences is
+  # configured for replicas, so ArgoCD's selfHeal reverts a manual scale
+  # within ~20s (confirmed 2026-08-13). Scale back down the same way (edit,
+  # commit, push) when done.
+  replicas: 1
   # RollingUpdate's default maxSurge needs 2x this pod's requests/limits to
   # briefly coexist during a rollout — llm-quota is sized for steady-state
   # (3 pods), not a surge pod on top, so a rolling update deadlocks against
