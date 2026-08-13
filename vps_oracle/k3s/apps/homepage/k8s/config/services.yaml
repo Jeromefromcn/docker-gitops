@@ -64,3 +64,24 @@
         icon: si-html5
         href: https://evidence.jerome.cloudns.asia
         description: Evidence OS marketing site
+
+- Lab:
+    - Consul:
+        icon: consul.png
+        href: https://consul.lab.jerome.cloudns.asia
+        description: Service discovery + KV config (SRE practice lab)
+
+    - Grafana:
+        icon: grafana.png
+        href: https://grafana.lab.jerome.cloudns.asia
+        description: Dashboards for the SRE practice lab
+
+    - Jaeger:
+        icon: jaeger.png
+        href: https://jaeger.lab.jerome.cloudns.asia
+        description: Distributed tracing (SRE practice lab)
+
+    - API Gateway:
+        icon: si-springboot
+        href: https://api.lab.jerome.cloudns.asia
+        description: Spring Petclinic front door (SRE practice lab)
