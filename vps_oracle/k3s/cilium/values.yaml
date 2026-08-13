@@ -15,11 +15,36 @@ ipam:
 extraEnv:
   - name: TZ
     value: "Asia/Hong_Kong"
+# Sized off observed idle usage (agent ~30m/171Mi, everything else single-digit
+# m / tens of Mi) with headroom for bursts. Previously unset on every
+# kube-system/Cilium component, meaning the CNI had no ceiling at all.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+envoy:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
 operator:
   replicas: 1
   extraEnv:
     - name: TZ
       value: "Asia/Hong_Kong"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
 hubble:
   enabled: true
   relay:
@@ -27,9 +52,31 @@ hubble:
     extraEnv:
       - name: TZ
         value: "Asia/Hong_Kong"
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
   ui:
     enabled: true
+    frontend:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
     backend:
       extraEnv:
         - name: TZ
           value: "Asia/Hong_Kong"
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
