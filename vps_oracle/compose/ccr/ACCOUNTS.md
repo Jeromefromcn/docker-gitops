@@ -8,7 +8,7 @@
 
 - provider 切换改的是动态 `.env` 里的 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`（走 CCR 时这两行覆盖 OAuth）。
 - 账号绑定改的是**静态 `.envrc`** 里的 `CLAUDE_CONFIG_DIR`（指向各自的配置目录）。
-- 两者写在不同的文件、不同的层：`.envrc` 永远静态（账号是目录的结构属性），`.env` 才被 UI 改写（provider 是可切的）。所以 **provider-switch UI 不用改**。
+- 两者写在不同的文件、不同的层：`.envrc` 永远静态（账号是目录的结构属性），`.env` 才被 UI 改写（provider 是可切的）。所以 **switchboard UI 不用改**。
 
 ## 布局（主账号零改动，只给第二个账号开独立目录）
 
@@ -72,12 +72,12 @@ source_env_if_exists /home/ubuntu/.claude-provider/carol.env
 EOF
 touch /home/ubuntu/.claude-provider/carol.env
 cd ~/carol && direnv allow && claude login
-# 再去 status.GROUPS 登记 carol + 重建 provider-switch（见 ../README.md「加一个新分组」）
+# 再去 switchboard 里登记 carol-ccr 开关 + 重建 switchboard（见 ../README.md「加一个新分组」）
 ```
 
 ## 可选：UI 实时切账号（通常没必要）
 
-若想在**同一个目录**里用 UI 来回切账号（而非靠 cd），得改 provider-switch 让它 toggle `CLAUDE_CONFIG_DIR` 在两个预登录的 configDir 之间——但这要求两个 configDir 都先 `claude login` 好，且 provider-switch 得改写 `.envrc`（静态文件），会触发 direnv 重新 `allow`，和 README 里「`.envrc` 必须静态」那条原则冲突。目录隔离本身已经够用，不推荐。
+若想在**同一个目录**里用 UI 来回切账号（而非靠 cd），得改 switchboard 让它 toggle `CLAUDE_CONFIG_DIR` 在两个预登录的 configDir 之间——但这要求两个 configDir 都先 `claude login` 好，且 switchboard 得改写 `.envrc`（静态文件），会触发 direnv 重新 `allow`，和 README 里「`.envrc` 必须静态」那条原则冲突。目录隔离本身已经够用，不推荐。
 
 ## 验证
 
