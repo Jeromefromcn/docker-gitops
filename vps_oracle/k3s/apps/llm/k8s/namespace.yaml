@@ -10,7 +10,7 @@ metadata:
   namespace: llm
 spec:
   hard:
-    requests.cpu: "2"
-    requests.memory: 4Gi
-    limits.cpu: "5"
-    limits.memory: 13Gi
+    requests.cpu: "1"
+    requests.memory: 3Gi
+    limits.cpu: "4"
+    limits.memory: 12.5Gi

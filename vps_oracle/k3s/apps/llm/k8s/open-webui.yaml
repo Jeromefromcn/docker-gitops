@@ -59,11 +59,11 @@ spec:
               mountPath: /app/backend/data
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
+              cpu: 100m
+              memory: 512Mi
             limits:
-              cpu: "1"
-              memory: 2Gi
+              cpu: 300m
+              memory: 1.5Gi
       volumes:
         - name: data
           persistentVolumeClaim:
