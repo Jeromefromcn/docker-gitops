@@ -7,6 +7,7 @@ Every call re-reads switches.ini and re-runs the scripts — nothing here is
 cached, by design (the UI's whole point is to never show a stale state).
 """
 import configparser
+import fcntl
 import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
@@ -68,3 +69,23 @@ def scan_all(switches, switches_dir=None):
             lambda s: (s["id"], check_status(s["id"], switches_dir)), switches,
         )
     return dict(pairs)
+
+
+def toggle(switch_id, switches_dir=None):
+    if switches_dir is None:
+        switches_dir = SWITCHES_DIR
+    lock_path = _script_path(switch_id, ".lock", switches_dir)
+    with open(lock_path, "a+") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        status = check_status(switch_id, switches_dir)
+        if status["state"] == "error":
+            return False, "status check failed; refusing to toggle an unknown state"
+        action = "off.sh" if status["state"] == "on" else "on.sh"
+        path = _script_path(switch_id, action, switches_dir)
+        try:
+            result = subprocess.run(
+                [path], capture_output=True, text=True, timeout=ACTION_TIMEOUT,
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            return False, str(exc)
+        return result.returncode == 0, result.stderr
