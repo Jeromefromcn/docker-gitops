@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: visits-service
+  namespace: lab-environment
+  labels:
+    app: visits-service
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: visits-service
+  template:
+    metadata:
+      labels:
+        app: visits-service
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: visits-service
+          image: ops-lab/visits-service:dev
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            - name: SPRING_CLOUD_CONSUL_HOST
+              value: "consul"
+            - name: SPRING_CLOUD_CONSUL_PORT
+              value: "8500"
+          ports:
+            - containerPort: 8082
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: visits-service
+  namespace: lab-environment
+spec:
+  selector:
+    app: visits-service
+  ports:
+    - port: 8082
+      targetPort: 8082

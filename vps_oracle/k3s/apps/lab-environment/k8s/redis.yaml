@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: lab-environment
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 150m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: lab-environment
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379

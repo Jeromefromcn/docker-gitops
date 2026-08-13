@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consul
+  namespace: lab-environment
+  labels:
+    app: consul
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: consul
+  template:
+    metadata:
+      labels:
+        app: consul
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: consul
+          image: hashicorp/consul:1.19
+          args:
+            - agent
+            - -dev
+            - -client=0.0.0.0
+            - -ui
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+          ports:
+            - containerPort: 8500
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: consul
+  namespace: lab-environment
+spec:
+  type: NodePort
+  selector:
+    app: consul
+  ports:
+    - port: 8500
+      targetPort: 8500
+      nodePort: 30092

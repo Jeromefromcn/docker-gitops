@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres
+  namespace: lab-environment
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: lab-environment
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: postgres
+          image: postgres:16
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            - name: POSTGRES_USER
+              value: "petclinic"
+            - name: POSTGRES_PASSWORD
+              value: "petclinic"
+            - name: POSTGRES_DB
+              value: "postgres"
+            - name: POSTGRES_MULTIPLE_DATABASES
+              value: "customers,vets,visits"
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d/init-multiple-databases.sh
+              subPath: init-multiple-databases.sh
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres
+        - name: init-script
+          configMap:
+            name: postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: lab-environment
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

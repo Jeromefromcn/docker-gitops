@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-toolkit
+  namespace: lab-environment
+  labels:
+    app: mcp-toolkit
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mcp-toolkit
+  template:
+    metadata:
+      labels:
+        app: mcp-toolkit
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: mcp-toolkit
+          image: ops-lab/mcp-toolkit:dev
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            - name: CONSUL_URL
+              value: "http://consul:8500"
+            - name: PROMETHEUS_URL
+              value: "http://prometheus:9090"
+            - name: LOKI_URL
+              value: "http://loki:3100"
+            - name: JAEGER_URL
+              value: "http://jaeger:16686"
+          ports:
+            - containerPort: 8765
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-toolkit
+  namespace: lab-environment
+spec:
+  type: NodePort
+  selector:
+    app: mcp-toolkit
+  ports:
+    - port: 8765
+      targetPort: 8765
+      nodePort: 30096
