@@ -27,16 +27,20 @@ class SwitchboardTestCase(unittest.TestCase):
         self.switches_dir = os.path.join(self.tmp.name, "switches")
         os.makedirs(self.switches_dir)
         self.config_path = os.path.join(self.tmp.name, "switches.ini")
+        self.lock_dir = os.path.join(self.tmp.name, "locks")
 
         self.original_config_path = config.CONFIG_PATH
         self.original_switches_dir = config.SWITCHES_DIR
+        self.original_lock_dir = config.LOCK_DIR
         config.CONFIG_PATH = self.config_path
         config.SWITCHES_DIR = self.switches_dir
+        config.LOCK_DIR = self.lock_dir
         self.addCleanup(self._restore_config)
 
     def _restore_config(self):
         config.CONFIG_PATH = self.original_config_path
         config.SWITCHES_DIR = self.original_switches_dir
+        config.LOCK_DIR = self.original_lock_dir
 
     def _write_ini(self, content):
         with open(self.config_path, "w") as f:
