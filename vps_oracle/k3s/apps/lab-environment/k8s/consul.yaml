@@ -26,6 +26,12 @@ spec:
             - -dev
             - -client=0.0.0.0
             - -ui
+            # Without this, GET /v1/agent/metrics?format=prometheus 200s but
+            # returns no prometheus_* series (telemetry is off by default),
+            # and prometheus.yml's consul job scrapes a path that doesn't
+            # exist at all otherwise — see configmaps.yaml.
+            - -hcl
+            - 'telemetry { prometheus_retention_time = "24h" }'
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
