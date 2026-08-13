@@ -94,3 +94,16 @@ class TestCheckStatus(unittest.TestCase):
             self._switch_dir(tmp, "demo")
             result = config.check_status("demo", switches_dir=tmp)
             self.assertEqual(result, {"state": "error", "detail": ""})
+
+
+class TestScanAll(unittest.TestCase):
+    def test_scans_every_switch_and_keys_by_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for switch_id, exit_code in [("a", "0"), ("b", "1")]:
+                d = os.path.join(tmp, switch_id)
+                os.makedirs(d)
+                _write_script(os.path.join(d, "status.sh"), f"#!/bin/sh\nexit {exit_code}\n")
+            switches = [{"id": "a"}, {"id": "b"}]
+            scans = config.scan_all(switches, switches_dir=tmp)
+            self.assertEqual(scans["a"]["state"], "on")
+            self.assertEqual(scans["b"]["state"], "off")
