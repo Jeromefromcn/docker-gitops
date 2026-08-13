@@ -163,3 +163,11 @@ curl -sS -X POST http://npm:81/api/nginx/proxy-hosts -H \"Authorization: Bearer 
 > 为什么 `forward_host` 是容器名 `switchboard` 而不是 IP：switchboard 和 NPM 都在 `proxy` 网络上，docker 内嵌 DNS 解析容器名。只有 k3s NodePort 那类宿主机服务才需要填宿主机内网 IP `10.0.0.95`（见根 README 的「反代到 k3s NodePort」坑）。
 >
 > 旧的 `provider.jerome.cloudns.asia` proxy host 和证书在完成 Manual Follow-up 的 NPM 切换后需要在 NPM 里手动删除/停用（仓库里没有对应的删除 API 调用记录）。
+
+## provider-switch → switchboard 首次部署收尾清单
+
+`provider-switch` 改名/重写成 `switchboard` 之后，几件一次性的人工收尾事项：
+
+1. **先拷贝 `.env`**：`vps_oracle/compose/provider-switch/.env`（gitignored，装着 `CCR_CLIENT_TOKEN`）不会随 `git mv` 自动出现在 `vps_oracle/compose/switchboard/.env`——部署前手动拷贝一份，否则 `docker compose up -d --build` 会因为缺 `env_file` 直接失败。
+2. **切换完成后清理旧容器/镜像**：`provider-switch` 的容器和镜像不会自动消失，`docker compose -p provider-switch down` 之后确认 `docker images` 里旧镜像也删掉；旧目录下残留的 `.env`、`__pycache__/` 是孤儿文件，一并清掉。
+3. **清理旧锁文件**：`/home/ubuntu/.claude-provider/jerome.env.lock`、`/home/ubuntu/.claude-provider/bridget.env.lock`（旧 `status.py` 把锁放在 `env_path + ".lock"`）切到 switchboard 后不会再被用到——新引擎的锁改放到 `LOCK_DIR`（默认 `/tmp/switchboard-locks`）。这两个旧文件是孤儿，可以手动删掉。
