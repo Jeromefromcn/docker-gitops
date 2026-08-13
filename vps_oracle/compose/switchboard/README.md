@@ -1,5 +1,14 @@
-# vps_oracle/compose/provider-switch
+# vps_oracle/compose/switchboard
 
-切 Claude Code 后端 provider 的小 HTTP UI（单文件 stdlib，`app.py` + `status.py`）。挂在 `proxy` 网络上，NPM 反代成 `https://provider.jerome.cloudns.asia`（access list=self-only）。每次打开都实时重扫两组的 `.env` 状态 + 探测 CCR 可达性，点按钮原子改写 `/home/ubuntu/.claude-provider/<组>.env`。
+通用的、配置驱动的开关 UI（stdlib，`app.py` + `config.py`）。挂在 `proxy` 网络上，NPM 反代成 `https://switchboard.jerome.cloudns.asia`（access list=self-only）。
 
-整个分组切换系统（direnv + 分组 env + CCR + 本 UI + NPM）的完整文档、加新分组的步骤、四个坑、回滚等，见 [`../ccr/README.md`](../ccr/README.md)。
+引擎本身不知道任何具体开关是什么——它只读 `switches.ini` 拿到开关清单，对每个开关的 `switches/<id>/{status,on,off}.sh` 三个脚本发号施令：`GET /` 现场跑一遍每个开关的 `status.sh`（不缓存），`POST /toggle` 按当前状态跑 `on.sh` 或 `off.sh`。新增/删除开关只需要加/删一个 `switches/<id>/` 目录 + 三个脚本 + `switches.ini` 里的一个 section，不需要改 `app.py`/`config.py`。设计细节见 [`../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md`](../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md)。
+
+当前登记的开关：
+
+| id | 说明 |
+|---|---|
+| `jerome-ccr` | jerome 组的 Claude provider 切换（Official ↔ CCR/智谱） |
+| `bridget-ccr` | bridget 组的 Claude provider 切换（Official ↔ CCR/智谱） |
+
+这两个开关所属的整个分组切换系统（direnv + 分组 env + CCR + 本 UI + NPM）的完整文档、加新分组的步骤、已知的坑、回滚等，见 [`../ccr/README.md`](../ccr/README.md)。
