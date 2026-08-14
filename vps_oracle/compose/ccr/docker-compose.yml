@@ -18,6 +18,10 @@ services:
     environment:
       TZ: "Asia/Hong_Kong"
       CCR_PUBLIC_BASE_URL: "http://127.0.0.1:3458"
+      # 让容器内所有 node 进程（core server、gateway child 等）都加载 SSE delta
+      # 合併中间件（/data 是持久卷）。Zhipu 等上游按 token 粒度发 SSE delta，
+      # 逐事件转发会打爆 VS Code 扩展的远程渲染管线，见 sse-coalesce.cjs 头注。
+      NODE_OPTIONS: "--require /data/.claude-code-router/sse-coalesce.cjs"
     ports:
       # 例外：claude 进程跑在宿主机上、不在容器里，够不到 proxy 网络，只能发布到宿主机端口。
       # 两个端口都只绑 127.0.0.1，不对外暴露；管理面板(3458)如需从别的机器访问，走 SSH 端口转发。
@@ -31,6 +35,10 @@ services:
       - "127.0.0.1:3458:8080"   # management UI/RPC
     volumes:
       - ccr-data:/data   # 装 SQLite 配置 + API key + 日志，属于敏感状态，故意不用仓库内可见的 bind mount
+      # SSE delta 合併中间件代码已入库，只读挂载到 /data 随仓库走版本控制。
+      # core 每次启动会重建 gateway-proxy-preload.cjs，所以中间件不走 preload，
+      # 而是经上面 NODE_OPTIONS --require 直挂（模块加载时自调用 install()）。
+      - ./sse-coalesce.cjs:/data/.claude-code-router/sse-coalesce.cjs:ro
     networks:
       - proxy
 
