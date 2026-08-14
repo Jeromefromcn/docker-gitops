@@ -12,9 +12,11 @@
 
 | id | 说明 |
 |---|---|
-| `jerome-ccr` | jerome 组的 Claude provider 切换（Official ↔ CCR/智谱） |
-| `bridget-ccr` | bridget 组的 Claude provider 切换（Official ↔ CCR/智谱） |
-| `evidence-ccr` | evidence 组的 Claude provider 切换（Official ↔ CCR/智谱） |
+| `jerome-ccr` | jerome 组的 Claude provider 切换（Official ↔ CCR） |
+| `bridget-ccr` | bridget 组的 Claude provider 切换（Official ↔ CCR） |
+| `evidence-ccr` | evidence 组的 Claude provider 切换（Official ↔ CCR） |
+
+> CCR = [claude-code-router](https://github.com/musistudio/claude-code-router) 路由网关，可路由到**任意** OpenAI 兼容 provider（智谱 GLM、DeepSeek、Qwen……）。智谱只是当前的上游配置，不是 CCR 本身；换上游在 CCR 管理面板改 provider 即可，CCR 开关不用动（详见 [`../ccr/README.md`](../ccr/README.md)）。
 | `jerome-account` | jerome 组的 Claude 订阅账号切换（Jerome ↔ Charles，`CLAUDE_CONFIG_DIR` 指针；正交于 provider 切换） |
 | `bridget-account` | bridget 组的 Claude 订阅账号切换（Jerome ↔ Charles，`CLAUDE_CONFIG_DIR` 指针；正交于 provider 切换） |
 | `evidence-account` | evidence 组的 Claude 订阅账号切换（Jerome ↔ Charles，`CLAUDE_CONFIG_DIR` 指针；正交于 provider 切换） |

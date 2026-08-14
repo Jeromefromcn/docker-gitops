@@ -114,6 +114,8 @@ cd ~/jerome && direnv allow
 | Charles | Official | Charles 官方（环境共享，记忆/历史全新） |
 | Charles | CCR | 智谱（账号无关） |
 
+> 注：provider=CCR 时走 claude-code-router 网关（可路由到任意 OpenAI 兼容 provider）；表中「智谱」是当前上游路由目标，不是 CCR 本身。
+
 **坑**：切换只对新开的 session 生效（同 provider 切换）；L1 下 Charles 的记忆/历史是独立的，不会污染 Jerome，也不会反向被 Jerome 污染。
 
 ## 验证
