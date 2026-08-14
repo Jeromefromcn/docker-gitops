@@ -1,6 +1,8 @@
 # vps_oracle/compose/ccr
 
-用 [claude-code-router (CCR)](https://github.com/musistudio/claude-code-router) 把 Claude Code 的后端模型按「项目分组」在**官方订阅**和**第三方 provider（智谱 GLM）**之间切换，并保证**各组互相隔离**——切某一组绝不能影响另一组。
+用 [claude-code-router (CCR)](https://github.com/musistudio/claude-code-router) 把 Claude Code 的后端模型按「项目分组」在**官方订阅**和**第三方 provider**之间切换，并保证**各组互相隔离**——切某一组绝不能影响另一组。
+
+> **CCR 是路由网关，不是「智谱」的代名词。** CCR 可以把 claude 的请求路由到**任意** OpenAI 兼容 provider（智谱 GLM、DeepSeek、Qwen……）。本仓库当前部署把上游配成了智谱 GLM，所以下文凡是写「智谱」的地方都指**当前的路由目标**，不是 CCR 本身。要换上游（比如换别的模型）在 CCR 管理面板改 provider 配置即可，switchboard 的 CCR 开关、本 README 的架构都不用动。
 
 本目录放 CCR 本体；配套的切换 UI 在 `../switchboard/`（一个通用的配置驱动开关框架，jerome-ccr/bridget-ccr 只是其中两个开关）。这份 README 是整个分组切换系统的总文档。
 
