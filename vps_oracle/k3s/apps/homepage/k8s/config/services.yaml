@@ -70,6 +70,11 @@
         href: https://evidence.jerome.cloudns.asia
         description: Evidence OS marketing site
 
+    - Plans:
+        icon: si-googlemaps
+        href: https://plans.jerome.cloudns.asia
+        description: Personal trip and activity plans
+
 - Lab:
     - Consul:
         icon: consul.png
