@@ -1,0 +1,22 @@
+services:
+  plans:
+    image: plans:c945f2e
+    container_name: plans
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    networks:
+      - proxy
+    # NPM 反代：plans.jerome.cloudns.asia → plans:80，access list=self-only。
+    # 配置方法见 README.md 的「给服务接入 NPM 反代」一节。
+
+networks:
+  proxy:
+    external: true
