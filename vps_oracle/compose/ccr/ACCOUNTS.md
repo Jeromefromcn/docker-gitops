@@ -60,7 +60,7 @@ claude login            # OAuth 存进 ~/.claude-configs/bridget，绑死账号B
 
 3. **`CLAUDE_CONFIG_DIR` 设了仍可能在项目目录留下空 `.claude/`（[#3833](https://github.com/anthropics/claude-code/issues/3833)）。** 只是外观问题，不影响隔离——真正生效的配置仍来自 configDir。
 
-4. **账号是静态的，不像 provider 能 UI 实时切。** 切账号 = cd 到另一个目录（direnv 换 configDir）。已经在跑的 session 环境已定型，开新 session 才生效（和 provider 切换同理）。
+4. **账号默认是静态的，不像 provider 能 UI 实时切。** 切账号 = cd 到另一个目录（direnv 换 configDir）。已经在跑的 session 环境已定型，开新 session 才生效（和 provider 切换同理）。**例外：`jerome`/`bridget`/`evidence` 组各加了 `-account` 开关，可在同一个目录里用 UI 实时切账号**（见下文「UI 实时切账号」）。
 
 ## 加第三个账号
 
@@ -75,18 +75,56 @@ cd ~/carol && direnv allow && claude login
 # 再去 switchboard 里登记 carol-ccr 开关 + 重建 switchboard（见 ../README.md「加一个新分组」）
 ```
 
-## 可选：UI 实时切账号（通常没必要）
+## UI 实时切账号（CLAUDE_CONFIG_DIR 动态切，jerome/bridget/evidence 已实现）
 
-若想在**同一个目录**里用 UI 来回切账号（而非靠 cd），得改 switchboard 让它 toggle `CLAUDE_CONFIG_DIR` 在两个预登录的 configDir 之间——但这要求两个 configDir 都先 `claude login` 好，且 switchboard 得改写 `.envrc`（静态文件），会触发 direnv 重新 `allow`，和 README 里「`.envrc` 必须静态」那条原则冲突。目录隔离本身已经够用，不推荐。
+**在同一个目录里**用 switchboard 在多个已登录的订阅账号之间切（不用靠 cd）。和 provider 切换正交：provider 切的是 `.claude-provider/<组>.env` 里的 `ANTHROPIC_*`，账号切的是 `.claude-account/<组>.env` 里的 `CLAUDE_CONFIG_DIR`。
+
+关键：**不改 `.envrc`**。`.envrc` 保持静态，只多 `source_env_if_exists` 一行指向 `.claude-account/<组>.env`（一次性 `direnv allow` 即可，之后永远不用再 allow）。switchboard 的 `<组>-account` 开关改写这个指针文件——绕开了早期「得改写 .envrc、会触发重新 allow」的坑，所以目录隔离之外又多了一条可行的 UI 切法。
+
+一次性设定（以 jerome 为例）：
+
+```bash
+# 1. 建 Charles 的 configDir + 登录一次（互动式 OAuth，只能手动）
+mkdir -p ~/.claude-configs/sub2
+CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/sub2 claude login
+
+# 2. 选融合度。L1「同环境」：共享全局 CLAUDE.md/settings/plugins/hooks/scripts，
+#    但记忆和 session 历史各自独立（不共享 .credentials.json 和 projects/）
+cd ~/.claude-configs/sub2
+for t in CLAUDE.md settings.json plugins hooks scripts; do ln -s ~/.claude/$t .; done
+
+# 3. 建指针文件目录（switchboard 容器只 mount 这个目录）
+mkdir -p ~/.claude-account
+
+# 4. 目标目录的 .envrc 加一行 + 一次性 allow
+#    ~/jerome/.envrc 追加：source_env_if_exists /home/ubuntu/.claude-account/jerome.env
+cd ~/jerome && direnv allow
+```
+
+开关侧（已在 switchboard 登记 `jerome-account` / `bridget-account` / `evidence-account`，group=CC Account）：`on.sh` 写 `export CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/sub2`；`off.sh` 清空（回默认 `~/.claude` = Jerome）；`status.sh` 只以指针档内容判定三态——Charles / Jerome（默认 `~/.claude`）/ 未知值=ERROR（契约：exit 0=on / 2=error / 其余=off）。**不做「目标 configDir 是否已登录」的检查**：容器刻意不 mount `~/.claude-configs`，看不到 `.credentials.json`，也无法验证——登录是设定期的前提（见上面步骤 1）。
+
+**安全**：switchboard 容器只 mount `.claude-account/`，**不 mount** `~/.claude` 或 `~/.claude-configs/`（那两处含 `.credentials.json`）。开关脚本永远不碰 configDir 本身。
+
+**结果矩阵**（`~/jerome/` 内，`~/bridget/` / `~/evidence/` 同理）：
+
+| account 开关 | provider 开关 | 效果 |
+|---|---|---|
+| Jerome | Official | Jerome 官方 |
+| Jerome | CCR | 智谱 |
+| Charles | Official | Charles 官方（环境共享，记忆/历史全新） |
+| Charles | CCR | 智谱（账号无关） |
+
+**坑**：切换只对新开的 session 生效（同 provider 切换）；L1 下 Charles 的记忆/历史是独立的，不会污染 Jerome，也不会反向被 Jerome 污染。
 
 ## 验证
 
 ```bash
 # 在 bridget 某项目目录里，确认 configDir 注入对了（用真 claude 同款 wrapper）
+# 先用 UI 把 bridget-account 切到 Charles，再：
 cd ~/bridget/any-project
 /home/ubuntu/.claude/claude-direnv-wrapper.sh env | grep CLAUDE_CONFIG_DIR
-# 应输出 CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/bridget
+# 应输出 CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/sub2（Charles）
 
-# 切到 jerome 目录应没有这一行（走默认 ~/.claude）
-cd ~/jerome && /home/ubuntu/.claude/claude-direnv-wrapper.sh env | grep CLAUDE_CONFIG_DIR || echo '(unset = 默认 ~/.claude，账号A)'
+# 切回 Jerome（bridget-account = off）应没有这一行（走默认 ~/.claude）
+cd ~/bridget && /home/ubuntu/.claude/claude-direnv-wrapper.sh env | grep CLAUDE_CONFIG_DIR || echo '(unset = 默认 ~/.claude，Jerome)'
 ```

@@ -42,6 +42,9 @@ services:
       - .env
     volumes:
       - /home/ubuntu/.claude-provider:/home/ubuntu/.claude-provider
+      # jerome-account 開關寫的 CLAUDE_CONFIG_DIR 指標檔。只 mount 指標檔目錄，
+      # 絕不 mount ~/.claude 或 ~/.claude-configs——那兩處含 .credentials.json（登入 token）。
+      - /home/ubuntu/.claude-account:/home/ubuntu/.claude-account
     # NPM 反代：switchboard.jerome.cloudns.asia → switchboard:8091，access list=self-only。
     # 配置方法见 vps_oracle/compose/npm/README.md 的自动化 API 一节。
 
