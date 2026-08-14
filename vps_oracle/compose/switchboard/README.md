@@ -14,5 +14,6 @@
 |---|---|
 | `jerome-ccr` | jerome 组的 Claude provider 切换（Official ↔ CCR/智谱） |
 | `bridget-ccr` | bridget 组的 Claude provider 切换（Official ↔ CCR/智谱） |
+| `evidence-ccr` | evidence 组的 Claude provider 切换（Official ↔ CCR/智谱） |
 
 这两个开关所属的整个分组切换系统（direnv + 分组 env + CCR + 本 UI + NPM）的完整文档、加新分组的步骤、已知的坑、回滚等，见 [`../ccr/README.md`](../ccr/README.md)。

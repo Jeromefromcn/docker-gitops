@@ -48,6 +48,7 @@ direnv 怎么进 claude 进程的两条路：
 |---|---|---|---|
 | `jerome` | `~/jerome/` | 官方订阅 | 需要 Opus/Sonnet 的主力项目组 |
 | `bridget` | `~/bridget/` | CCR（智谱） | 可以降级到 GLM 的预算组 |
+| `evidence` | `~/evidence/` | 官方订阅 | evidence 项目组 |
 
 ## 加一个新分组（复制即可）
 
