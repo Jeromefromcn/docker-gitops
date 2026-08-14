@@ -74,7 +74,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Memory usage above 70% for 15 minutes on vps_oracle"
+          summary: "Memory usage above 80% for 15 minutes on vps_oracle"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -94,7 +94,7 @@ groups:
               conditions:
                 - evaluator:
                     type: gt
-                    params: [70]
+                    params: [80]
 
       - uid: memory_critical
         title: Memory Usage Critical
@@ -104,7 +104,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Memory usage above 85% for 10 minutes on vps_oracle"
+          summary: "Memory usage above 90% for 10 minutes on vps_oracle"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -124,7 +124,7 @@ groups:
               conditions:
                 - evaluator:
                     type: gt
-                    params: [85]
+                    params: [90]
 
       - uid: disk_warning
         title: Disk Usage Warning
