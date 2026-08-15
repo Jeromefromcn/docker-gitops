@@ -35,6 +35,6 @@ spec:
         deny:
           conditions:
             all:
-              - key: "{{ vulnreports[?report.summary.criticalCount > `0`] | length(@) }}"
+              - key: "{{ vulnreports[].report.vulnerabilities[] | [?severity=='CRITICAL' && fixedVersion!=''] | length(@) }}"
                 operator: GreaterThan
                 value: 0
