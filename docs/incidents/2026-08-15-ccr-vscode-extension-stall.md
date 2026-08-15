@@ -128,7 +128,7 @@
 ## 7. 遗留问题 / 后续
 
 - 扩展本身「UI 渲染慢不应拖死协议通道、应对流事件批量渲染」仍是上游缺陷，值得报 github.com/anthropics/claude-code（附本 case 的事件粒度数据）。
-- 已提交：无。`docker-gitops` 工作区改动 = `docker-compose.yml`（NODE_OPTIONS + bind mount）+ 新增 `sse-coalesce.cjs`。**未提交**。
+- 已提交：c0f970c（`docker-compose.yml` 的 NODE_OPTIONS + bind mount + 新增 `sse-coalesce.cjs`）。
 - 容器已重建生效；镜像重建后同样有效（env 在仓库、中间件在 /data 卷 + 只读挂载）。
 - 后记（2026-08-15）：该 bug 造成的会话堆积于当天上午引发服务器资源尖峰（4 核机器 5 分钟负载均值 38.7），排查与处置见本目录 [2026-08-15-vscode-sessions-resource-spike.md](2026-08-15-vscode-sessions-resource-spike.md)。
 
@@ -155,8 +155,35 @@ docker exec ccr sh -c 'echo $NODE_OPTIONS'
 #   CCR_SSE_COALESCE_MS=0  → 禁用；CCR_SSE_COALESCE_MS=100 → 更大窗口
 ```
 
+## 9. 后记二（同日下午）：合并窗口调优，合并率 3-5x → 23x
+
+修复部署后小时级卡死消失，但残留症状：claude-code-notify 推送准时到手，扩展显示提问选项仍晚 ~3 分钟（修复前几十分钟）。
+
+### 9.1 定位：瓶颈位置没变，是合并率不够
+
+以 2026-08-15 12:57（HKT）一次 AskUserQuestion 为证据（oss-devrel session `d1694d49`）：
+
+- transcript 里 AskUserQuestion 于 **04:57:08.748Z** 落地，与推送时间 12:57:08 秒级吻合 → provider→ccr→CLI 全链路无延迟；
+- 下一条助手记录 05:01:27Z → **~3 分钟全在扩展侧消化积压**：那轮最后两个响应合并后仍剩 ~534 个事件（stats `out=419` + `out=115`）× ~250-400ms/事件；
+- stats 全量抽样：40ms 窗口的实际合并率只有 **3-5x**（`in=3900 out=454`、`in=1893 out=495`）。原因：Zhipu 每 token 一个 delta、间隔 25-50ms，40ms 窗口常只抓到 1-2 个，与官方 API 粒度仍差 1-2 个数量级。
+
+### 9.2 改动（commit b3046bb）
+
+1. 全局窗口 40→200ms（compose `CCR_SSE_COALESCE_MS`）；
+2. `sse-coalesce.cjs` 支持 per-type 窗口：`CCR_SSE_COALESCE_THINKING_MS=500`（thinking_delta 占事件 ~99% 且显示平滑度无关紧要）、`_TEXT_MS=120`、`_INPUT_JSON_MS`（未设回落全局）。**per-type 未设或 ≤0 一律回落全局**——不允许 per-type 单独为 0，否则没有 flush 定时器会把数据滞留到流结束；`CCR_SSE_COALESCE_MS=0` 仍是整体禁用的回滚开关。合并器仍是单 pending 槽 + 单 timer 的保序设计，只是 timer 时长按 pending 的 delta 类型解析（`makeWindowResolver`）；
+3. 栈 README 补「SSE 合并中间件」文档段，含一个坑：**改 `.cjs` 内容不会触发容器重建**（bind mount 不参与 hash），而 `--require` 只在进程启动时加载——必须 `docker compose up -d --force-recreate`。
+
+一次性验证脚本（19 项断言：合并载荷==拼接、thinking/text/stop 顺序、ping 丢弃、index 切换立即 flush、背压 pause/resume、回落语义）全过，脚本留在 `/tmp/test-coalesce-pertype.cjs`（未入库）。
+
+### 9.3 结果与剩余
+
+- 部署后线上实测：`in=719 out=31`（~23x）、`in=337 out=14`（~24x），达到 ≥15x 目标；
+- 待观察：下次扩展 AskUserQuestion，推送→选项应秒级弹出；
+- 天花板仍在扩展每事件重渲染（上游缺陷）：本地只能靠减少事件数逼近。长会话适时 `/compact` 也能降低每事件成本。
+- 上游已报：anthropics/claude-code issue [#86854](https://github.com/anthropics/claude-code/issues/86854)（2026-08-15 14:21 HKT）；报告正文、查重结果与 #81425 评论草稿见 `../misc/2026-08-15-upstream-report-claude-vscode-sse-rendering.md`。
+
 ## 附：本次修复的完整文件清单
 
-- 仓库（未提交）：`vps_oracle/compose/ccr/sse-coalesce.cjs`、`vps_oracle/compose/ccr/docker-compose.yml`
+- 仓库：`vps_oracle/compose/ccr/sse-coalesce.cjs`、`vps_oracle/compose/ccr/docker-compose.yml`
 - 容器卷 `/data/.claude-code-router/`：`sse-coalesce.cjs`（只读挂载）、`sse-coalesce-stats.log`（运行态，卷内）
 - 备份：`/data/.claude-code-router/gateway-proxy-preload.cjs.bak-20260815`（stock 原版，作对比用）
