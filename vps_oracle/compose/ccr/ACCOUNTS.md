@@ -54,7 +54,7 @@ claude login            # OAuth 存进 ~/.claude-configs/bridget，绑死账号B
    ln -s ~/.claude/settings.json .   # 想各账号各自改就复制而非软链
    ```
 
-   （`jerome` 走默认 `~/.claude`，不受影响。）
+   （`jerome` 走默认 `~/.claude`，不受影响。实际在用的 `sub2` 已做全盘镜像——见下文「UI 实时切账号」step 2，不用手动逐个链。）
 
 2. **VSCode 扩展有已知 bug（[#30538](https://github.com/anthropics/claude-code/issues/30538)）：扩展自己的 `environmentVariables` 设置不认 `CLAUDE_CONFIG_DIR`。** 但本仓库的注入路径不走那条——`claudeProcessWrapper` 在 shell 层 export 后再 `exec claude`，claude 进程从自己的环境里读到，应能绕开。**接好后务必在 VSCode 里验证账号是否切对**（终端路径不受此 bug 影响）。
 
@@ -88,10 +88,12 @@ cd ~/carol && direnv allow && claude login
 mkdir -p ~/.claude-configs/sub2
 CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/sub2 claude login
 
-# 2. 选融合度。L1「同环境」：共享全局 CLAUDE.md/settings/plugins/hooks/scripts，
-#    但记忆和 session 历史各自独立（不共享 .credentials.json 和 projects/）
-cd ~/.claude-configs/sub2
-for t in CLAUDE.md settings.json plugins hooks scripts; do ln -s ~/.claude/$t .; done
+# 2. 融合度（2026-08-16 起 sub2 已是全盘镜像，无需再手动链）。sub2 是 ~/.claude 的
+#    整盘镜像：除 .credentials.json（登录 token）和 .claude.json（账号 profile/准入缓存）
+#    两个文件保留本地外，其余全部软链到 ~/.claude——CLAUDE.md/settings/plugins/hooks/scripts
+#    之外，memory（projects/）、session 历史（sessions/、history.jsonl）、session-env、
+#    stats-cache 等全部共享。切账号 = 只换 token，环境/记忆/历史同一份。
+#    以后 ~/.claude 新增条目要记得补 ln -s，否则 Charles 侧读不到。
 
 # 3. 建指针文件目录（switchboard 容器只 mount 这个目录）
 mkdir -p ~/.claude-account
@@ -111,12 +113,12 @@ cd ~/jerome && direnv allow
 |---|---|---|
 | Jerome | Official | Jerome 官方 |
 | Jerome | CCR | 智谱 |
-| Charles | Official | Charles 官方（环境共享，记忆/历史全新） |
+| Charles | Official | Charles 官方（环境+记忆/历史与 Jerome 全共享，只换 token） |
 | Charles | CCR | 智谱（账号无关） |
 
 > 注：provider=CCR 时走 claude-code-router 网关（可路由到任意 OpenAI 兼容 provider）；表中「智谱」是当前上游路由目标，不是 CCR 本身。
 
-**坑**：切换只对新开的 session 生效（同 provider 切换）；L1 下 Charles 的记忆/历史是独立的，不会污染 Jerome，也不会反向被 Jerome 污染。
+**坑**：切换只对新开的 session 生效（同 provider 切换）。sub2 与 `~/.claude` 共享 memory/历史（同一份文件），所以**不要同时开两个账号的长 session**——memory、todos、`.claude.json` 这类共享文件是 last-writer-wins，并发写会互相覆盖（风险等同同一账号开两个终端）。`.claude.json` 保留本地的原因：它缓存账号 profile（email/套餐/rate-limit tier）和 model-access/eligibility，共享会让两个账号的准入缓存互相串号。
 
 ## 验证
 
