@@ -78,21 +78,10 @@ jobs:
           IMAGE_REF: ${{ env.REGISTRY }}/${{ matrix.name }}@${{ steps.build.outputs.digest }}
         run: cosign sign --yes "$IMAGE_REF"
 
-      - name: Make package public
-        # GITHUB_TOKEN-created packages default to private; the cluster pulls
-        # ghcr.io/jeromefromcn/* anonymously (no registry credentials), so
-        # match placeholder-hello's public visibility.
-        run: |
-          body='{"visibility":"public"}'
-          for ep in \
-            "user/packages/container/${{ matrix.name }}/visibility" \
-            "repos/Jeromefromcn/docker-gitops/packages/container/${{ matrix.name }}/visibility"; do
-            status=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Accept: application/vnd.github+json" \
-              -d "$body" "https://api.github.com/$ep")
-            echo "$ep -> $status"
-            if [ "$status" = "204" ] || [ "$status" = "200" ]; then exit 0; fi
-          done
-          echo "failed to set package visibility public" >&2
-          exit 1
+      # NOTE: GITHUB_TOKEN-created packages default to private. The cluster
+      # pulls ghcr.io/jeromefromcn/* anonymously, so each NEW package must be
+      # set public once in the GitHub web UI (package page -> Package settings
+      # -> Change visibility -> Public). The packages API returned 404 for the
+      # GITHUB_TOKEN on both /user/packages and /repos/... visibility
+      # endpoints (user-account repos have no repo-scoped packages endpoints),
+      # so this can't be automated from the workflow.
