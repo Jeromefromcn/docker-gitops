@@ -23,7 +23,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: relay
-          image: ghcr.io/jeromefromcn/vikunja-notify-relay:1.1.0
+          image: ghcr.io/jeromefromcn/vikunja-notify-relay@sha256:163e88a174aad5e477e475d8d5d4f2dea66f44de08ecf0ea0771ff24327214b7
           ports:
             - containerPort: 8080
           securityContext:
