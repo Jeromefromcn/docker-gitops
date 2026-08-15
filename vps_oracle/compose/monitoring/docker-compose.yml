@@ -37,8 +37,11 @@ services:
       TZ: "Asia/Hong_Kong"
     volumes:
       - /:/host:ro,rslave
+      # textfile collector：宿主 cron 写的 check-sync 指标（.prom）只读挂进来
+      - /etc/monitoring/node-exporter-textfile:/var/lib/node_exporter/textfile_collector:ro
     command:
       - '--path.rootfs=/host'
+      - '--collector.textfile.directory=/var/lib/node_exporter/textfile_collector'
     # 不用 network_mode: host: 牺牲网络吞吐指标精度换取部署简单,网络告警本来就不在这次范围内
 
   blackbox-exporter:
