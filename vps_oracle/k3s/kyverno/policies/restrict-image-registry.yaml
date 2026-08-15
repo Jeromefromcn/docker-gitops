@@ -15,11 +15,18 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/jeromefromcn/*"
+          # CI signs with cosign v3 keyless, which stores signatures as
+          # Sigstore bundles in OCI referrers (no legacy sha256-<digest>.sig
+          # tag). The default type "Cosign" only reads the legacy tag and
+          # fails with "no signatures found".
+          type: SigstoreBundle
           mutateDigest: false
           attestors:
             - entries:
                 - keyless:
-                    subject: "https://github.com/Jeromefromcn/docker-gitops/.github/workflows/*.yml@refs/heads/main"
+                    # keyless.subject is an exact match (no wildcards); use
+                    # subjectRegExp to cover every repo workflow.
+                    subjectRegExp: "^https://github\\.com/Jeromefromcn/docker-gitops/\\.github/workflows/[^/]+\\.yml@refs/heads/main$"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
