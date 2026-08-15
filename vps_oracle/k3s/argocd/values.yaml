@@ -10,6 +10,12 @@ global:
 # Sized off observed idle usage (controller ~21m/192Mi, everything else
 # single-digit m / tens of Mi) with headroom for sync/reconcile bursts.
 # Previously unset on every component, meaning nothing bounded them.
+#
+# Memory limit bumped 512Mi -> 1Gi 2026-08-15 (phase E): the controller
+# OOMKilled repeatedly once the Kyverno Application was added -- Kyverno's
+# ClusterPolicy/Policy CRDs carry an unusually large embedded OpenAPI
+# schema, and diffing/comparing that manifest set pushed steady-state
+# memory well past the old 512Mi ceiling.
 controller:
   env:
     - name: TZ
@@ -20,7 +26,7 @@ controller:
       memory: 256Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 1Gi
 repoServer:
   resources:
     requests:
