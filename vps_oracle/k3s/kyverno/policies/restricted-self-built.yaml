@@ -1,0 +1,27 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restricted-self-built
+spec:
+  validationFailureAction: Audit
+  rules:
+    - name: restricted-profile-self-built-workloads
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              selector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - placeholder-hello
+                      - vikunja-notify-relay
+      validate:
+        message: >-
+          Self-built workload {{ request.object.metadata.name }} does not
+          meet the Kubernetes restricted Pod Security profile.
+        podSecurity:
+          level: restricted
+          version: latest
