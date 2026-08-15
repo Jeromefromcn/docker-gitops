@@ -1,0 +1,31 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-vuln-scan-clean
+spec:
+  validationFailureAction: Audit
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: block-critical-fixable-cves
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      context:
+        - name: vulnreports
+          apiCall:
+            urlPath: "/apis/aquasecurity.github.io/v1alpha1/namespaces/{{request.object.metadata.namespace}}/vulnerabilityreports?labelSelector=trivy-operator.resource.name={{request.object.metadata.ownerReferences[0].name}}"
+            jmesPath: "items[]"
+      validate:
+        message: >-
+          Image has CRITICAL vulnerabilities with an available fix
+          (Trivy VulnerabilityReport {{ request.object.metadata.name }}).
+          Wait for a patched base image or fixed dependency, or add a
+          documented exception before this can deploy.
+        deny:
+          conditions:
+            all:
+              - key: "{{ vulnreports[?report.summary.criticalCount > `0`] | length(@) }}"
+                operator: GreaterThan
+                value: 0
