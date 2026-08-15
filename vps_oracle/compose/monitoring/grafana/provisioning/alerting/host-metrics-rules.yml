@@ -245,3 +245,249 @@ groups:
                 - evaluator:
                     type: gt
                     params: [2]
+
+      # Added 2026-08-15 after the vscode-server session pileup incident
+      # (docs/incidents/2026-08-15-vscode-sessions-resource-spike.md).
+      # Static CPU/mem/disk/load thresholds only caught the 11-minute ignition;
+      # nothing was watching the 20-hour accumulation. PSI, blocked-process count,
+      # swap, and the memory trend rule below close that gap.
+
+      - uid: io_pressure_warning
+        title: IO Pressure Warning
+        condition: B
+        for: 3m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "IO PSI 'some' above 20% for 3 minutes on vps_oracle (processes waiting on IO)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'rate(node_pressure_io_waiting_seconds_total[5m]) * 100'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [20]
+
+      - uid: io_pressure_critical
+        title: IO Pressure Critical
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: critical
+        annotations:
+          summary: "IO PSI 'full' above 15% for 2 minutes on vps_oracle (processes stalled on IO, load average will follow)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'rate(node_pressure_io_stalled_seconds_total[5m]) * 100'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [15]
+
+      - uid: memory_pressure_critical
+        title: Memory Pressure Critical
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory PSI 'full' above 5% for 2 minutes on vps_oracle (kernel hard-reclaiming page cache)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'rate(node_pressure_memory_stalled_seconds_total[5m]) * 100'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]
+
+      - uid: blocked_procs_warning
+        title: Blocked Processes Warning
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 3 processes in uninterruptible IO wait (D state) for 2 minutes on vps_oracle"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'node_procs_blocked'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [3]
+
+      - uid: swap_warning
+        title: Swap Usage Warning
+        condition: B
+        for: 15m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Swap usage above 50% for 15 minutes on vps_oracle"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: '100 * (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes))'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [50]
+
+      - uid: swap_critical
+        title: Swap Usage Critical
+        condition: B
+        for: 10m
+        noDataState: OK
+        labels:
+          severity: critical
+        annotations:
+          summary: "Swap usage above 80% for 10 minutes on vps_oracle"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: '100 * (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes))'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [80]
+
+      - uid: swap_absent_critical
+        title: Swap Absent
+        condition: B
+        for: 15m
+        noDataState: OK
+        labels:
+          severity: critical
+        annotations:
+          summary: "No swap configured on vps_oracle (SwapTotal is 0) - memory pressure will convert straight into an IO storm"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'node_memory_SwapTotal_bytes'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: eq
+                    params: [0]
+
+      - uid: memory_exhaustion_predicted_warning
+        title: Memory Exhaustion Predicted
+        condition: B
+        for: 30m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Available memory on vps_oracle projected to hit zero within 6 hours based on the last 6 hours' trend"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'predict_linear(node_memory_MemAvailable_bytes[6h], 6*3600)'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [0]
