@@ -372,15 +372,20 @@ groups:
                     type: gt
                     params: [3]
 
+      # 2026-08-16: swap level alone is a poor pressure signal on this host -
+      # the kernel proactively swaps idle anonymous pages (swappiness=60), so
+      # swap sits at ~50% while RAM is plentiful. Only alert when swap is high
+      # AND available memory is actually tight. (swappiness lowered to 10 so
+      # swap now stays near-empty in normal operation.)
       - uid: swap_warning
         title: Swap Usage Warning
-        condition: B
+        condition: D
         for: 15m
         noDataState: OK
         labels:
           severity: warning
         annotations:
-          summary: "Swap usage above 50% for 15 minutes on vps_oracle"
+          summary: "Swap usage above 50% while available memory below 15% for 15 minutes on vps_oracle"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -392,15 +397,30 @@ groups:
               instant: true
               expr: '100 * (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes))'
           - refId: B
-            datasourceUid: '__expr__'
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               refId: B
+              instant: true
+              expr: '100 * (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)'
+          - refId: C
+            datasourceUid: '__expr__'
+            model:
+              refId: C
+              type: math
+              expression: '$A > 50 && $B < 15'
+          - refId: D
+            datasourceUid: '__expr__'
+            model:
+              refId: D
               type: threshold
-              expression: A
+              expression: C
               conditions:
                 - evaluator:
                     type: gt
-                    params: [50]
+                    params: [0.5]
 
       - uid: swap_critical
         title: Swap Usage Critical
