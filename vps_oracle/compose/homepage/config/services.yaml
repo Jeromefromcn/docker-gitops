@@ -49,13 +49,6 @@
         container: open-webui
         server: my-docker
 
-    - SillyTavern:
-        icon: sillytavern.png
-        href: https://sillytavern.jerome.cloudns.asia
-        description: Roleplay / character chat frontend (llama.cpp)
-        container: sillytavern
-        server: my-docker
-
     - Dify:
         icon: si-dify
         href: https://dify.jerome.cloudns.asia
