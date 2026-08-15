@@ -15,6 +15,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/jeromefromcn/*"
+          mutateDigest: false
           attestors:
             - entries:
                 - keyless:
