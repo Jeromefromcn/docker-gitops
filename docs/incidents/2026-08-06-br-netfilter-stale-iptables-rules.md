@@ -14,7 +14,7 @@
 2. **這次任務**：Task 1 安裝 k3s，systemd unit 的 `ExecStartPre` 執行 `modprobe br_netfilter`——這是 Kubernetes 網路的標準前提條件，載入後連帶把全機共用的 `net.bridge.bridge-nf-call-iptables` 打開，效果是「連同一個 docker bridge 網路內部的容器互連流量，都要送去給 iptables 的 `raw`/`PREROUTING`、`FORWARD` 等 chain 評估」——這在此之前是不會發生的
 3. **使用者操作**：發現 `programming-learning-platform` 還有用，`docker compose up` 把它帶回來。這次 up 建立了一個全新的 bridge（`br-b951f3fb0958`），但 Docker 自己在稍早 `down` 掉舊網路時，沒有把它自己加在 `raw` table 裡的防 IP 偽造規則清乾淨——留下幾條指向已經不存在的舊 bridge 介面（`br-66885a1f7aad`）的殘留 `DROP` 規則。這些規則因為例外條件指向的介面已經不存在，「介面不等於一個不存在的東西」永遠成立，等於變成無條件擋掉所有送到這幾個容器 IP 的封包
 4. **使用者發現**：`up` 回來之後服務不可用——因為 `br_netfilter` 已經在第 2 步被打開了，第一次讓這批殘留規則真正發揮作用（在 `br_netfilter` 打開之前，這類殘留規則完全無害，純 bridge 內部流量根本不會被送進 `raw`/`PREROUTING` 去比對）
-5. **使用者操作**：嘗試重啟 docker daemon 來解決服務不可用的問題——**這個重啟沒有解決 `programming-learning-platform` 的問題**（殘留的 `raw` table 規則不會因為 daemon 重啟而被清掉，因為它們掛在已經不存在的介面名稱上，daemon 重啟不會主動去比對現存介面清單做這種清理），但**把 `npm`、`3x-ui` 等所有掛在 `proxy` 網路上的容器 IP 全部打亂重新分配了一次**——這正是後續一連串 NPM access list / 3x-ui 代理訪問不了問題的根因（詳見另一份文件 [INCIDENT-2026-08-06-proxy-access-ip-mismatch.md](INCIDENT-2026-08-06-proxy-access-ip-mismatch.md)，這裡不重複展開，只在因果鏈裡點出關聯）
+5. **使用者操作**：嘗試重啟 docker daemon 來解決服務不可用的問題——**這個重啟沒有解決 `programming-learning-platform` 的問題**（殘留的 `raw` table 規則不會因為 daemon 重啟而被清掉，因為它們掛在已經不存在的介面名稱上，daemon 重啟不會主動去比對現存介面清單做這種清理），但**把 `npm`、`3x-ui` 等所有掛在 `proxy` 網路上的容器 IP 全部打亂重新分配了一次**——這正是後續一連串 NPM access list / 3x-ui 代理訪問不了問題的根因（詳見另一份文件 [2026-08-06-proxy-access-ip-mismatch.md](2026-08-06-proxy-access-ip-mismatch.md)，這裡不重複展開，只在因果鏈裡點出關聯）
 6. **後續排查**（本文重點）：使用者回報 `programming-learning-platform` 的 docker 網路內部，任何兩個容器之間都連不通，問是不是這次 k3s 相關的操作導致的
 
 ## 技術排查過程
@@ -77,4 +77,4 @@ DROP  !br-b951f3fb0958  ->  172.18.0.3   (0 個封包命中過)
 
 ## 跟另一個事故的關聯
 
-這次 daemon 重啟（第 5 步，使用者嘗試修復 `programming-learning-platform` 但沒修好）雖然沒解決本文要處理的問題，但把 `npm`、`3x-ui` 在 `proxy` 網路上的 IP 全部重新洗牌了一次，是另一份事故記錄（[INCIDENT-2026-08-06-proxy-access-ip-mismatch.md](INCIDENT-2026-08-06-proxy-access-ip-mismatch.md)）裡「NPM access list 訪問不了」問題的根因起點。兩份事故表面上看起來毫不相關（一個是 docker bridge 內部連不通，一個是 NPM 反代訪問不了），實際上是同一串操作鏈裡分岔出來的兩條後果，不是巧合。
+這次 daemon 重啟（第 5 步，使用者嘗試修復 `programming-learning-platform` 但沒修好）雖然沒解決本文要處理的問題，但把 `npm`、`3x-ui` 在 `proxy` 網路上的 IP 全部重新洗牌了一次，是另一份事故記錄（[2026-08-06-proxy-access-ip-mismatch.md](2026-08-06-proxy-access-ip-mismatch.md)）裡「NPM access list 訪問不了」問題的根因起點。兩份事故表面上看起來毫不相關（一個是 docker bridge 內部連不通，一個是 NPM 反代訪問不了），實際上是同一串操作鏈裡分岔出來的兩條後果，不是巧合。
