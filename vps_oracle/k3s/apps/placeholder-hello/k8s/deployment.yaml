@@ -21,7 +21,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: placeholder-hello
-          image: ghcr.io/jeromefromcn/placeholder-hello:438c70ed3a12d1351ab4539af61b3ecb4749f749
+          image: ghcr.io/jeromefromcn/placeholder-hello@sha256:56fdf25420b2f4f9b21bae45bae9e10d9ebdc9c3431a73c476223db479c1c8b0
           ports:
             - containerPort: 8080
           securityContext:
