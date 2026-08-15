@@ -11,6 +11,7 @@ Cluster foundation (phase A) and GitOps bootstrap (phase B) for the [K3s roadmap
 | k3s | `v1.36.2+k3s1` | 2026-08-05 |
 | Cilium | `1.20.0` | 2026-08-05 |
 | ArgoCD | `10.3.0` (chart), `v3.5.0` (app/CLI) | 2026-08-07 |
+| Sealed Secrets | `2.19.1` (chart), `v0.38.4` (app/`kubeseal`) | 2026-08-15 |
 
 ## Install
 
@@ -122,6 +123,25 @@ All Applications run `prune: true` / `selfHeal: true` — manual `kubectl` chang
 Deploying a new image is a manual two-step, not automated: after CI signs and pushes a new tag, edit `apps/placeholder-hello/k8s/deployment.yaml` to point at it, commit, push. This is deliberate — it still satisfies "deploys go through git, not `kubectl apply`" without pulling in an image-updater's extra moving parts. Watch for the CI workflow's `paths:` filter also matching `k8s/deployment.yaml` itself — bumping the tag re-triggers a (harmless, redundant) rebuild of unchanged app source.
 
 The `placeholder-hello` GHCR package (`ghcr.io/jeromefromcn/placeholder-hello`) is public — its content is a static placeholder page with nothing sensitive, and public avoids needing an `imagePullSecret` in the cluster.
+
+## Sealed Secrets
+
+Phase E replaced the hand-created, out-of-band Secrets left over from phase D (`workloads/vikunja`, `dify/dify-secrets`, `llm/open-webui`, `llm/sillytavern`) with `SealedSecret` resources committed to git. The controller (`sealed-secrets/sealed-secrets` chart, dedicated `sealed-secrets` namespace, `fullnameOverride: sealed-secrets`) decrypts them in-cluster; ArgoCD only ever sees ciphertext.
+
+**Adding a new secret** (or migrating another hand-created one):
+
+```bash
+kubectl get secret <name> -n <namespace> -o json \
+  | jq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.managedFields, .metadata.annotations, .status)' \
+  | kubeseal --controller-name sealed-secrets --controller-namespace sealed-secrets --format yaml \
+  > vps_oracle/k3s/sealed-secrets/secrets/<name>.sealed.yaml
+```
+
+Commit the output (safe — it's ciphertext), push, then delete the old bare Secret (`kubectl delete secret <name> -n <namespace>`) so the controller can take ownership without a naming conflict. The `sealed-secrets` Application (`prune: true`/`selfHeal: true`) picks up new files under `vps_oracle/k3s/sealed-secrets/secrets/` automatically.
+
+**Key backup is the single point of failure.** The controller's signing key (`sealed-secrets-key*` Secret in the `sealed-secrets` namespace) is the only way to decrypt every `SealedSecret` in the repo — this is a single-node cluster with no etcd HA to fall back on. A GPG-encrypted export lives at `/home/ubuntu/secrets-backup/` on the host (outside git, outside the cluster), with a copy meant to live somewhere physically separate from this VPS too. If the key is ever rotated or the controller reinstalled from scratch, redo that backup — don't assume the old one still applies.
+
+**Gitignore note:** the repo-wide `secrets/` ignore pattern (for compose `.env`-adjacent secrets) would silently swallow `SealedSecret` manifests too, since they also live under a directory named `secrets/`. `.gitignore` has an explicit negation (`!vps_oracle/k3s/sealed-secrets/secrets/**`) carving this path back out — don't remove it, and don't assume `git status` showing nothing here means "nothing to commit" without checking `git check-ignore` first if a new sealed-secrets file goes missing from `git add`.
 
 ## Namespace & quota
 
