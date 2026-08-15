@@ -21,7 +21,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: trilium
-          image: triliumnext/trilium:v0.104.1
+          image: ghcr.io/jeromefromcn/trilium@sha256:e88f87b97d31a6304fe9798148f3585d818fa2640f65e36a52a99c8d79f79614
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
