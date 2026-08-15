@@ -511,3 +511,33 @@ groups:
                 - evaluator:
                     type: lt
                     params: [0]
+
+      - uid: claude_mirror_drift
+        title: Claude Config Mirror Drift
+        condition: B
+        for: 10m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "~/.claude has top-level entries not mirrored into sub2 — ln -s ~/.claude/<entry> ~/.claude-configs/sub2/ (see switchboard README)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'claude_config_mirror_drift'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
