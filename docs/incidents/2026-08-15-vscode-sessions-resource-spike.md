@@ -178,7 +178,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 - **驗證 sse-coalesce 生效**(最終判據):今後幾天觀察擴展會話是否準時顯示結束、進程正常退出(transcript 末尾出現 `result` 行);Zhipu 配額恢復後按 stall 文檔 §6 復測;
 - 客戶端保持更新:觀察到新版客戶端拉起的 server 自帶 `--enable-remote-auto-shutdown`(斷連後自行退出),舊版(如 Aug 9 的 1b6a188)無此行為——升級可消掉「server 永活」這層;
-- 可選告警:node-exporter 基礎上加「vscode-server 進程數 > 20 或 extension host > 2」的檢查,比內存 80% 告警更早發現堆積;
+- 告警(已處理,見 `vps_oracle/compose/monitoring/grafana/provisioning/alerting/host-metrics-rules.yml`):加了 PSI(io/memory pressure)、D 狀態阻塞進程數(`node_procs_blocked > 3`)、swap 用量與「swap 消失」、以及 `predict_linear` 記憶體趨勢預測共 7 條規則——四類都是零 infra 改動(node-exporter 現有 metrics 已有數據),用通用訊號取代原本設想的「vscode-server 進程數 > 20」這個 app 專屬指標;後者需要額外的 host cron script + textfile collector + node-exporter 掛載/flag 改動,評估後暫緩;
 - 上游反饋:擴展不應讓 UI 渲染慢拖死協議通道(stall-fix 文檔 §7 已列);
 - 使用習慣:會話結束關窗口;遇卡死先關窗再重開(修復後不應再卡)。
 
