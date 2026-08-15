@@ -15,8 +15,6 @@ spec:
           mountPath: /dst/llama-cpp-models
         - name: open-webui-data
           mountPath: /dst/open-webui-data
-        - name: sillytavern-data
-          mountPath: /dst/sillytavern-data
       resources:
         requests:
           cpu: 50m
@@ -31,6 +29,3 @@ spec:
     - name: open-webui-data
       persistentVolumeClaim:
         claimName: open-webui
-    - name: sillytavern-data
-      persistentVolumeClaim:
-        claimName: sillytavern

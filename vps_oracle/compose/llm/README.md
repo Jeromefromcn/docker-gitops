@@ -4,7 +4,7 @@
 
 原本用 `ollama` 做后端，现在换成 Ampere 官方针对 Ampere Altra（OCI A1 用的这颗 CPU）优化过的
 `amperecomputingai/llama.cpp`，走 router 模式（`--models-dir`），支持在已下载好的多个模型间不重启切换。
-`open-webui` 和 `sillytavern` 都通过它的 OpenAI 兼容端点（`http://llama-cpp:8080/v1`）接入，共享同一个后端。
+`open-webui` 通过它的 OpenAI 兼容端点（`http://llama-cpp:8080/v1`）接入。
 细节和取舍看 `docker-compose.yml` 里 `llama-cpp` 服务的注释。
 
 ## 内存占用现状（2026-08-01 记录）

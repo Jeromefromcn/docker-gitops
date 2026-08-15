@@ -35,7 +35,7 @@ services:
                        # 相应把上限从 8G 提到 9G，留够 ~1.5GB 余量；
                        # 超出会被 OOM killer 直接杀掉，不是优雅降级，所以留够余量很重要
     # router 模式：/models 目录下每个 .gguf 文件就是一个可选模型，id = 文件名去掉 .gguf 后缀，
-    # 通过 open-webui / sillytavern 请求里的 model 字段按需加载/卸载，模型之间切换不用重启容器。
+    # 通过 open-webui 请求里的 model 字段按需加载/卸载，模型之间切换不用重启容器。
     # 新增模型文件（而不是在已有模型间切换）需要重启容器才能被扫描到。
     # --models-max 1：同时只常驻 1 个模型，加了 8B 模型后内存吃紧，改成不允许两个模型同时占内存；
     # 代价是 /models 目录下如果有多个模型文件，来回切换会变成每次冷加载，不再是"切换不用重载"。
@@ -45,7 +45,7 @@ services:
     # 曾经短暂试过 Dolphin3.0-Llama3.1-8B（无审查倾向、盼着能更聪明一些），实测比 3B 慢一倍以上、
     # 效果提升有限，已经卸载并删除模型文件，退回只用 3B。
     # 注：router 模式官方标注为 experimental，不建议在不受信任的环境暴露；这里只在 proxy 内网被
-    # open-webui/sillytavern 两个自己的容器访问，不发布到宿主机端口，也不接 NPM。
+    # open-webui 访问，不发布到宿主机端口，也不接 NPM。
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:0.11.0
@@ -75,45 +75,6 @@ services:
     # NPM 反代配置: Forward Hostname/IP = open-webui, Forward Port = 8080（未发布到宿主机）
     # 首次部署：先访问域名注册第一个账号（自动成为管理员），
     # 之后在 environment 里加一行 ENABLE_SIGNUP: "false" 并 up -d 重启，关闭后续注册。
-
-  sillytavern:
-    image: ghcr.io/sillytavern/sillytavern:1.18.0
-    container_name: sillytavern
-    hostname: sillytavern
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-    env_file:
-      - .env   # SILLYTAVERN_BASICAUTHUSER_USERNAME / _PASSWORD，见下面的说明
-    environment:
-      TZ: "Asia/Hong_Kong"
-    volumes:
-      - /etc/sillytavern/config:/home/node/app/config
-      - /etc/sillytavern/data:/home/node/app/data
-      - /etc/sillytavern/plugins:/home/node/app/plugins
-      - /etc/sillytavern/extensions:/home/node/app/public/scripts/extensions/third-party
-    networks:
-      - proxy
-    depends_on:
-      - llama-cpp
-    # 接后端：界面里选 Chat Completion -> Custom (OpenAI-compatible)，Base URL 填
-    # http://llama-cpp:8080/v1，跟 open-webui 共用同一个 llama-cpp。
-    # NPM 反代配置: Forward Hostname/IP = sillytavern, Forward Port = 8000（未发布到宿主机），
-    # Access List 选 self-only（跟 open-webui 同级保护）。
-    # 首次启动会在 config 卷里生成默认 config.yaml，实测过两个坑：
-    #  1. ST 自己有个安全闸门 —— listen:true 时如果 whitelistMode/basicAuthMode/账号密码全都没开，
-    #     直接 process.exit(1) 拒绝启动，不是仅仅打个警告。
-    #  2. IP whitelistMode 配 whitelistDockerHosts:true 也没用，它只认默认 bridge 网关，
-    #     不认我们这种自定义 proxy 网络里的容器 IP，实测请求照样被 403。
-    # 所以关了 whitelistMode，开了 basicAuthMode（config.yaml 里这个布尔值本身不是密钥，留在文件里）。
-    # 账号密码是敏感信息，没有直接写在 config.yaml 里，用 SILLYTAVERN_<path>（ST 自带的通用 env 覆盖
-    # 机制，任意 config.yaml 路径都能用 SILLYTAVERN_XXX_YYY 覆盖）从上面的 .env 注入，跟 open-webui
-    # 的 WEBUI_SECRET_KEY 走的是同一套模式，不进 git。
 
 networks:
   proxy:
