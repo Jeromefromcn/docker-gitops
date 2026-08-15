@@ -7,6 +7,10 @@
 // for hours. The official Anthropic API batches multiple tokens per delta;
 // this middleware restores that shape by merging consecutive same-type delta
 // events on the same content block within a small time window (default 40ms).
+// The window can be overridden per delta type: thinking_delta streams are ~99%
+// of events during thinking-heavy turns and tolerate a much larger window
+// (e.g. 500ms) without hurting UX, which cuts the event count another order
+// of magnitude. See CCR_SSE_COALESCE_THINKING_MS etc. below.
 //
 // The gateway (@the-next-ai/ai-gateway) sends provider requests through
 // undici's global dispatcher (Dispatcher.dispatch), so the middleware wraps
@@ -27,11 +31,33 @@ const STATS_FILE =
   "/data/.claude-code-router/sse-coalesce-stats.log";
 const STATS_MAX_BYTES = 262144;
 
+function parseMsEnv(name) {
+  const v = parseInt(process.env[name], 10);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+// Global window. 0 disables the middleware entirely (see install()).
 function windowMs() {
-  const raw = process.env.CCR_SSE_COALESCE_MS;
-  if (raw === "0") return 0;
-  const v = parseInt(raw, 10);
-  return Number.isFinite(v) && v > 0 ? v : 40;
+  if (process.env.CCR_SSE_COALESCE_MS === "0") return 0;
+  return parseMsEnv("CCR_SSE_COALESCE_MS") || 40;
+}
+
+// Per-delta-type window resolver. Unset or non-positive per-type knobs fall
+// back to the global window — a per-type 0 must NOT mean "never flush on
+// timer", which would hold data until the next event or stream end.
+const TYPE_WINDOW_ENV = {
+  thinking_delta: "CCR_SSE_COALESCE_THINKING_MS",
+  text_delta: "CCR_SSE_COALESCE_TEXT_MS",
+  input_json_delta: "CCR_SSE_COALESCE_INPUT_JSON_MS",
+};
+
+function makeWindowResolver(globalMs) {
+  const g = Number.isFinite(globalMs) && globalMs > 0 ? globalMs : windowMs();
+  return (deltaType) => {
+    const envName = TYPE_WINDOW_ENV[deltaType];
+    const v = envName ? parseMsEnv(envName) : 0;
+    return v > 0 ? v : g;
+  };
 }
 
 // Keep-alive noise some providers send between deltas. Dropping them lets a
@@ -65,7 +91,8 @@ function parseRecord(raw) {
 
 // Core push-based coalescer: feed() text in, emit() receives complete SSE
 // records (merged deltas or verbatim passthrough). end() flushes the tail.
-function createCoalescer(winMs, emit) {
+// winFor(deltaType) returns the merge window for that delta type.
+function createCoalescer(winFor, emit) {
   let buf = "";
   let pending = null; // { obj, eventName, deltaType, field, acc, count }
   let timer = null;
@@ -90,11 +117,12 @@ function createCoalescer(winMs, emit) {
   };
 
   const armTimer = () => {
-    if (timer || winMs <= 0) return;
+    const ms = winFor(pending.deltaType);
+    if (timer || ms <= 0) return;
     timer = setTimeout(() => {
       timer = null;
       flush();
-    }, winMs);
+    }, ms);
     if (typeof timer.unref === "function") timer.unref();
   };
 
@@ -176,13 +204,13 @@ function createCoalescer(winMs, emit) {
 }
 
 // Adapter for fetch-style bodies (Response with ReadableStream).
-function makeMergerStream(winMs, onEnd) {
+function makeMergerStream(winFor, onEnd) {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let coalescer;
   const ensure = () => {
     if (!coalescer) {
-      coalescer = createCoalescer(winMs, (s) => {
+      coalescer = createCoalescer(winFor, (s) => {
         try {
           controller.enqueue(encoder.encode(s));
         } catch {
@@ -239,7 +267,7 @@ function normalizeHeaders(headers) {
 }
 
 // Adapter for undici Dispatcher.dispatch handlers.
-function makeDispatchHandlerWrapper(winMs, onEnd, onBypass) {
+function makeDispatchHandlerWrapper(winFor, onEnd, onBypass) {
   return function wrapHandlers(handlers) {
     const state = {
       bypass: true,
@@ -283,7 +311,7 @@ function makeDispatchHandlerWrapper(winMs, onEnd, onBypass) {
           hdrs = kept;
           state.bypass = false;
           state.decoder = new TextDecoder();
-          state.coalescer = createCoalescer(winMs, (s) => {
+          state.coalescer = createCoalescer(winFor, (s) => {
             state.queue.push(Buffer.from(s, "utf8"));
             pump();
           });
@@ -363,11 +391,12 @@ let installed = false;
 function install() {
   if (installed) return { ok: true, already: true };
   installed = true;
-  const winMs = windowMs();
-  if (winMs <= 0) {
+  const globalMs = windowMs();
+  if (globalMs <= 0) {
     console.error("[sse-coalesce] disabled (CCR_SSE_COALESCE_MS=0)");
     return { ok: true, disabled: true };
   }
+  const winFor = makeWindowResolver(globalMs);
 
   let patched = 0;
 
@@ -385,7 +414,7 @@ function install() {
         let stream;
         try {
           stream = res.body.pipeThrough(
-            makeMergerStream(winMs, (a, b) => appendStats("merge", a, b))
+            makeMergerStream(winFor, (a, b) => appendStats("merge", a, b))
           );
         } catch (e) {
           console.error("[sse-coalesce] pipeThrough failed:", e && e.message);
@@ -413,7 +442,7 @@ function install() {
     if (!d || typeof d.dispatch !== "function" || d.__sseCoalesce) return;
     const realDispatch = d.dispatch;
     const wrapH = makeDispatchHandlerWrapper(
-      winMs,
+      winFor,
       (a, b) => appendStats("merge", a, b),
       (msg) => appendStats("info", msg, 0)
     );
@@ -512,6 +541,8 @@ module.exports = {
   makeMergerStream,
   createCoalescer,
   makeDispatchHandlerWrapper,
+  makeWindowResolver,
+  windowMs,
   parseRecord,
 };
 

@@ -118,6 +118,26 @@ cd ~/jerome && BASH_ENV=/home/ubuntu/.claude/direnv-bash-env.sh bash -c 'echo "$
 
 最简单：去 UI 点该组的「Switch to Official」。等价的手动操作是把 `/home/ubuntu/.claude-provider/<组>.env` 清空（只留注释）。已经在跑的 session 仍用旧 provider，开新 session 才回官方。
 
+## SSE 合并中间件（sse-coalesce.cjs）
+
+Zhipu 等上游按 token 粒度发 SSE delta（每 25-50ms 一个、~135B/事件），VS Code 扩展逐事件渲染跟不上会积压，提问/批准 UI 晚到几分钟。`sse-coalesce.cjs` 在 undici dispatcher 层把**连续、同 index、同类型**的 `content_block_delta` 合并成大块（保序、保协议边界），经 `NODE_OPTIONS --require` 挂到容器内所有 node 进程。完整排查与设计：`docs/incidents/2026-08-15-ccr-vscode-extension-stall.md`。
+
+合并窗口按 delta 类型可调（毫秒，compose `environment:` 里设）：
+
+| 环境变量 | 作用 | 当前值 |
+|---|---|---|
+| `CCR_SSE_COALESCE_MS` | 全局窗口，也是各类型的回落值；`"0"` = 整体禁用 | 200 |
+| `CCR_SSE_COALESCE_THINKING_MS` | `thinking_delta` 专用窗口（占事件 ~99%，显示平滑度无关紧要，可以开大） | 500 |
+| `CCR_SSE_COALESCE_TEXT_MS` | `text_delta` 专用窗口 | 120 |
+| `CCR_SSE_COALESCE_INPUT_JSON_MS` | `input_json_delta` 专用窗口（未设，回落全局） | — |
+| `CCR_SSE_DROP_PINGS` | 丢弃 keep-alive ping 让合并跨过它继续；`"0"` 关闭 | 默认开 |
+
+per-type 未设或 ≤0 都回落全局值（不允许 per-type 单独停用，否则没有 flush 定时器会滞留到流结束）。tradeoff：终端里文字以 ≤ 窗口大小的批次突发显示，120-500ms 无感知。
+
+运行统计在容器卷 `docker exec ccr cat /data/.claude-code-router/sse-coalesce-stats.log`（每请求一行 `merge in=N out=M`；改窗口后看 in/out 比值是否达到预期，2026-08-15 调优后目标 ≥15x）。
+
+**改了 `.cjs` 或窗口后必须 `docker compose up -d --force-recreate`**：只改挂载文件内容不会触发容器重建，而 `--require` 只在进程启动时加载。
+
 ## CCR 管理面板（改路由 / 加 provider / 生成 client key）
 
 两条路都能到：

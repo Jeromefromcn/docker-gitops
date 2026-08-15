@@ -22,6 +22,13 @@ services:
       # 合併中间件（/data 是持久卷）。Zhipu 等上游按 token 粒度发 SSE delta，
       # 逐事件转发会打爆 VS Code 扩展的远程渲染管线，见 sse-coalesce.cjs 头注。
       NODE_OPTIONS: "--require /data/.claude-code-router/sse-coalesce.cjs"
+      # 合併窗口（毫秒）。Zhipu 每 25-50ms 吐一个 delta，40ms 窗口常只抓到 1-2 个，
+      # 實測合併率僅 3-5x；加大窗口 + thinking 專用大窗口（thinking 佔事件 ~99%
+      # 且顯示平滑度無關緊要）可把合併率提到 15-30x，擴展提問延遲 3min → <1min。
+      # 未設/設 0 的 per-type knob 回落到全局值；CCR_SSE_COALESCE_MS=0 整體禁用。
+      CCR_SSE_COALESCE_MS: "200"
+      CCR_SSE_COALESCE_THINKING_MS: "500"
+      CCR_SSE_COALESCE_TEXT_MS: "120"
     ports:
       # 例外：claude 进程跑在宿主机上、不在容器里，够不到 proxy 网络，只能发布到宿主机端口。
       # 两个端口都只绑 127.0.0.1，不对外暴露；管理面板(3458)如需从别的机器访问，走 SSH 端口转发。
