@@ -1,0 +1,22 @@
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+trivy:
+  # Standalone (Job-only) is the chart default -- no persistent trivy-server
+  # cache pod. Left explicit here so the choice is visible in git, not just
+  # implied by omission.
+  mode: Standalone
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 500m
+      memory: 500Mi
+
+scanJobsConcurrentLimit: 3
