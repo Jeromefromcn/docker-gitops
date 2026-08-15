@@ -16,11 +16,20 @@ spec:
         app: vikunja-notify-relay
     spec:
       enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: relay
           image: ghcr.io/jeromefromcn/vikunja-notify-relay:1.1.0
           ports:
             - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
