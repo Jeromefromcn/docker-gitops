@@ -2,7 +2,11 @@
 Description=Run docker-gitops-inspector.service twice daily
 
 [Timer]
-OnCalendar=09:00,21:00
+# Two separate lines, NOT OnCalendar=09:00,21:00 — systemd parses that
+# comma list as hour=09 / minute∈{00,21} (09:00 and 09:21), silently
+# dropping 21:00. Verified with `systemd-analyze calendar`.
+OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 21:00:00
 Persistent=true
 
 [Install]
