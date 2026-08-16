@@ -6,8 +6,30 @@ admissionController:
         cpu: 100m
         memory: 128Mi
       limits:
-        cpu: 500m
+        cpu: 1000m
         memory: 512Mi
+  # Startup is slow when the host is under IO pressure (slow kine SQL stalls
+  # informer cache fill). The chart-default ~2min startup window gets exceeded,
+  # the probe kills the pod, and the fail-closed admission webhook drops,
+  # blocking all pod creation cluster-wide. Widen the window and give it more CPU.
+  startupProbe:
+    httpGet:
+      path: /health/liveness
+      port: 9443
+      scheme: HTTPS
+    failureThreshold: 60
+    initialDelaySeconds: 2
+    periodSeconds: 6
+  livenessProbe:
+    httpGet:
+      path: /health/liveness
+      port: 9443
+      scheme: HTTPS
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 2
+    successThreshold: 1
 
 backgroundController:
   enabled: false
