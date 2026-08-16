@@ -7,6 +7,8 @@ metadata:
     app: placeholder-hello
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: placeholder-hello
@@ -15,11 +17,20 @@ spec:
       labels:
         app: placeholder-hello
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: placeholder-hello
-          image: ghcr.io/jeromefromcn/placeholder-hello:0d3e52314b0950b893e32f684b5011ce8abdc798
+          image: ghcr.io/jeromefromcn/placeholder-hello@sha256:3b8929d1913203f822539731236bf1127c178729588647703eed7ea15e831992
           ports:
-            - containerPort: 80
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           resources:
             requests:
               cpu: 25m

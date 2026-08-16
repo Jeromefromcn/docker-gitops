@@ -1,0 +1,40 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-vuln-scan-clean
+  annotations:
+    # This policy's context.apiCall.urlPath hardcodes Pod-shaped JMESPath
+    # (request.object.metadata.*). Kyverno's autogen feature would otherwise
+    # generate variant rules for Deployment/ReplicaSet/etc. that rewrite
+    # those paths to spec.template.metadata.* -- breaking the apiCall's
+    # URL templating. Pod-level interception (when the ReplicaSet
+    # controller actually creates the Pod) is sufficient; autogen isn't
+    # needed here.
+    pod-policies.kyverno.io/autogen-controllers: "none"
+spec:
+  validationFailureAction: Audit
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: block-critical-fixable-cves
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      context:
+        - name: vulnreports
+          apiCall:
+            urlPath: "/apis/aquasecurity.github.io/v1alpha1/namespaces/{{request.object.metadata.namespace}}/vulnerabilityreports?labelSelector=trivy-operator.resource.name={{request.object.metadata.ownerReferences[0].name}}"
+            jmesPath: "items[]"
+      validate:
+        message: >-
+          Image has CRITICAL vulnerabilities with an available fix
+          (Trivy VulnerabilityReport {{ request.object.metadata.name }}).
+          Wait for a patched base image or fixed dependency, or add a
+          documented exception before this can deploy.
+        deny:
+          conditions:
+            all:
+              - key: "{{ vulnreports[].report.vulnerabilities[] | [?severity=='CRITICAL' && fixedVersion!=''] | length(@) }}"
+                operator: GreaterThan
+                value: 0
