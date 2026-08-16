@@ -10,7 +10,7 @@ metadata:
   namespace: lab-environment
 spec:
   hard:
-    requests.cpu: "2.5"
+    requests.cpu: "1.5"
     requests.memory: 3.5Gi
-    limits.cpu: "5"
-    limits.memory: 6Gi
+    limits.cpu: "2.5"
+    limits.memory: 4Gi
