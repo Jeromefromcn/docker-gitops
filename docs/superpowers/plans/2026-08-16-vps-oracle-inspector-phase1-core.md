@@ -1168,7 +1168,8 @@ ExecStart=/home/ubuntu/jerome/docker-gitops/vps_oracle/inspector/inspect.sh
 Description=Run docker-gitops-inspector.service twice daily
 
 [Timer]
-OnCalendar=09:00,21:00
+OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 21:00:00
 Persistent=true
 
 [Install]

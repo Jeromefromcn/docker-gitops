@@ -133,7 +133,7 @@ Run took 4.2s
 
 - systemd service 以 `ubuntu` 用戶身份執行（不用 root）——kill 的目標進程本來就是 `ubuntu` 身份跑的；docker 操作靠 `ubuntu` 在 `docker` group；k3s 操作靠一份唯讀 kubeconfig 複本。若之後發現某個操作確實需要 root，單獨用 `sudo` 包那一小段，不整個 service 提權。
 - `ExecStart` 直接指向 repo checkout 內的 `inspect.sh` 路徑，不另外 `install.sh` 同步一份——改代碼、`git pull`/`git commit` 完就是生效狀態，避開 claude-code-notify"忘記跑 install.sh"的坑。首次安裝或改動 unit 檔案結構時才需要手動 `systemctl daemon-reload`。
-- timer：`OnCalendar=09:00,21:00`，`Persistent=true`（機器重啟不錯過）。
+- timer：兩行 `OnCalendar=*-*-* 09:00:00` / `OnCalendar=*-*-* 21:00:00`（注意不可寫成單行 `OnCalendar=09:00,21:00`——systemd 會解析成 09:00 與 09:21，永遠不會在 21:00 觸發，這是 2026-08-16 踩過的坑，見 commit 517e025），`Persistent=true`（機器重啟不錯過）。
 - 手動觸發：`systemctl start docker-gitops-inspector.service`。
 - apprise target 註冊（照抄 vikunja 既有模式，token/chat id 不落盤，只作為指令參數傳入一次；因 apprise 現況是 k3s NodePort 而非 docker `proxy` 網路容器，故直接對宿主機本機的 NodePort 發送，不需要 `docker run --network proxy` 包一層）：
   ```bash
