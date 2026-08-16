@@ -1,0 +1,52 @@
+# Cluster-side RBAC for the vps_oracle host inspector (phase 2 k3s
+# checks). Applied once — idempotently — by setup-kubeconfig.sh, NOT by
+# ArgoCD: deliberately outside vps_oracle/k3s/manifests/ so selfHeal
+# never fights it (see vps_oracle/k3s/README.md). Least privilege per
+# the spec's check table: delete rights only for the two auto-tier
+# cleanup actions (Failed pods, completed Jobs); everything else
+# read-only, and no access at all to secrets/configmaps/workloads.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: docker-gitops-inspector
+  namespace: workloads
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: docker-gitops-inspector
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "delete"]
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: docker-gitops-inspector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: docker-gitops-inspector
+subjects:
+- kind: ServiceAccount
+  name: docker-gitops-inspector
+  namespace: workloads
+---
+# TokenRequest tokens expire; this secret-bound token does not. The
+# kubeconfig written by setup-kubeconfig.sh embeds it, and it lives in
+# the gitignored state/ dir — never in git.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: docker-gitops-inspector-token
+  namespace: workloads
+  annotations:
+    kubernetes.io/service-account.name: docker-gitops-inspector
+type: kubernetes.io/service-account-token
