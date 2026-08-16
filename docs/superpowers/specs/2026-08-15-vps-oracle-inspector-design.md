@@ -105,7 +105,7 @@ vps_oracle/inspector/
 
 ## 通知格式
 
-透過既有的 `apprise` 容器（`http://apprise:8000/notify/inspector-tg`），HTML 格式，沿用 vikunja-notify-relay 已有模式。新增一個 apprise target `inspector-tg`，指向 Telegram 群組 "OCI System inspection"（bot token / chat id 不進 git，只作為 apprise store 裡的執行時資料，註冊方式見「部署」一節，用法與現有 `vikunja-tg-<username>` target 一致）。
+透過既有的 `apprise` 服務（`http://localhost:30085/notify/inspector-tg`），HTML 格式，沿用 vikunja-notify-relay 已有模式。**注意**：apprise 已於 phase D 遷入 k3s（`workloads` namespace，NodePort `30085`），不再是 docker `proxy` 網路上的容器，因此走宿主機本機的 NodePort，而不是容器名 DNS。新增一個 apprise target `inspector-tg`，指向 Telegram 群組 "OCI System inspection"（bot token / chat id 不進 git，只作為 apprise store 裡的執行時資料，用法與現有 `vikunja-tg-<username>` target 一致；已於 2026-08-16 註冊並測試通過，沿用同一個 bot token）。
 
 範例：
 
@@ -132,12 +132,13 @@ vps_oracle/inspector/
 - `ExecStart` 直接指向 repo checkout 內的 `inspect.sh` 路徑，不另外 `install.sh` 同步一份——改代碼、`git pull`/`git commit` 完就是生效狀態，避開 claude-code-notify"忘記跑 install.sh"的坑。首次安裝或改動 unit 檔案結構時才需要手動 `systemctl daemon-reload`。
 - timer：`OnCalendar=09:00,21:00`，`Persistent=true`（機器重啟不錯過）。
 - 手動觸發：`systemctl start docker-gitops-inspector.service`。
-- apprise target 註冊（照抄 vikunja 既有模式，token/chat id 不落盤，只作為指令參數傳入一次）：
+- apprise target 註冊（照抄 vikunja 既有模式，token/chat id 不落盤，只作為指令參數傳入一次；因 apprise 現況是 k3s NodePort 而非 docker `proxy` 網路容器，故直接對宿主機本機的 NodePort 發送，不需要 `docker run --network proxy` 包一層）：
   ```bash
-  docker run --rm --network proxy curlimages/curl:8.10.1 -s -X POST \
+  curl -s -X POST \
     --data-urlencode "urls=tgram://<bot_token>/<chat_id>/" \
-    http://apprise:8000/add/inspector-tg
+    http://localhost:30085/add/inspector-tg
   ```
+  已於 2026-08-16 執行：bot token 沿用既有 vikunja bot（從 apprise PVC 裡已持久化的 `vikunja-tg-jerome.cfg` 讀出），chat id 透過該 bot 的 Telegram `getUpdates` API 查得（群組 "OCI System inspection" 已把 bot 拉進去）。`inspector-tg` target 已建立並發送測試訊息驗證通過。
 
 ## 測試方式
 
