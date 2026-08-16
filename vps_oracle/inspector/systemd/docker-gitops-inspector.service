@@ -1,0 +1,9 @@
+[Unit]
+Description=docker-gitops host inspector (vps_oracle) — stray session cleanup + resource report
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/jerome/docker-gitops/vps_oracle/inspector
+ExecStart=/home/ubuntu/jerome/docker-gitops/vps_oracle/inspector/inspect.sh
