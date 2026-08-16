@@ -520,7 +520,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "~/.claude has top-level entries not mirrored into sub2 — ln -s ~/.claude/<entry> ~/.claude-configs/sub2/ (see switchboard README)"
+          summary: "~/.claude has top-level entries not mirrored into sub2 — ln -s ~/.claude/&lt;entry&gt; ~/.claude-configs/sub2/ (see switchboard README)"
         data:
           - refId: A
             datasourceUid: prometheus
