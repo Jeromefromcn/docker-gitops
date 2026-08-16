@@ -35,11 +35,16 @@ spec:
         - .metadata.annotations
     - group: kyverno.io
       kind: ClusterPolicy
-      jsonPointers:
-        - /spec/admission
-        - /spec/background
-        - /spec/emitWarning
-        - /status
+      jqPathExpressions:
+        - .status
+        - .spec.admission
+        - .spec.background
+        - .spec.emitWarning
+        - .spec.rules[]?.skipBackgroundRequests
+        - .spec.rules[]?.verifyImages[]?.required
+        - .spec.rules[]?.verifyImages[]?.useCache
+        - .spec.rules[]?.verifyImages[]?.verifyDigest
+        - .spec.rules[]?.verifyImages[]?.attestors[]?.entries[]?.signatureAlgorithm
   syncPolicy:
     automated:
       prune: true
