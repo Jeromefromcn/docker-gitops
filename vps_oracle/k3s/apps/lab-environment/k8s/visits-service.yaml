@@ -30,6 +30,12 @@ spec:
               value: "8500"
             - name: SPRING_CLOUD_CONSUL_DISCOVERY_PREFER_IP_ADDRESS
               value: "true"
+            # JVM container-detection is broken under this containerd/cgroup v2
+            # (MaxHeap defaults to ~6Gi = 25% of host RAM), so the heap grows
+            # past the 512Mi limit and gets OOM-killed. The apps only use
+            # ~100Mi heap — pin it explicitly.
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xmx192m -Xms64m -XX:MaxDirectMemorySize=64m -XX:MaxRAM=512m"
           ports:
             - containerPort: 8082
           resources:
