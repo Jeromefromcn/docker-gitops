@@ -520,6 +520,8 @@ groups:
         labels:
           severity: warning
         annotations:
+          # Telegram-Warning/Critical render via parse_mode=HTML (templates.yml); a literal <entry> here
+          # gets rejected as an unknown tag and silently kills delivery, so it must stay HTML-escaped.
           summary: "~/.claude has top-level entries not mirrored into sub2 — ln -s ~/.claude/&lt;entry&gt; ~/.claude-configs/sub2/ (see switchboard README)"
         data:
           - refId: A
