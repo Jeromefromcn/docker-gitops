@@ -1,5 +1,9 @@
 # vps_oracle Inspector — Phase 1 (Core + VS Code Checks) Implementation Plan
 
+> **STATUS: EXECUTED 2026-08-16, merged to main and deployed.** All 5 tasks complete, all tests pass, systemd timer live. Two deviations from the text below, both intentional:
+> 1. **Notification text is English, not the Chinese shown in the Task 4 code block and examples** (`已自動處理`/`需要人工確認`/`✅ 一切正常` → `Auto-handled`/`Needs manual review`/`✅ All clear — nothing needed attention`). Explicit user requirement at execution time; the committed `inspect.sh` and the spec's 通知格式 section are the source of truth.
+> 2. **Task 3 Step 5's host-state expectation was stale**: the host had 3 server version dirs (not 2), so the first real run deleted `Stable-df53daab...` (656M) — correct behavior, just different from the "expect no output" note below.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship a real, deployable `vps_oracle/inspector/` that solves the motivating incident end-to-end — detects and cleans up stray VS Code/Claude session process trees and stale `.vscode-server` version directories, sends a Telegram report every run via the already-registered `inspector-tg` apprise target, and runs on a systemd timer.
@@ -74,7 +78,7 @@ vps_oracle/inspector/
   - `send_apprise(title, body)` → POSTs to apprise, prints the HTTP status code
   - Env-derived vars: `CLK_TCK`, `INSPECTOR_ROOT`, `INSPECTOR_STATE_DIR` (auto-created), `APPRISE_URL` (default `http://localhost:30085`)
 
-- [ ] **Step 1: Write `lib/common.sh`**
+- [x] **Step 1: Write `lib/common.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -264,7 +268,7 @@ send_apprise() {
 }
 ```
 
-- [ ] **Step 2: `chmod` and syntax-check**
+- [x] **Step 2: `chmod` and syntax-check**
 
 ```bash
 chmod 644 vps_oracle/inspector/lib/common.sh   # sourced, not executed
@@ -272,7 +276,7 @@ bash -n vps_oracle/inspector/lib/common.sh
 ```
 Expected: no output (syntax OK).
 
-- [ ] **Step 3: Add `state/` to `.gitignore`**
+- [x] **Step 3: Add `state/` to `.gitignore`**
 
 Add this line to the root `.gitignore`, in the existing "runtime logs written by containers into mounted config dirs" section (same style as the existing `vps_oracle/compose/homepage/config/logs/` entry — a specific path, not a glob, matching this repo's existing convention):
 
@@ -280,7 +284,7 @@ Add this line to the root `.gitignore`, in the existing "runtime logs written by
 vps_oracle/inspector/state/
 ```
 
-- [ ] **Step 4: Write the process-tree test fixture**
+- [x] **Step 4: Write the process-tree test fixture**
 
 ```bash
 #!/usr/bin/env bash
@@ -308,13 +312,13 @@ fi
 exec sleep 300
 ```
 
-- [ ] **Step 5: `chmod +x` the fixture**
+- [x] **Step 5: `chmod +x` the fixture**
 
 ```bash
 chmod +x vps_oracle/inspector/tests/fixtures/spawn-chain.sh
 ```
 
-- [ ] **Step 6: Write `tests/test-common.sh`**
+- [x] **Step 6: Write `tests/test-common.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -424,7 +428,7 @@ else
 fi
 ```
 
-- [ ] **Step 7: `chmod +x` and run the test**
+- [x] **Step 7: `chmod +x` and run the test**
 
 ```bash
 chmod +x vps_oracle/inspector/tests/test-common.sh
@@ -432,7 +436,7 @@ cd vps_oracle/inspector && ./tests/test-common.sh
 ```
 Expected: every line starts `ok -`, final line `PASS: all common.sh self-protection checks passed`, exit code 0. If anything prints `FAIL -`, stop and fix `lib/common.sh` before moving to Task 2 — this is the one piece of the whole project that must be right before anything builds on it.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add vps_oracle/inspector/lib/common.sh \
@@ -463,7 +467,7 @@ Session discovery uses `~/.claude/sessions/<pid>.json` (written by the Claude Co
 - Produces: an executable script; when run, prints zero or more `emit_result`-shaped JSON lines to stdout and exits 0. Reads/writes `$INSPECTOR_STATE_DIR/server-tree-cpu.tsv` (format: `root_pid<TAB>starttime<TAB>total_cpu_ticks<TAB>last_changed_epoch`, one line per currently-tracked orphaned server-main tree).
 - Overridable env vars: `INSPECTOR_CLAUDE_SESSIONS_DIR` (default `$HOME/.claude/sessions`), `INSPECTOR_CLAUDE_PROJECTS_DIR` (default `$HOME/.claude/projects`), `INSPECTOR_STRAY_SESSION_IDLE_SECONDS` (1800), `INSPECTOR_STUCK_SESSION_ALERT_SECONDS` (21600), `INSPECTOR_SERVER_TREE_IDLE_SECONDS` (7200)
 
-- [ ] **Step 1: Write `checks/stray-vscode-sessions.sh`**
+- [x] **Step 1: Write `checks/stray-vscode-sessions.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -639,14 +643,14 @@ check_claude_sessions
 check_orphaned_server_trees
 ```
 
-- [ ] **Step 2: `chmod +x` and syntax-check**
+- [x] **Step 2: `chmod +x` and syntax-check**
 
 ```bash
 chmod +x vps_oracle/inspector/checks/stray-vscode-sessions.sh
 bash -n vps_oracle/inspector/checks/stray-vscode-sessions.sh
 ```
 
-- [ ] **Step 3: Write `tests/test-stray-vscode-sessions.sh`**
+- [x] **Step 3: Write `tests/test-stray-vscode-sessions.sh`**
 
 Uses a hermetic fixture directory (not the real `~/.claude/sessions`) so the test never risks matching a real session, and a real disposable process (via the Task 1 fixture) so `process_age_seconds`/PID-liveness logic is exercised truthfully rather than mocked.
 
@@ -734,7 +738,7 @@ else
 fi
 ```
 
-- [ ] **Step 4: `chmod +x` and run**
+- [x] **Step 4: `chmod +x` and run**
 
 ```bash
 chmod +x vps_oracle/inspector/tests/test-stray-vscode-sessions.sh
@@ -742,14 +746,14 @@ cd vps_oracle/inspector && ./tests/test-stray-vscode-sessions.sh
 ```
 Expected: all `ok -` lines, final `PASS`, exit 0.
 
-- [ ] **Step 5: Dry-run against real host state (sanity check, not automated)**
+- [x] **Step 5: Dry-run against real host state (sanity check, not automated)**
 
 ```bash
 cd vps_oracle/inspector && INSPECTOR_DRY_RUN=1 ./checks/stray-vscode-sessions.sh
 ```
 Expected: exits 0, prints zero or more valid JSON lines (pipe through `jq .` to confirm), and does **not** propose killing any PID that's part of the current interactive session running this command. Eyeball the output against `ps` before trusting it.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add vps_oracle/inspector/checks/stray-vscode-sessions.sh \
@@ -772,7 +776,7 @@ Deletes stale `~/.vscode-server/cli/servers/<version>/` directories: not among t
 - Produces: an executable script; prints zero or more `emit_result`-shaped JSON lines, exits 0
 - Overridable env vars: `INSPECTOR_VSCODE_SERVERS_DIR` (default `$HOME/.vscode-server/cli/servers`), `INSPECTOR_KEEP_SERVER_VERSIONS` (default 2)
 
-- [ ] **Step 1: Write `checks/vscode-server-versions.sh`**
+- [x] **Step 1: Write `checks/vscode-server-versions.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -831,14 +835,14 @@ for dir in "${existing_dirs[@]}"; do
 done
 ```
 
-- [ ] **Step 2: `chmod +x` and syntax-check**
+- [x] **Step 2: `chmod +x` and syntax-check**
 
 ```bash
 chmod +x vps_oracle/inspector/checks/vscode-server-versions.sh
 bash -n vps_oracle/inspector/checks/vscode-server-versions.sh
 ```
 
-- [ ] **Step 3: Write `tests/test-vscode-server-versions.sh`**
+- [x] **Step 3: Write `tests/test-vscode-server-versions.sh`**
 
 Builds a hermetic fixture directory tree (never the real `~/.vscode-server`) with fake version dirs and a fake `lru.json`, so `rm -rf` in the test run only ever touches the fixture.
 
@@ -897,7 +901,7 @@ else
 fi
 ```
 
-- [ ] **Step 4: `chmod +x` and run**
+- [x] **Step 4: `chmod +x` and run**
 
 ```bash
 chmod +x vps_oracle/inspector/tests/test-vscode-server-versions.sh
@@ -905,14 +909,14 @@ cd vps_oracle/inspector && ./tests/test-vscode-server-versions.sh
 ```
 Expected: all `ok -`, final `PASS`, exit 0.
 
-- [ ] **Step 5: Dry-run against real host state (sanity check)**
+- [x] **Step 5: Dry-run against real host state (sanity check)**
 
 ```bash
 cd vps_oracle/inspector && INSPECTOR_DRY_RUN=1 ./checks/vscode-server-versions.sh
 ```
 Expected: exits 0. On this host, both existing version dirs (`Stable-a5b5...`, `Stable-1b6a...`) are within the default keep-count of 2, so expect **no output** right now — that's correct, not a bug.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add vps_oracle/inspector/checks/vscode-server-versions.sh \
@@ -932,7 +936,7 @@ git commit -m "Add vscode-server-versions check: prune stale server version dire
 - Consumes: `lib/common.sh`'s `emit_result`, `send_apprise`; the check-script contract from Tasks 2–3 (any executable in `checks/*.sh` that prints zero or more `emit_result`-shaped JSON lines and exits 0 on success)
 - Produces: `inspect.sh`, executable, no CLI args; reads `INSPECTOR_DRY_RUN` and passes it through to check scripts via the environment (checks already read it directly, no explicit plumbing needed since child processes inherit exported env vars — `inspect.sh` must `export INSPECTOR_DRY_RUN` if set, since a shell var isn't inherited by subprocesses unless exported)
 
-- [ ] **Step 1: Write `inspect.sh`**
+- [x] **Step 1: Write `inspect.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -1025,14 +1029,14 @@ if [ "$status" != "200" ]; then
 fi
 ```
 
-- [ ] **Step 2: `chmod +x` and syntax-check**
+- [x] **Step 2: `chmod +x` and syntax-check**
 
 ```bash
 chmod +x vps_oracle/inspector/inspect.sh
 bash -n vps_oracle/inspector/inspect.sh
 ```
 
-- [ ] **Step 3: Write `tests/test-inspect.sh`**
+- [x] **Step 3: Write `tests/test-inspect.sh`**
 
 Uses a hermetic fake `checks/` directory (two tiny stub scripts) so the aggregation/report-building logic is tested in isolation from the real checks, then a separate real end-to-end dry run against the actual `checks/` directory (which legitimately hits the already-registered `inspector-tg` apprise target — this is the integration point that proves the whole pipeline works, not just each piece alone).
 
@@ -1115,7 +1119,7 @@ else
 fi
 ```
 
-- [ ] **Step 4: `chmod +x` and run**
+- [x] **Step 4: `chmod +x` and run**
 
 ```bash
 chmod +x vps_oracle/inspector/tests/test-inspect.sh
@@ -1123,7 +1127,7 @@ cd vps_oracle/inspector && ./tests/test-inspect.sh
 ```
 Expected: all `ok -`, final `PASS`, exit 0. Check the "OCI System inspection" Telegram group for the real dry-run report (it should show up).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add vps_oracle/inspector/inspect.sh vps_oracle/inspector/tests/test-inspect.sh
@@ -1143,7 +1147,7 @@ git commit -m "Add inspect.sh: check discovery, result aggregation, apprise repo
 - Consumes: absolute path to `inspect.sh` (Task 4)
 - Produces: an installed, enabled systemd timer running the inspector twice daily
 
-- [ ] **Step 1: Write `systemd/docker-gitops-inspector.service`**
+- [x] **Step 1: Write `systemd/docker-gitops-inspector.service`**
 
 ```ini
 [Unit]
@@ -1157,7 +1161,7 @@ WorkingDirectory=/home/ubuntu/jerome/docker-gitops/vps_oracle/inspector
 ExecStart=/home/ubuntu/jerome/docker-gitops/vps_oracle/inspector/inspect.sh
 ```
 
-- [ ] **Step 2: Write `systemd/docker-gitops-inspector.timer`**
+- [x] **Step 2: Write `systemd/docker-gitops-inspector.timer`**
 
 ```ini
 [Unit]
@@ -1171,7 +1175,7 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-- [ ] **Step 3: Write `README.md`**
+- [x] **Step 3: Write `README.md`**
 
 ```markdown
 # vps_oracle/inspector
@@ -1232,7 +1236,7 @@ sudo systemctl enable --now docker-gitops-inspector.timer
 2. 正式模式上線後先觀察幾天的 Telegram 報告，確認沒有誤殺才算穩定——不是一上線就信任自動 kill。
 ```
 
-- [ ] **Step 4: Manual deploy + smoke test**
+- [x] **Step 4: Manual deploy + smoke test**
 
 ```bash
 cd vps_oracle/inspector
@@ -1245,7 +1249,7 @@ sudo systemctl status docker-gitops-inspector.service --no-pager
 ```
 Expected: `status` shows the last run as `Succeeded` (`Type=oneshot`). Confirm a real report ("🔍 巡檢報告 vps_oracle · ...") landed in the "OCI System inspection" Telegram group — this run is **not** dry-run, so also confirm nothing unexpected got killed/deleted (`journalctl -u docker-gitops-inspector.service -n 50` shows what it did).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add vps_oracle/inspector/systemd/ vps_oracle/inspector/README.md
@@ -1256,8 +1260,8 @@ git commit -m "Add systemd timer deployment and README for vps_oracle inspector"
 
 ## Definition of Done (Phase 1)
 
-- [ ] `./tests/test-common.sh`, `test-stray-vscode-sessions.sh`, `test-vscode-server-versions.sh`, `test-inspect.sh` all pass
-- [ ] `INSPECTOR_DRY_RUN=1 ./inspect.sh` run manually against real host state, output reviewed by a human, nothing surprising
-- [ ] `docker-gitops-inspector.timer` installed and enabled; one real (non-dry-run) manual run completed via `systemctl start`, confirmed via `journalctl` that nothing was wrongly killed/deleted
-- [ ] A real Telegram report received in "OCI System inspection" from the real timer-triggered or manual run
-- [ ] All five tasks committed as separate commits (already true if each task's Step "Commit" was followed)
+- [x] `./tests/test-common.sh`, `test-stray-vscode-sessions.sh`, `test-vscode-server-versions.sh`, `test-inspect.sh` all pass
+- [x] `INSPECTOR_DRY_RUN=1 ./inspect.sh` run manually against real host state, output reviewed by a human, nothing surprising
+- [x] `docker-gitops-inspector.timer` installed and enabled; one real (non-dry-run) manual run completed via `systemctl start`, confirmed via `journalctl` that nothing was wrongly killed/deleted
+- [x] A real Telegram report received in "OCI System inspection" from the real timer-triggered or manual run
+- [x] All five tasks committed as separate commits (already true if each task's Step "Commit" was followed)
