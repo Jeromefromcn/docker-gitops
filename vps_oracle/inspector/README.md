@@ -11,7 +11,7 @@ Host-level巡檢腳本，非 docker compose 管理（跟 `vps_oracle/k3s/` 一�
 - `checks/stray-vscode-sessions.sh` — 游離/卡死的 claude session、脫離連線的 server-main 樹
 - `checks/vscode-server-versions.sh` — 堆積的 `.vscode-server/cli/servers/*` 版本目錄
 
-尚未實作（見另一份 phase 2 計畫）：docker 層與 k3s 層的資源清理 checks。新增時只要在 `checks/` 加一個新的可執行腳本，`inspect.sh` 用 glob 自動發現，不用改這裡任何現有代碼。
+尚未實作（phase 2 計劃還沒寫，spec 的 check 表已列出候選項）：docker 層與 k3s 層的資源清理 checks。新增時只要在 `checks/` 加一個新的可執行腳本，`inspect.sh` 用 glob 自動發現，不用改這裡任何現有代碼。
 
 **範圍邊界**：`vscode-server-versions.sh` 只清 `cli/servers/<version>/` 這種大目錄（單個 500-650M 級別），不動 `~/.vscode-server/code-<commit>` 這類小得多的 CLI tunnel binary（~27M/個）——spec 沒把它們列進范围，之后想扩再加新 check。
 

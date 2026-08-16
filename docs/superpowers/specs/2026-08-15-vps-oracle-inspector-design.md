@@ -107,24 +107,27 @@ vps_oracle/inspector/
 
 透過既有的 `apprise` 服務（`http://localhost:30085/notify/inspector-tg`），HTML 格式，沿用 vikunja-notify-relay 已有模式。**注意**：apprise 已於 phase D 遷入 k3s（`workloads` namespace，NodePort `30085`），不再是 docker `proxy` 網路上的容器，因此走宿主機本機的 NodePort，而不是容器名 DNS。新增一個 apprise target `inspector-tg`，指向 Telegram 群組 "OCI System inspection"（bot token / chat id 不進 git，只作為 apprise store 裡的執行時資料，用法與現有 `vikunja-tg-<username>` target 一致；已於 2026-08-16 註冊並測試通過，沿用同一個 bot token）。
 
-範例：
+**通知語言一律英文**（2026-08-16 上線時用戶要求；repo 文件維持中文）。分節標頭、空報告、標題都固定英文，check 腳本產生的 `detail` 文本也一律英文；`tests/test-inspect.sh` 有「payload 無 CJK 字元」的自動斷言鎖死這條規則。
+
+範例（與 `inspect.sh` 實際輸出格式一致）：
 
 ```
-🔍 巡檢報告 vps_oracle · 2026-08-16 09:00（定時）
+🔍 Inspection report vps_oracle · 2026-08-16 09:00
 
-已自動處理
-✅ 清掉游離 exthost 樹（PID 3177808，17 進程/3.2G，session 已於 08:12 結束）
-✅ 清掉 VS Code server 舊版本目錄 ×3（釋放 2.1G）
-✅ docker: 移除 exited 容器 ×2、dangling image ×5
+Auto-handled
+✅ killed: claude PID 3177808
+   session <id> (cwd=/home/ubuntu/jerome/foo) finished 2880s ago, still alive past 1800s threshold
+✅ deleted: Stable-df53daabb18cd157bdb08c7f01c34df936cf12f4
+   not in top 2 lru.json entries, no active process, size=656M
 
-需要人工確認
-⚠️ claude 進程 PID 5521（cwd ~/jerome/foo）存活 7h12m，transcript 無 result——可能是長任務或卡死
-⚠️ docker volume "old-project-data" 未被任何容器掛載
+Needs manual review
+⚠️ claude PID 5521
+   session <id> (cwd=/home/ubuntu/jerome/foo) alive 25920s with no transcript result yet -- may be a long task or stuck
 
-本次耗時 4.2s
+Run took 4.2s
 ```
 
-若完全沒異常，只發一行「✅ 一切正常，無需處理」——確保巡檢本身有沒有在跑是可觀察的。
+若完全沒異常，只發「✅ All clear — nothing needed attention」一行——確保巡檢本身有沒有在跑是可觀察的。
 
 ## 部署
 
