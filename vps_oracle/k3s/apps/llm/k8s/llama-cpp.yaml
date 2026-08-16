@@ -88,8 +88,10 @@ metadata:
   name: llama-cpp
   namespace: llm
 spec:
+  type: NodePort
   selector:
     app: llama-cpp
   ports:
     - port: 8080
       targetPort: 8080
+      nodePort: 30091
