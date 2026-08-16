@@ -18,22 +18,22 @@ kubectl -n lab-environment scale deployment --all --replicas=1
 change should stick — `selfHeal` will otherwise revert a bare `kubectl
 scale` within a couple minutes).
 
-## After bringing it up: reseed Consul KV
+## After bringing it up: seed Consul KV (once)
 
-`consul` runs in `-dev` mode and does not persist data — every time it
-(re)starts, `config/<service>/data/db.*` (and the chaos toggles) are gone,
-and `customers-service`/`vets-service`/`visits-service` will crash-loop on
-a Hikari/JDBC placeholder error until the KV keys exist. Re-run the
-project's own bootstrap script against the new NodePort:
+`consul` runs as a `-server` with on-disk storage on a local-path PVC
+(`consul-data`), so its KV survives restarts. The old `-dev` in-memory mode
+wiped `config/<service>/data/db.*` (and the chaos toggles) on every restart,
+crash-looping `customers-service`/`vets-service`/`visits-service` with a
+Hikari/JDBC placeholder error until the keys were re-put. Only seed once, on
+first bring-up or after a manual KV reset:
 
 ```bash
 CONSUL_HTTP_ADDR="http://localhost:30092" \
   bash ~/jerome/lab-environment/scripts/init-consul-kv.sh
 ```
 
-This is not new behavior introduced by the k8s migration — the original
-compose setup already required re-running this after every
-`docker compose up`, it's just pointed at a different Consul address now.
+Note: local-path is node-local — the KV survives a node reboot but not a node
+rebuild; re-seed after that.
 
 ## Host prerequisite: `fs.inotify.max_user_instances`
 

@@ -21,9 +21,14 @@ spec:
       containers:
         - name: consul
           image: hashicorp/consul:1.19
+          # -server + on-disk /consul/data instead of -dev: -dev keeps the KV
+          # in memory and every node/consul restart wipes it, crash-looping
+          # customers/vets/visits until the KV is reseeded (see README).
           args:
             - agent
-            - -dev
+            - -server
+            - -bootstrap-expect=1
+            - -data-dir=/consul/data
             - -client=0.0.0.0
             - -ui
             # Without this, GET /v1/agent/metrics?format=prometheus 200s but
@@ -37,6 +42,9 @@ spec:
               value: "Asia/Hong_Kong"
           ports:
             - containerPort: 8500
+          volumeMounts:
+            - name: consul-data
+              mountPath: /consul/data
           resources:
             requests:
               cpu: 50m
@@ -44,6 +52,10 @@ spec:
             limits:
               cpu: 300m
               memory: 256Mi
+      volumes:
+        - name: consul-data
+          persistentVolumeClaim:
+            claimName: consul-data
 ---
 apiVersion: v1
 kind: Service
@@ -58,3 +70,15 @@ spec:
     - port: 8500
       targetPort: 8500
       nodePort: 30092
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: consul-data
+  namespace: lab-environment
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
