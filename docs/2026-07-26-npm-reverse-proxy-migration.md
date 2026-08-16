@@ -129,8 +129,11 @@ acme-challenge/JXeYmV...: Timeout during connect (likely firewall problem)
 
 ```bash
 sudo iptables -I INPUT 8 -p tcp --dport 443 -j ACCEPT
-sudo netfilter-persistent save    # 不 save 重启就丢
 ```
+
+持久化:把规则写进 `vps_oracle/host-firewall/host-firewall.sh`(由 `host-firewall.service` 开机加载,手写主机防火墙规则的唯一出处)。
+
+> ⚠️ 红线(2026-08-16 事故根因):**不要**用 `netfilter-persistent save` / `iptables-save` 全量保存——全量快照会把 Docker 运行时规则一起冻结,netfilter-persistent 每次开机回放,幽灵规则黑洞容器流量。netfilter-persistent 已禁用,详见 `vps_oracle/host-firewall/README.md`。
 
 加上在 OCI 控制台补 `80`/`443` 的 Ingress Rule。
 
