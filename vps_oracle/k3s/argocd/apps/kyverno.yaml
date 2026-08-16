@@ -22,14 +22,24 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
-  # kyverno re-adds an empty `labels: {}` map to its own CRDs at runtime, which
-  # otherwise shows as permanent OutOfSync and keeps selfHeal re-syncing (each
-  # sync re-runs the PostSync migrate job and churns the admission controller).
+  # kyverno strips the empty labels/annotations maps the chart renders onto its
+  # own CRDs, and adds spec defaults + status to its ClusterPolicies at runtime.
+  # Without ignoreDifferences this shows as permanent OutOfSync and selfHeal
+  # keeps re-syncing (each sync re-runs the PostSync migrate job and churns the
+  # admission controller).
   ignoreDifferences:
     - group: apiextensions.k8s.io
       kind: CustomResourceDefinition
+      jqPathExpressions:
+        - .metadata.labels
+        - .metadata.annotations
+    - group: kyverno.io
+      kind: ClusterPolicy
       jsonPointers:
-        - /metadata/labels
+        - /spec/admission
+        - /spec/background
+        - /spec/emitWarning
+        - /status
   syncPolicy:
     automated:
       prune: true
