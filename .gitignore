@@ -32,6 +32,9 @@ __pycache__/
 # runtime logs written by containers into mounted config dirs
 vps_oracle/compose/homepage/config/logs/
 
+# runtime dedup/comparison state written by the host inspector
+vps_oracle/inspector/state/
+
 # superpowers subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/sdd/
 .worktrees/
