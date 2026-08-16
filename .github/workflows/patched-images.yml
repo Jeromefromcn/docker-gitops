@@ -1,10 +1,10 @@
-name: placeholder-hello
+name: patched-images
 
 on:
   push:
     branches: [main]
     paths:
-      - 'vps_oracle/k3s/apps/placeholder-hello/**'
+      - 'vps_oracle/k3s/images/**'
   workflow_dispatch: {}
 
 permissions:
@@ -13,11 +13,18 @@ permissions:
   id-token: write
 
 env:
-  IMAGE: ghcr.io/jeromefromcn/placeholder-hello
+  REGISTRY: ghcr.io/jeromefromcn
 
 jobs:
   build-scan-sign:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: homepage
+            context: vps_oracle/k3s/images/homepage
+          - name: trilium
+            context: vps_oracle/k3s/images/trilium
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -41,17 +48,17 @@ jobs:
         id: build
         uses: docker/build-push-action@v7.3.0
         with:
-          context: vps_oracle/k3s/apps/placeholder-hello
+          context: ${{ matrix.context }}
           platforms: linux/arm64
           push: true
-          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ matrix.name }}:${{ github.sha }}
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         env:
           TRIVY_PLATFORM: linux/arm64
         with:
-          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.name }}:${{ github.sha }}
           severity: CRITICAL
           exit-code: '1'
           ignore-unfixed: true
@@ -68,5 +75,13 @@ jobs:
 
       - name: Sign image (keyless)
         env:
-          IMAGE_REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ matrix.name }}@${{ steps.build.outputs.digest }}
         run: cosign sign --yes "$IMAGE_REF"
+
+      # NOTE: GITHUB_TOKEN-created packages default to private. The cluster
+      # pulls ghcr.io/jeromefromcn/* anonymously, so each NEW package must be
+      # set public once in the GitHub web UI (package page -> Package settings
+      # -> Change visibility -> Public). The packages API returned 404 for the
+      # GITHUB_TOKEN on both /user/packages and /repos/... visibility
+      # endpoints (user-account repos have no repo-scoped packages endpoints),
+      # so this can't be automated from the workflow.

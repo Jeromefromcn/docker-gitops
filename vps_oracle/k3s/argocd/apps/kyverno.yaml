@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://kyverno.github.io/kyverno/
+      chart: kyverno
+      targetRevision: "3.8.2"
+      helm:
+        releaseName: kyverno
+        valueFiles:
+          - $values/vps_oracle/k3s/kyverno/values.yaml
+    - repoURL: https://github.com/Jeromefromcn/docker-gitops.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/Jeromefromcn/docker-gitops.git
+      targetRevision: main
+      path: vps_oracle/k3s/kyverno/policies
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
