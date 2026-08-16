@@ -12,7 +12,11 @@ docker-gitops/
             └── docker-compose.yml
 ```
 
-`<host>/` 下除 `compose/` 外，也可能有其他不属于 docker compose 管理的子目录（如 `k3s/`），各自遵循自己的约定，见对应子目录的 README。
+`<host>/` 下除 `compose/` 外，也可能有其他不属于 docker compose 管理的子目录（如 `k3s/`、`inspector/`），各自遵循自己的约定，见对应子目录的 README。
+
+## inspector（主機巡檢）
+
+`vps_oracle/inspector/` 是 host-native bash 巡檢腳本（非容器），由 systemd timer 每天 09:00/21:00 觸發：偵測並清理游離的 VS Code/Claude session 行程樹、堆積的 `.vscode-server` 版本目錄，每輪必發一封英文 Telegram 報告。設計背景（自我保護規則、auto/alert 分級）見 [設計文件](docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md)，執行/測試/部署操作見 [`vps_oracle/inspector/README.md`](vps_oracle/inspector/README.md)。
 
 ## k3s（雲原生實驗平台，进行中）
 
