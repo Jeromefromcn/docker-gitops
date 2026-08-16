@@ -41,6 +41,8 @@ spec:
         - .spec.background
         - .spec.emitWarning
         - .spec.rules[]?.skipBackgroundRequests
+        - .spec.rules[]?.context[]?.apiCall?.method
+        - .spec.rules[]?.validate?.allowExistingViolations
         - .spec.rules[]?.verifyImages[]?.required
         - .spec.rules[]?.verifyImages[]?.useCache
         - .spec.rules[]?.verifyImages[]?.verifyDigest
