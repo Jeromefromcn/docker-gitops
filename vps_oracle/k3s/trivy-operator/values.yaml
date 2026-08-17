@@ -10,9 +10,14 @@ operator:
   # parallel anyway -- trivy.slow (chart default: true) already runs each
   # scan single-threaded.
   scanJobsConcurrentLimit: 1
+
+trivyOperator:
   # Lets a workload opt out of scanning by carrying this label key (see
   # homepage's deployment.yaml -- its image is arm64-only and trivy's
   # scanner defaults to amd64, so every attempt fails immediately).
+  # Separate top-level block from operator: above -- the chart splits
+  # operator controller settings (operator:) from scan-job/report
+  # behavior (trivyOperator:); skipResourceByLabels lives in the latter.
   skipResourceByLabels: "trivy-operator.skip"
 
 resources:
