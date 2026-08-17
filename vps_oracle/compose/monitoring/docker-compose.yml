@@ -20,11 +20,14 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
     networks:
-      default:
-        ipv4_address: 172.20.0.2
-    # 不对外暴露、没有登录认证: 不发布宿主机端口。k3s 里的 headlamp 通过 k3s
-    # apiserver 自带的 service proxy 访问这个容器内部 IP (k3s apiserver 是宿主机
-    # 进程，本来就能直连 docker 网桥，见 vps_oracle/k3s/apps/headlamp/k8s/
+      default: {}
+      proxy:
+        ipv4_address: 172.19.0.4
+    # 不对外暴露、没有登录认证、不发布宿主机端口 (README「端口最少暴露」)。挂 proxy
+    # 网络只是为了拿一个按 README「网络隔离」章节登记的固定 IP，不接 NPM、没有
+    # proxy host 记录，proxy 网络里其他容器能直连但公网连不到。k3s 里的 headlamp
+    # 通过 k3s apiserver 自带的 service proxy 访问这个 IP (apiserver 是宿主机进程，
+    # 本来就能直连 docker 网桥，见 vps_oracle/k3s/apps/headlamp/k8s/
     # external-prometheus.yaml) —— 固定 IP 是因为那个 EndpointSlice 是手写的，
     # 容器重建后 IP 漂移的话需要跟着改
 
@@ -93,9 +96,5 @@ services:
     # NPM 反代配置: Forward Hostname/IP = grafana, Forward Port = 3000
 
 networks:
-  default:
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
   proxy:
     external: true   # 手动创建一次：docker network create proxy
