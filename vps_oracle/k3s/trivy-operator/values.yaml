@@ -12,13 +12,24 @@ operator:
   scanJobsConcurrentLimit: 1
 
 trivyOperator:
-  # Lets a workload opt out of scanning by carrying this label key (see
-  # homepage's deployment.yaml -- its image is arm64-only and trivy's
-  # scanner defaults to amd64, so every attempt fails immediately).
+  # Lets a workload opt out of scanning by carrying this label key.
   # Separate top-level block from operator: above -- the chart splits
   # operator controller settings (operator:) from scan-job/report
   # behavior (trivyOperator:); skipResourceByLabels lives in the latter.
   skipResourceByLabels: "trivy-operator.skip"
+  # Target workloads' initContainers were being scanned as their own,
+  # fully-parallel containers inside the same scan Job pod (not true
+  # sequential K8s initContainers) -- e.g. cilium's DaemonSet has 6
+  # initContainers that all share cilium's own main-container image, so
+  # its scan job launched 7 concurrent trivy processes racing for the
+  # one shared filesystem cache lock, repeatedly hitting
+  # BackoffLimitExceeded regardless of scanJobsConcurrentLimit (that
+  # setting only bounds cross-job concurrency, not containers within one
+  # job). Checked every pod cluster-wide: only two initContainers
+  # (kyverno-pre, homepage's busybox seed-config) use an image different
+  # from their main container, so the real coverage loss from turning
+  # this off is small and known, not blanket.
+  skipInitContainers: true
 
 resources:
   requests:
@@ -33,6 +44,21 @@ trivy:
   # cache pod. Left explicit here so the choice is visible in git, not just
   # implied by omission.
   mode: Standalone
+  # This node is arm64-only (Oracle Ampere), but Trivy's own CLI defaults
+  # to assuming linux/amd64 and refuses to scan anything else ("By
+  # default, only Linux amd64 images are supported for scanning") --
+  # broke scanning for every image built single-arch arm64 by this repo's
+  # own CI (homepage, trilium, evidence-os-website, placeholder-hello,
+  # vikunja-notify-relay). configFile is rendered verbatim into Trivy's
+  # own --config file (must stay a YAML map here, not a `|` string --
+  # the chart's toYaml/nindent double-wraps a string and corrupts it).
+  # Safe cluster-wide: everything actually Running on this node is
+  # already arm64-compatible by construction, so this only changes which
+  # manifest-list variant gets pulled for scanning, matching what's
+  # actually deployed instead of a mismatched amd64 default.
+  configFile:
+    image:
+      platform: linux/arm64
   resources:
     requests:
       cpu: 100m
