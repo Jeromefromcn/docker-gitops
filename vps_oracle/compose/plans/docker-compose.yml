@@ -1,6 +1,6 @@
 services:
   plans:
-    image: plans:575093c
+    image: plans:58a4117
     container_name: plans
     restart: unless-stopped
     security_opt:
