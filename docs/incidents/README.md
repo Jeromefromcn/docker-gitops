@@ -6,6 +6,7 @@
 
 | 日期 | 服务 | 简述 | 记录 |
 |---|---|---|---|
+| 2026-08-17 | k3s | 节点内存超卖 110%，jaeger/trivy 相继被 cgroup OOM Kill，页缓存抖动触发 IO PSI 告警；调高两处 limit + 补巡检 check + 收窄告警噪音 | [链接](2026-08-17-k3s-memory-overcommit-io-pressure.md) |
 | 2026-08-15 | vscode-server | 远程会话堆积引发资源尖峰（负载 38.7），根因链上游为 ccr 卡死 bug | [链接](2026-08-15-vscode-sessions-resource-spike.md) |
 | 2026-08-15 | ccr | VS Code 扩展经 ccr 走第三方 provider 逐 token SSE 致会话卡死，SSE 合并中间件修复；同日下午按 delta 类型调大合并窗口（合并率 3-5x→23x，见文末后记二） | [链接](2026-08-15-ccr-vscode-extension-stall.md) |
 | 2026-08-06 | npm | access list 误拦流量：daemon 重启后 proxy 网内容器 IP 漂移，与 xray DNS 覆写和放行规则错位，修复为钉静态 IP | [链接](2026-08-06-proxy-access-ip-mismatch.md) |
