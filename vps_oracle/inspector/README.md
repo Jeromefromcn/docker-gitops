@@ -27,6 +27,7 @@ Host-level巡檢腳本，非 docker compose 管理（跟 `vps_oracle/k3s/` 一�
 - `checks/k3s-containerd-images.sh`（auto）— 無容器引用的 containerd image（`sudo crictl`）
 - `checks/k3s-released-pvs.sh`（alert）— Released PV
 - `checks/k3s-stuck-terminating.sh`（alert）— 卡超過 15 分鐘的 Terminating pod
+- `checks/k3s-oom-killed-containers.sh`（alert）— `lastState.terminated.reason=OOMKilled` 且發生在 24 小時內；`k3s-evicted-pods.sh` 抓不到這種情況（pod 全程停留 `Running`，只是 container 被殺重啟），2026-08-17 io_pressure_critical 事件（jaeger/trivy 都因 limit 太緊被 OOM Kill）之後補上
 
 閾值都是各腳本開頭的 env var，可從 systemd unit 的 `Environment=` 或手動執行時覆寫。
 
@@ -60,6 +61,7 @@ cd vps_oracle/inspector
 ./tests/test-k3s-completed-jobs.sh
 ./tests/test-k3s-containerd-images.sh
 ./tests/test-k3s-alerts.sh
+./tests/test-k3s-oom-killed-containers.sh
 ```
 
 `tests/test-common.sh` 是全案最重要的一份測試——它驗證的是「絕不誤殺自己」這條規則本身，不能只靠人工看一遍代碼，見 spec 的「自我保護規則」一節。
