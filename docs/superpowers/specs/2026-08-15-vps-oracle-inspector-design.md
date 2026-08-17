@@ -90,6 +90,7 @@ vps_oracle/inspector/
 | 容器日誌檔異常大 | `/var/lib/docker/containers/*/*-json.log` 實際大小異常 | 容器名、檔案大小 | 可能是 logging 設定沒生效，需人工排查 |
 | k3s Released PV | 不再綁定但仍佔磁碟 | PV 名 | 可能有資料，道理同 docker volume |
 | k3s 卡住的 Terminating pod | 超過閾值仍卡在 Terminating | pod 名、命名空間 | 通常代表 finalizer/node 問題，需人工判斷是否強制刪除 |
+| k3s container 被 OOM Kill | `containerStatuses[].lastState.terminated.reason=OOMKilled` 且發生在回看窗口內（預設 24 小時） | pod/命名空間/container 名、重啟次數、距今時間 | limit 該不該調高、workload 該不該減量是人的判斷；`k3s Evicted/Failed pod` 那條抓不到——container 被 OOM Kill 後 pod 通常留在 `Running`（只是重啟），不會進 `Failed`。2026-08-17 `io_pressure_critical` 事故補上（jaeger 128Mi、trivy scan job 500Mi 都因 limit 過緊被 OOM Kill，事發時巡檢完全沒有能定位到「誰被誰殺」的 check） |
 | 任何命中「自身進程鏈」的目標 | 見下方自我保護規則 | `skipped: self-chain overlap` | 絕不動手 |
 
 ## 自我保護規則
