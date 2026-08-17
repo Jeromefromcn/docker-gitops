@@ -27,7 +27,6 @@ spec:
                     operator: In
                     values:
                       - placeholder-hello
-                      - vikunja-notify-relay
       context:
         - name: vulnreports
           apiCall:
