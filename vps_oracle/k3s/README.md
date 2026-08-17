@@ -178,15 +178,19 @@ Commit the output (safe — it's ciphertext), push, then delete the old bare Sec
 
 ## homepage
 
+**2026-08-18: migrated back to compose** (`vps_oracle/compose/homepage`) — no longer running on k3s. This section is kept as historical record of the phase C k3s migration; see the [migration plan](../../docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md) for the reversal.
+
 Migrated from `vps_oracle/compose/homepage` in phase C. Config (`settings.yaml`/`widgets.yaml`/`services.yaml`/`bookmarks.yaml`/`custom.css`/`custom.js`) lives in `apps/homepage/k8s/configmap.yaml` — still git-versioned, just delivered as a ConfigMap instead of a bind mount. An initContainer copies it into a writable `emptyDir` at `/app/config` because homepage writes its own request log there and a ConfigMap volume is read-only.
 
 The docker-container-status widget (`config/docker.yaml`, and each service card's `container`/`server` keys) was dropped — it depended on a read-only `/var/run/docker.sock` mount with no k8s equivalent worth the RBAC to replace it. The global `resources`/`search`/`datetime` widgets are unaffected.
 
-Exposed via NodePort `30081` → NPM (`homepage.jerome.cloudns.asia`), same domain as before. The old compose container (`vps_oracle/compose/homepage`) is stopped, not removed — kept as a rollback path per the roadmap's migration principles.
+Was exposed via NodePort `30081` → NPM (`homepage.jerome.cloudns.asia`), same domain as before. (Contrary to what this paragraph originally claimed, the old compose container/files were actually deleted from git in commit `1e6bcf9` on 2026-08-16, not kept — that claim was already stale before the 2026-08-18 reversal above; the new compose stack was rebuilt from that commit's git history instead.)
 
 **NPM cutover was scripted, not manual.** `vps_oracle/compose/npm/.npm-automation.env` + the API pattern documented in `vps_oracle/compose/npm/README.md` (login → bearer token → `GET`/`PUT /api/nginx/proxy-hosts/{id}`) let a `PUT` update `forward_host`/`forward_port` on the existing proxy host in place, same effect as the manual UI steps but scriptable. Still re-verify `ssl_forced`/`http2_support` after the `PUT` — the known "resets itself" bug isn't specific to the UI path.
 
 ## trilium
+
+**2026-08-18: migrated back to compose** (`vps_oracle/compose/trilium`) — no longer running on k3s; notes data was copied from this PVC's host path back to `/etc/trilium/data`. This section is kept as historical record of the phase C k3s migration; see the [migration plan](../../docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md) for the reversal.
 
 Migrated from `vps_oracle/compose/trilium` in phase C. Unlike homepage, trilium holds real user data (notes), so this wasn't a config-only swap — the migration procedure was:
 
@@ -205,7 +209,7 @@ The container intentionally has no `securityContext.runAsUser` — the image's e
 
 **Quota headroom bit during the fix rollout.** After correcting `enableServiceLinks`, the Deployment's rolling update tried to run both the old (crash-looping) and new pod briefly, and `workloads-quota`'s `limits.cpu` had no room for both trilium pods (500m each) on top of homepage/placeholder-hello's existing usage. Manually scaling the old (broken) ReplicaSet to 0 freed the quota and let the new pod get admitted — a direct instance of the tight-headroom risk already flagged in the phase C design doc.
 
-Exposed via NodePort `30082` → NPM (`trilium.jerome.cloudns.asia`), same domain as before. The old compose container is stopped, not removed.
+Was exposed via NodePort `30082` → NPM (`trilium.jerome.cloudns.asia`), same domain as before.
 
 **Known limitation:** there is no backup mechanism for this data beyond the original `/etc/trilium/data` on the host (pre-existing gap, not introduced by this migration). The PVC's `local-path` StorageClass has `reclaimPolicy: Delete` — removing `pvc.yaml` from git and letting ArgoCD prune it deletes the underlying data directory too. The original `/etc/trilium/data` is untouched by the migration (the copy only reads from it) so it's a recovery path today, but that stops being true whenever phase H decides to clean up decommissioned compose data.
 
@@ -251,6 +255,8 @@ Adding a new self-built workload: add it to `restricted-self-built.yaml`'s label
 - **Pre-existing quota headroom issues surfaced (not caused) by restart-testing these policies**, in namespaces unrelated to phase E's own additions: `dify-quota`'s `limits.cpu` was already at 2850m/3000m and `workloads-quota` at 1700m/2000m before any of this work started — restarting `dify`'s app tier (`api`/`worker`/`worker-beat`/`web`) and `trilium` each hit the same `RollingUpdate`-vs-tight-quota deadlock already fixed for `llm` via `Recreate` strategy (commit `bd79748`). **RESOLVED (2026-08-16)**: the `Recreate` strategy was applied to all remaining single-replica Deployments in `dify` (`api`/`web`/`worker`/`worker-beat`/`ssrf-proxy`; `plugin-daemon` already had it) and `workloads` (`apprise`/`evidence-os-website`/`homepage`/`placeholder-hello`/`trilium`/`vikunja`/`vikunja-notify-relay`). No service in these namespaces has more than one replica, so the Recreate downtime is one pod's cold-start; RollingUpdate offered nothing here since surge could never be scheduled.
 
 **Net effect (updated 2026-08-18): all three policies are `Enforce`.** `restrict-image-registry` and `restricted-self-built` flipped after a clean 3-day Audit window with zero violations, then verified to actually block (unsigned `:latest` and an explicit `runAsUser: 0` override on a `placeholder-hello`-labeled pod were both rejected at admission). `require-vuln-scan-clean` was narrowed to self-built images only (see the 2026-08-18 finding above) before flipping — third-party workloads (argocd, dify, lab-environment, kube-system, etc.) are no longer in this policy's scope at all, so their pre-existing fixable-CRITICAL CVEs can't block their own admission; those stay a separate, ongoing patching concern, not a phase E blocker.
+
+**2026-08-18, later the same day: `dify` (all 9 containers) and `evidence-os-website` migrated off k3s back to/into compose** — see the [migration plan](../../docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md). The `dify` namespace no longer exists; the third-party-CVE carve-out above is kept as historical record of why the policy was scoped that way, but `dify` pods are no longer part of what it needs to account for.
 
 ## Handoff to phase C
 

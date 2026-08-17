@@ -22,7 +22,7 @@ docker-gitops/
 
 `vps_oracle/k3s/` 是在同一台机器上用 K3s 复刻一套云原生开发运维实验平台的多阶段工程——目标是**逐服务**把 compose 栈迁到 k8s，对外域名/端口保持不变，compose 环境去留按服务单独判断，不是要整体推翻现有架构。完整背景、阶段拆解（A 叢集基礎層 → B GitOps 啟動 → C 遷移範本 → D 剩餘服務遷移 → E 供應鏈安全 → F 多環境泳道 → G 服務網格 → H compose 退場評估）见 [K3s 雲原生實驗平台路線圖](docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md)，各阶段的安装/操作细节见 [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md)。
 
-截至目前（phase D 进行中）：叢集基礎（K3s + Cilium + local-path 存儲）、ArgoCD app-of-apps GitOps 迴路、以及 `homepage`/`trilium`/`vikunja`/`apprise`/`llm`（llama-cpp/open-webui）/`dify`（9 容器全家桶，独立 `dify` 命名空间）已经迁移完成并从 k3s 提供服务；其余服务仍在 `<host>/compose/` 下运行，见下方「不会迁移到 k3s 的服务」。
+截至目前（phase D 进行中）：叢集基礎（K3s + Cilium + local-path 存儲）、ArgoCD app-of-apps GitOps 迴路、以及 `vikunja`/`apprise`/`llm`（llama-cpp/open-webui）已经迁移完成并从 k3s 提供服务；`homepage`/`trilium`/`dify` 曾短暂迁移到 k3s，2026-08-18 评估后迁回 compose（详见 [迁移计划](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md)）；`evidence-os-website`（原本 k3s 原生，无 compose 前身）同样于同日迁入 compose；其余服务仍在 `<host>/compose/` 下运行，见下方「不会迁移到 k3s 的服务」。
 
 ### 不会迁移到 k3s 的服务
 
@@ -87,7 +87,7 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 
 ## 给新服务加 homepage 卡片
 
-homepage 从 phase C 起已迁到 k3s（见上面「k3s」一节），配置源文件是 **`vps_oracle/k3s/apps/homepage/k8s/config/services.yaml`**（`vps_oracle/compose/homepage/config/services.yaml` 是迁移前的旧路径，容器已停但目录保留作为回滚路径，phase H 才决定去留——不要再改这份）。每新增一个服务，在对应分类（`Infra Services` / `Apps`）下加一张卡片，跟现有条目保持同样格式：
+homepage 2026-08-18 已从 k3s 迁回 compose（见上面「k3s」一节），配置源文件是 **`vps_oracle/compose/homepage/config/services.yaml`**。每新增一个服务，在对应分类（`Infra Services` / `Apps`）下加一张卡片，跟现有条目保持同样格式：
 
 ```yaml
     - <服务名>:
@@ -98,14 +98,10 @@ homepage 从 phase C 起已迁到 k3s（见上面「k3s」一节），配置源�
 
 - `icon`：优先用 [walkxcode/dashboard-icons](https://github.com/walkxcode/dashboard-icons) 里对应的文件名（homepage 会自动去 CDN 拉）；没有专门图标的用 `si-<name>`（simple-icons）顶替，如 `si-anthropic`
 - `description`：访客可见，按下面"暴露内容用英文"的约定用英文
-- 没有 `container`/`server` 字段——k8s 里没挂 docker socket，容器状态小组件在迁移时已去掉，只剩卡片本身
+- 没有 `container`/`server` 字段——迁回 compose 后这个字段本可以恢复（挂 docker.sock），但 2026-08-18 决定继续不挂，保持跟迁移前 k3s 状态一致，只做卡片本身
 - **例外**：安全敏感的服务（如 3x-ui）不上卡片，加之前先问一句
 
-**改完之后要 `git push` 到 GitHub 的 `main` 分支才会生效**——ArgoCD 的 `homepage` Application（`vps_oracle/k3s/argocd/apps/homepage.yaml`）跟踪的是 GitHub remote（`repoURL`），不是本地工作区；本地 commit 不 push 的话 ArgoCD 看不到。`syncPolicy.automated`（`prune: true`, `selfHeal: true`）开着，push 后 ArgoCD 会在下个轮询周期（或手动 `argocd app sync homepage` / UI 点 "Sync"）自动同步。
-
-`vps_oracle/k3s/apps/homepage/k8s/` 是一个 Kustomize 目录（`kustomization.yaml` 用 `configMapGenerator` 从 `config/*` 生成 ConfigMap），不是普通 plain-manifest 目录：每次 `config/` 下任何文件内容变化，生成的 ConfigMap 名字都会带上内容 hash 自动改变（如 `homepage-config-d647d5gd7m`），`kustomization.yaml` 里全局 `namespace: workloads` 会让 kustomize 把这个新名字同步改到 `deployment.yaml` 的 volume 引用里——**这让 pod template 本身跟着变，ArgoCD 会像平时改镜像 tag 一样自动做一次滚动更新，不需要手动 `kubectl rollout restart`**。旧的 ConfigMap 会被 `prune: true` 自动清掉。
-
-**⚠️ 已知坑**：`workloads` namespace 的 `ResourceQuota`（`limits.cpu` 上限 2 核）如果被其他服务占得比较满，这次自动触发的滚动更新，其 surge pod（多出的 25%）可能因为配额不够而卡在 `FailedCreate`（`kubectl describe rs` 能看到 `exceeded quota` 事件），新旧 pod 都起不来。遇到这种情况：`kubectl delete pod <old-pod> -n workloads` 腾出配额，再确认新 ReplicaSet 是否顶上；如果被同名旧 ReplicaSet 抢先重新拉起（旧 RS 的 desired 还没归零），额外 `kubectl scale rs <old-rs> -n workloads --replicas=0` 手动收尾。
+改完后 `cd vps_oracle/compose/homepage && docker compose up -d` 直接生效，不用 push/ArgoCD。
 
 ## 给 Vikunja 项目接 Telegram 通知（透过 vikunja-notify-relay + Apprise）
 
