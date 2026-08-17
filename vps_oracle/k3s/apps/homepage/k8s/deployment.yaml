@@ -4,6 +4,10 @@ metadata:
   name: homepage
   labels:
     app: homepage
+    # arm64-only image; trivy's scanner defaults to amd64 and fails every
+    # attempt, so opt out via operator.skipResourceByLabels in
+    # vps_oracle/k3s/trivy-operator/values.yaml.
+    trivy-operator.skip: "true"
 spec:
   replicas: 1
   strategy:
