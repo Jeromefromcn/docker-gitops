@@ -4,66 +4,32 @@ metadata:
   name: headlamp
   namespace: headlamp
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: headlamp-view
-subjects:
-  - kind: ServiceAccount
-    name: headlamp
-    namespace: headlamp
-roleRef:
-  kind: ClusterRole
-  name: view
-  apiGroup: rbac.authorization.k8s.io
----
-# `view` covers namespaced resources (pods, deployments, ...) but not
-# cluster-scoped `nodes` — without this, the Overview page's Node/CPU/Memory
-# widgets 403 on listing nodes and never resolve.
+# Built-in `view` deliberately excludes cluster-scoped resources (nodes, PVs,
+# StorageClasses, IngressClasses, GatewayClasses, CRDs, ...), Secrets, and
+# RBAC objects (Roles/RoleBindings/ClusterRoles/Bindings) — Headlamp's UI
+# pages for all of these 403 without a broader grant. headlamp.jerome.cloudns.asia
+# sits behind an NPM access list restricted to the operator, so a full
+# cluster-wide read grant (including Secrets and RBAC) is acceptable here.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: headlamp-node-read
+  name: headlamp-full-read
 rules:
-  - apiGroups: [""]
-    resources: ["nodes"]
+  - apiGroups: ["*"]
+    resources: ["*"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: headlamp-node-read
+  name: headlamp-full-read
 subjects:
   - kind: ServiceAccount
     name: headlamp
     namespace: headlamp
 roleRef:
   kind: ClusterRole
-  name: headlamp-node-read
-  apiGroup: rbac.authorization.k8s.io
----
-# `view` also excludes cluster-scoped `customresourcedefinitions` — without
-# this, the Custom Resources page 403s trying to list CRDs and never resolves.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: headlamp-crd-read
-rules:
-  - apiGroups: ["apiextensions.k8s.io"]
-    resources: ["customresourcedefinitions"]
-    verbs: ["get", "list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: headlamp-crd-read
-subjects:
-  - kind: ServiceAccount
-    name: headlamp
-    namespace: headlamp
-roleRef:
-  kind: ClusterRole
-  name: headlamp-crd-read
+  name: headlamp-full-read
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: v1
