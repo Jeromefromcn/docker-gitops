@@ -34,8 +34,7 @@
 | D. 剩餘服務遷移 | 資料庫類服務（vikunja+pg、dify 全家桶）、llm 推理棧、3x-ui 的 39876 TCP 透傳 | 逐服務遷移 + compose 去留決策 | C |
 | D+. 唯讀集群面板 | 裝 Headlamp（view-only RBAC），與 compose 側 portainer 並行互補——portainer 管 docker，Headlamp 管 k8s | Headlamp 經 NPM 反代（獨立子網域 + `self-only` ACL，比照 ArgoCD），上 homepage 卡片（Infra Services 分類，比照 ArgoCD 現狀）；resources requests 50m/64Mi、limits 200m/256Mi | D |
 | E. 供應鏈安全加固 | Trivy 准入門禁、Cosign 驗簽、Sealed Secrets、Kyverno | 鏡像/部署有政策把關 | B、D 服務已上線 |
-| F. 多環境 PR 泳道 | ArgoCD ApplicationSet PR Generator + 泳道配額隔離 | PR 分支自動起隔離環境 | B |
-| G. 服務網格 + 漸進式發布 | Istio Ambient，按 namespace 選擇性啟用，有狀態服務不進網格；金絲雀發布（Argo Rollouts + waypoint 做 L7 流量切分） | L4/L7 流量治理 + 漸進式發布 | D 主要服務已穩定 |
+| F+G. 服務網格驅動的 PR 泳道 | Istio Ambient（istiod + ztunnel + istio-cni + waypoint）+ ArgoCD ApplicationSet PR Generator；PR 泳道不做 namespace 全量複製，改用共享基準環境 + waypoint 依 header 做 L7 流量路由。`placeholder-hello` 改造成兩層（`hello-frontend` → `hello-backend`）並搬進專屬的 `pr-lanes` 命名空間——沒有第二跳就沒有東西向路由可攔，這一層拆分是機制成立的前提 | PR 分支自動起隔離的路由泳道（只複製被改動的那顆服務，非獨立 namespace 複製）；為未來金絲雀發布預留同一套 waypoint 機制 | B、E（需調整 Kyverno 驗簽政策） |
 | H. compose 退場評估 | 逐服務判斷是否還需保留 compose | 最終環境收斂決策 | D |
 
 ## D+ 選型備註
@@ -48,17 +47,20 @@
 
 ## 遷移原則（貫穿全程）
 
-1. 域名/端口對外不變，NPM 繼續當外層入口，其自身的遷移刻意不排進 A~G 任何一階段，留到 H 階段才評估：
+1. 域名/端口對外不變，NPM 繼續當外層入口，其自身的遷移刻意不排進 A~F+G 任何一階段，留到 H 階段才評估：
    - NPM 是「域名/端口不變」承諾的錨點——A~D 每遷移一個服務都是「k3s 內先跑通，再改 NPM 轉發規則」，NPM 本身不動才能讓使用者無感；若 NPM 自己也在遷移中變動，等於同時挪動錨點和被固定的東西，風險疊加
    - 誰接管宿主機 80/443 是前置問題，依賴 A 階段還沒定案的 ingress controller 選型，順序上不可能提前決定
    - NPM 的「遷移」實質上可能是「用 k8s-native ingress + cert-manager 取代 NPM」而非把 NPM 容器化搬進去，這個定性判斷要等 D 階段所有服務都遷完、穩定後才有依據
 2. 每階段走完整 spec → plan → implement → 驗證後，才開下一階段的詳細設計
 3. 遷移每個服務前，先在叢集內驗證通，再切流量，舊 compose 容器保留到確認穩定再退場
 
-## 待 G 階段細化的設計取捨
+## F+G 合併的原因
 
-- Ambient 的 waypoint 是 namespace（或更細至 service account）層級的 Deployment，不是每個 pod 一份，可以把需要 L7（含金絲雀切流）的服務集中到同一個 namespace，共用一份單副本 waypoint，資源開銷小
-- 這與 F 階段「按 PR 泳道分 namespace」的隔離模型有潛在衝突：若某個做金絲雀的服務也會被 PR 泳道複製出獨立環境，需要在 G 階段決定——每條泳道各自起一個 waypoint，還是把金絲雀/L7 示例限定在主環境、不隨泳道複製
+原規劃 F（ArgoCD ApplicationSet PR Generator + 泳道配額隔離，namespace-per-PR 全量複製）與 G（Istio Ambient 服務網格 + 漸進式發布）是分開的兩階段，彼此間有已知張力：namespace-per-PR 的隔離模型跟 waypoint 集中在同一 namespace 共用的模型互相打架，原文件曾把這個取捨留到 G 階段才決定。
+
+重新設計後兩階段合併，原因是 PR 泳道改走「共享基準環境 + waypoint 依 header 做 L7 流量路由」（業界對「無深度依賴圖的獨立服務」的標準做法之一，只複製被改動的那一顆服務，其餘共用），而不是 namespace 全量複製——這個做法本身就需要 Istio Ambient 的 waypoint 才能成立，等於 F 階段的交付物直接依賴 G 階段的核心元件，先後拆兩階段沒有意義，張力也隨之消失（沒有 namespace-per-PR，就沒有跟 waypoint 集中模型衝突的問題）。
+
+代價：F+G 合併後的資源門檻大幅提高（istiod + ztunnel + istio-cni + waypoint 合計，即使調到最低量級，也逼近當初裝 dify 那一次的開銷），且提前引入服務網格這個原本規劃在 D 主要服務穩定後才上的重量級元件；範圍縮小為只套用 `placeholder-hello`，不含金絲雀發布（金絲雀/漸進式發布留在同一套 waypoint 機制之後，視需要再擴大範圍，不在這次交付物內）。
 
 ## 待 H 階段細化的設計取捨
 
@@ -78,6 +80,5 @@
 - D：[剩餘服務遷移設計](2026-08-12-k3s-phase-d-remaining-migrations-design.md)
 - D+：待建立
 - E：待建立
-- F：待建立
-- G：待建立
+- F+G：[服務網格驅動的 PR 泳道設計](2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md)
 - H：待建立
