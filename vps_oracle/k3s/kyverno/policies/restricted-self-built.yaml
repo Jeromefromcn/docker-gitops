@@ -3,7 +3,7 @@ kind: ClusterPolicy
 metadata:
   name: restricted-self-built
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   rules:
     - name: restricted-profile-self-built-workloads
       match:

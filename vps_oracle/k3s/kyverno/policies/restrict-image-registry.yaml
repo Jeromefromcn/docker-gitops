@@ -3,7 +3,7 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registry
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   webhookTimeoutSeconds: 30
   rules:
     - name: verify-ghcr-jeromefromcn-signature
