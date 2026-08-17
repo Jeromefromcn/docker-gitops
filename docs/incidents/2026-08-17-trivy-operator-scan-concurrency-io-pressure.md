@@ -1,7 +1,7 @@
 # 事故記錄:trivy-operator 掃描並發配置失效引發 IO PSI 告警(cilium 自我搶鎖 + 全部 arm64 image 掃描失敗)
 
 日期:2026-08-17
-狀態:已解決(修正兩處 Helm values 誤放層級、關閉 initContainer 掃描、根治 arm64 掃描失敗;移除已失效的 skip 標籤)。遺留 Kyverno 校驗盲區、`builtInTrivyServer` 是否升級、部分服務是否搬回 compose 三項留待後續決策,見第 7 節。
+狀態:已解決(修正兩處 Helm values 誤放層級、根治 arm64 掃描失敗;`skipInitContainers` 一度以為解決了 cilium 自我搶鎖,後來證實是 trivy-operator 本身的半成品實作、根本不生效,改用把 cilium 整個 DaemonSet 排除在掃描外才真正解決,而且第一次嘗試又放錯了 chart values 層級,最後改成直接對 live 資源打標籤——確認穩定超過 13 分鐘無復發)。遺留 Kyverno 校驗盲區、`builtInTrivyServer` 是否升級、部分服務是否搬回 compose、dify/hubble-ui 部分 container 原因不明零掃描四項留待後續,見第 7 節。
 環境:vps_oracle,同一台 4 核 ARM(aarch64)/23.4GB RAM 主機,k3s 單節點叢集,trivy-operator(Helm chart `trivy-operator` 0.35.0,operator 版本 0.33.0,鏡像 `mirror.gcr.io/aquasec/trivy-operator:0.33.0` + 掃描用 `mirror.gcr.io/aquasec/trivy:0.73.0`),GitOps 源 `github.com/Jeromefromcn/docker-gitops`(ArgoCD `automated: {prune:true, selfHeal:true}`)。
 關聯文檔:[2026-08-17-k3s-memory-overcommit-io-pressure.md](2026-08-17-k3s-memory-overcommit-io-pressure.md)(同一天稍早的另一起事故,共用同一條 `io_pressure_critical` 告警規則;那次根因是節點記憶體超賣,這次是 trivy-operator 自己的配置問題與內部搶鎖,兩次觸發同一條告警但完全獨立)。
 本文檔:完整記錄現場數據、排查鏈(含兩次自己踩到又自己修正的 Helm values 層級錯誤)、根因鏈、處置過程與驗證方法,以及尚未拍板的三項後續決策,供複用。
@@ -75,7 +75,27 @@ full avg10=0.00 avg60=0.63 avg300=6.15 total=1985975762
 - 查了 `kyverno/policies/require-vuln-scan-clean.yaml` 的邏輯:目前 `validationFailureAction: Audit`,以 `trivy-operator.resource.name` label 查該 owner 底下所有 report,若「CRITICAL 且有修復版本」的漏洞數 > 0 才 deny。**當一個工作負載完全沒有 report 時,查詢回傳空清單,`length > 0` 恆為 false,等於自動放行**——這不是「兩個 initContainer 覆蓋率變小」這種小問題,是「任何原因導致的掃描失敗都會讓對應工作負載永久繞過這條 policy」,而且沒有 deny 事件可供事後稽核,一旦切到 Enforce 會是無聲的漏洞
 - 對「`builtInTrivyServer`(常駐 trivy-server,ClientServer 模式)當時被否掉」提出異議:實測記憶體 requests 只用 41%(9.9Gi/24Gi),之前引用的「111% limits 超賣」是軟性上限、不影響排程;而且 Standalone 模式下 cilium 那個 job 一次炸開 7 個 container、每個 768Mi limit,瞬間曝險反而衝到 5.4Gi,比一個穩定吃 1Gi limit 的常駐 trivy-server 更誇張。建議列入近期 roadmap 而非否決,因為這是唯一能同時根治「跨 job」和「同一 job 內部」搶鎖問題的方案。
 
-### 3.5 arm64 掃描失敗的根本解法
+### 3.5 第三個發現:`skipInitContainers` 本身是半成品實作,根本沒生效
+
+`skipInitContainers: true`(commit `a54720b`)加上重啟 trivy-operator 後,一度誤判「約 10 分鐘後舊 job 陸續清空,問題解決」(見 5.3 節原始記錄與下方更正)。事後用更長的時間窗重新檢查,發現 `scan-vulnerabilityreport-c84ff9879`(cilium)在設定生效**超過 25 分鐘後**仍然持續以 6 個 initContainer 的組合重建、失敗、`BackoffLimitExceeded`,間隔跟修復前一樣是 45–80 秒。
+
+先做了一次低風險的假設驗證:cilium 主 container 那份 3 小時前建立的 report,`resource-spec-hash` 標籤會不會跟即時算出來的 hash 對不上,導致 operator 一直誤判「report 不存在、要重掃」?刪掉這份 report 讓 operator 重新建一份(10:56:00 建立成功),結果 `c84ff9879` 在新 report 建立**之後**照樣以 6 個 container 的組合重建並失敗——直接推翻了 hash 不對的猜測,證明是別的原因。
+
+沿著這條線索重新 clone trivy-operator 原始碼往下追,發現問題出在 `pkg/vulnerabilityreport/builder.go` 的 `ScanJobBuilder.Get()`:
+- 第 181 行 `kube.GetContainerImagesFromPodSpec(spec, s.skipInitContainers)` 確實正確套用了過濾,但這行的結果**只拿去產生一個 JSON annotation**(記在 Job 物件的 metadata 上),不影響 Job pod 實際要建哪些 container
+- 真正決定「Job pod 裡放哪些 container」的是第 152 行 `s.plugin.GetScanJobSpec(...)`(trivy plugin 自己的程式碼,在 `pkg/plugins/trivy/`)——這個呼叫**完全沒有把 `s.skipInitContainers` 傳進去**,它會獨立從原始物件重新算一次容器清單,不知道要排除 initContainer
+
+也就是說:`skipInitContainers: true` 只影響 operator 判斷「現有 report 夠不夠、要不要觸發重掃」這一步的邏輯,不會真的讓實際建出來的掃描 Job 少掉 initContainer。cilium 這種案例特別會卡進死循環,推測是因為縮短後的清單偶爾還是讓 `hasVulnReports`/`hasExposedSecretReports` 其中一項判斷不滿足(例如 secret report 沒對齊),一觸發重掃,`GetScanJobSpec` 又把全部 7 個 container 塞回去,重掃因搶鎖失敗、永遠沒辦法讓判斷條件穩定下來,於是無限循環。**這是 trivy-operator 0.33.0 這個版本本身的實作缺口,不是 values.yaml 配置能修的**,而且順帶造成一個新症狀:因為 `scanJobsConcurrentLimit: 1`,cilium 這個永遠不會成功、卻一直重建的 job 疑似長期佔用唯一的並發名額,導致 `dify` 的 `api`/`worker`/`worker-beat`(三者共用同一個 image)和 `hubble-ui` 的 `backend` container 完全排不到掃描機會——40 分鐘內 log 裡連一次嘗試都沒有。
+
+**真正的修復**:改用已經驗證能用的 `skipResourceByLabels` 機制,直接把 cilium 整個 DaemonSet 排除在掃描範圍外(而不是只排除它的 initContainer)。查到 cilium 不是 ArgoCD 管的資源——`k3s/README.md` 的 Cilium 一節寫明是當初手動 `helm install` 裝的一次性 bootstrap,沒有對應的 ArgoCD Application、也沒有 selfHeal——所以除了在 `vps_oracle/k3s/cilium/values.yaml` 加標籤之外,還必須額外對 live 叢集手動跑一次 `helm upgrade`(commit `249e9ac`)才會生效,跟其他透過 ArgoCD 自動同步的修復不一樣。這個操作會觸發 cilium-agent DaemonSet 重建 pod,單節點叢集意味著重建瞬間全叢集的 pod 網路都有短暫依賴視窗——`helm upgrade` 這類直接對 live CNI 動手的指令,系統的自動模式分類器主動擋下來要求人工確認,確認後才執行。
+
+**第一次用 `podLabels` 還是失敗了,而且是跟 3.3 節相反方向的錯誤**。`podLabels` 只會渲染到 `spec.template.metadata.labels`(pod 本身),但 trivy-operator 的 `SkipProcessing`(`pkg/operator/workload/helper.go`)檢查的是 `resource.GetLabels()`——也就是**被掃描的那個工作負載物件自己的 top-level labels**。DaemonSet 沒有 ReplicaSet 這種中間層,`resource` 直接就是 DaemonSet 本身,所以要看的是 DaemonSet 自己的 `metadata.labels`,不是 pod template。`helm upgrade` 套用後過了幾分鐘,cilium 的 job 一樣持續 `BackoffLimitExceeded`,直接確認標籤沒生效。查 chart 有沒有能精準只加在 DaemonSet 自己 metadata 上的 key:`commonLabels` 可以到達 DaemonSet 自己的 `metadata.labels`,但渲染範圍是**整個 chart**(連 `hubble-relay`、`hubble-ui`、`cilium-operator`、`cilium-envoy` 都會一起中標),排除範圍比預期大太多。最後改成直接對 live 資源打標籤(不透過 chart values):
+```bash
+kubectl -n kube-system label daemonset cilium trivy-operator.skip=true --overwrite
+```
+只改 metadata,不動 pod template/spec,不會觸發 rollout(commit `43f97be` 把這個決策和指令記錄進 `values.yaml` 註解,同時移除沒用的 `podLabels`)。代價不變:連 cilium-agent 的**主 container**也不再被掃描(不只 initContainer),但這才是真正停止死循環的辦法。
+
+### 3.6 arm64 掃描失敗的根本解法
 
 Trivy CLI 掃描 multi-arch/單一架構 image 時,預設假設 `linux/amd64`,沒指定 `--platform` 就直接報錯「By default, only Linux amd64 images are supported for scanning」——這台節點是 Oracle Ampere(arm64),而 homepage/trilium/evidence-os-website/placeholder-hello/vikunja-notify-relay 都是這個 repo 自己 CI(`.github/workflows/patched-images.yml` 等)用 `platforms: linux/arm64` 建的**單一架構**image,沒有 amd64 變體可退,必然全滅。
 
@@ -124,26 +144,32 @@ values.yaml 的 scanJobsConcurrentLimit 放在錯誤的 YAML 層級(頂層,非 o
 
 `automated selfHeal` 開著,push 後照例 `annotate argocd.argoproj.io/refresh=hard` 立即觸發同步而非等預設輪詢。有個容易漏掉的細節:trivy-operator 的三個 ConfigMap(`trivy-operator-config`、`trivy-operator`、`trivy-operator-trivy-config`)裡,只有 `trivy-operator-config` 的內容變化會透過 pod template 的 `checksum/config` annotation 自動觸發 rollout;另外兩個 ConfigMap 改了之後,即使 live 內容已經更新,**controller pod 不會自動重啟**(這些設定是啟動時讀一次,不是即時監看),必須手動 `kubectl rollout restart deployment/trivy-operator` 才會真正套用——第一次改 `skipResourceByLabels` 時漏了這步,靠 `kubectl exec ... env` 檢查發現新 pod 沒有對應的值才補上。
 
-### 5.3 驗證修復是否真的生效,中間一段誤判
+### 5.3 驗證修復是否真的生效,中間一段誤判(後來證實這個誤判本身也錯了,見 3.5)
 
-重啟後立刻看到 `scan-vulnerabilityreport-c84ff9879`(cilium)又 `BackoffLimitExceeded` 一次,一度以為 `skipInitContainers` 沒生效。追查發現:**這是重啟前就已經存在的舊 Job 物件**還在按自己建立當下(修復生效前)的 pod spec 內部重試——K8s Job 一旦建立,pod template 不可變,新設定救不了已存在的 job,只能等它自然把 backoff 次數用完、被清掉。clone `aquasecurity/trivy-operator` v0.33.0 原始碼確認 `pkg/kube/resources.go` 的 `GetContainerImagesFromPodSpec` 邏輯正確(`if !skipInitContainers { 加入 InitContainers }`),同時確認一個重啟後全新建立的 job(dify `worker-beat`,無 initContainer 干擾)容器數正常,判定是「舊 job 收尾」而非「修復失效」。約 10 分鐘後舊 job 陸續清空,不再有新的多 container job 出現。
+重啟後立刻看到 `scan-vulnerabilityreport-c84ff9879`(cilium)又 `BackoffLimitExceeded` 一次,一度以為 `skipInitContainers` 沒生效。當時追查:clone `aquasecurity/trivy-operator` v0.33.0 原始碼確認 `pkg/kube/resources.go` 的 `GetContainerImagesFromPodSpec` 邏輯正確(`if !skipInitContainers { 加入 InitContainers }`),同時確認一個重啟後全新建立的 job(dify `worker-beat`,無 initContainer 干擾)容器數正常,**判定是「重啟前就存在的舊 Job 物件在收尾」,不是修復失效**,約 10 分鐘後不再看到新的多 container job,當時認為問題解決。
+
+**這個結論是錯的**——只查了 `GetContainerImagesFromPodSpec` 本身邏輯對不對,沒有追到底「這個函式算出來的結果有沒有真的被拿去建 Job」。25 分鐘後用更長的觀察窗重新檢查,發現 cilium 那個 job 其實從未真正停過,只是重試間隔（45–80 秒)剛好讓當時 10 分鐘左右的觀察窗看起來像是「收尾完畢」。真正的根因與修復見 3.5 節。
 
 ## 6. 結果
 
 | 指標 | 事發時 | 處置後 |
 |---|---|---|
-| IO PSI full(歷史尖峰) | 最高 77.9%(13:40),多波 25–35% | avg10 回落至 0.48 左右,無新尖峰 |
-| trivy scan job 快取鎖失敗(6h 內) | 36 次,集中在 cilium 一個 job(77%) | 0(新建立的 job 不再出現) |
-| cilium DaemonSet 掃描 | 每 45–80s `BackoffLimitExceeded`,永遠沒有成功 report | initContainer 不再被獨立掃描,主 container report 正常保留 |
-| homepage/trilium/evidence-os-website/placeholder-hello/vikunja-notify-relay | 100% 掃描失敗(amd64-only 錯誤) | homepage 主 container 已驗證掃描成功(live 環境端到端確認);其餘 4 個同一設定生效,理論同步修復 |
+| IO PSI full(歷史尖峰) | 最高 77.9%(13:40),多波 25–35% | avg10 回落至 0–0.5% 常態,期間全量重掃觸發過一次 avg10 2% 左右的小波動,遠低於 15% 閾值 |
+| trivy scan job 快取鎖失敗(6h 內) | 36 次,集中在 cilium 一個 job(77%) | `scanJobsConcurrentLimit` 修復後跨 job 搶鎖歸零;cilium 自我搶鎖直到把標籤直接打在 DaemonSet 自己的 `metadata.labels`(而非 chart 的 `podLabels`)才真正停止——**確認持續穩定超過 13 分鐘無復發**(見 3.5) |
+| cilium DaemonSet 掃描 | 每 45–80s `BackoffLimitExceeded`,永遠沒有成功 report | 整個 DaemonSet(含主 container)已排除在掃描外,不再重試;主 container 漏洞覆蓋率的代價是有意識接受的(見 3.5) |
+| homepage/trilium/evidence-os-website/placeholder-hello/vikunja-notify-relay | 100% 掃描失敗(amd64-only 錯誤) | 全部 5 個都已驗證掃描成功(live 環境端到端確認,`kubectl get vulnerabilityreport -A` 逐一核對過);其中 homepage 的 `seed-config` initContainer 後續又因為 3.5 節同一個 `skipInitContainers` 缺口重新被嘗試掃描、重新失敗——規模小(僅 2 個 container 互搶,非 7 個),不會引發 IO 風暴,結果跟原本接受的代價一樣(seed-config 沒有 report),不算新問題 |
+| dify `api`/`worker`/`worker-beat`、hubble-ui `backend` | （事發時未特別檢查) | cilium 停止重試後、甚至重啟 trivy-operator 強制全量重掃後,這幾個依然完全沒有被嘗試掃描——**原本「被 cilium 佔住並發名額」的猜測不成立**(cilium 停了以後它們還是沒有被排到),真正原因未查明,列入第 7 節待查 |
 | `OPERATOR_CONCURRENT_SCAN_JOBS_LIMIT` | 10(從未生效的 `3` 意圖之外的預設值) | 1,live 確認 |
 
 ## 7. 遺留 / 後續(尚未拍板,留給用戶決策)
 
-1. **Kyverno `require-vuln-scan-clean` 的 fail-open 缺口**:目前還是 `Audit` 模式,暫無實際影響,但底層邏輯是「查不到 report 就放行」,而不是「查到 0 個漏洞才放行」。在真正切到 `Enforce` 之前,必須先跑一次 `kubectl get vulnerabilityreports -A` 對照所有 `kubectl get pods -A`,把「零 report」的工作負載列成 punch list——目前已知 `lab-environment` 的 5 個 `ops-lab/*:dev` image(401 authentication,跟這次修復完全無關)仍在此列。
-2. **`operator.builtInTrivyServer`(ClientServer 模式)未採用**:第 3.4 節的獨立複核明確反對「直接否決」這個選項,認為現有修復(`skipInitContainers` + `scanJobsConcurrentLimit: 1`)本質上仍然脆弱——依賴並發數永遠停在 1,一旦之後有人調回去,搶鎖問題會立刻復發。ClientServer 模式是 trivy 官方對這類情境的建議做法,能同時根治跨 job 與同 job 內部的搶鎖,但要多開一個常駐 StatefulSet + 5Gi PVC。建議列入近期 roadmap 評估,不是本次事故的必要修復項。
+1. **Kyverno `require-vuln-scan-clean` 的 fail-open 缺口**:目前還是 `Audit` 模式,暫無實際影響,但底層邏輯是「查不到 report 就放行」,而不是「查到 0 個漏洞才放行」。在真正切到 `Enforce` 之前,必須先跑一次 `kubectl get vulnerabilityreports -A` 對照所有 `kubectl get pods -A`,把「零 report」的工作負載列成 punch list——目前已知在此列的:`lab-environment` 的 5 個 `ops-lab/*:dev` image(401 authentication,跟這次修復完全無關)、`dify` 的 `api`/`worker`/`worker-beat`、`hubble-ui` 的 `backend`(原因見 3.5,cilium 修復後待確認是否解除)、以及**現在刻意排除的 cilium-agent 主 container**(3.5 節修復的直接代價,是有意識的取捨,不是缺口,但一樣會讓這條 policy 查不到它)。
+2. **`operator.builtInTrivyServer`(ClientServer 模式)未採用**:第 3.4 節的獨立複核明確反對「直接否決」這個選項。這次 3.5 節又發現 `skipInitContainers` 本身是半成品實作、實際上完全沒解決 cilium 的問題,只能用「整個排除」這種更粗的手段收尾——**進一步佐證了複核當時的判斷:現有修復本質上仍然脆弱**,ClientServer 模式是唯一能讓 cilium 主 container 重新被掃描、同時不再需要擔心並發設定被誰調回去的方案。優先順序應該提高,不再只是「近期評估」。
 3. **部分工作負載是否搬回 docker-compose**:另一個獨立評估認為 `homepage`/`trilium`/`evidence-os-website`/`placeholder-hello`(架構理由,非因為這次的 arm64 問題)以及 `dify`(最強案例——官方自己就是用 compose 維護,現在跑的是手工翻譯的 k8s 版本)值得考慮遷移;`lab-environment` 命名空間應該留在 k3s(確認是刻意用來練習 k8s 原生模式的 demo 環境)。**這次 arm64 根本解一修,homepage/trilium 原本「順手解決」的急迫性已經消失**,遷移與否純粹回歸架構簡化的長期決策,不必因為這次事故趕著做。
 4. **trivy 用的 `--slow` flag 已標記 deprecated**(chart/CLI log 提示改用 `--parallel 1`),目前功能上等效,但未來 chart 升級版本時語意可能改變,值得屆時重新確認並發行為。
+5. **`trivyOperator.skipInitContainers` 這個設定本身留著沒有壞處,但不要依賴它**:雖然對 cilium 沒用,但對「initContainer 跟主 container 不同 image、且沒有自我搶鎖問題」的一般情況,理論上仍然有效(只是「有效」僅限於 operator 自己的重掃判斷邏輯,不影響它已經在跑的 Job 內容)。真正想讓某個工作負載完全不被掃,還是要用 `skipResourceByLabels`,不要指望 `skipInitContainers` 能單獨解決同 pod 內多 container 搶鎖的案例。
+6. **cilium 的修復方式(手動 `helm upgrade`)跟其他修復不一樣**,原因是 cilium 從裝上去就不是 ArgoCD 管的資源(見 `k3s/README.md`)。`vps_oracle/k3s/cilium/values.yaml` 之後如果再改,記得同樣要手動 `helm upgrade` 才會生效,git commit 本身不會觸發任何自動同步——這點容易跟這個 repo裡其他 k3s 資源的 GitOps 慣例搞混。另外 `trivy-operator.skip` 這個標籤本身**沒有透過 chart values 表達**(chart 沒有能精準只打在單一資源自己 metadata 上的 key),是直接 `kubectl label daemonset` 打上去的,`values.yaml` 只留了註解記錄指令——如果 cilium 的 DaemonSet 未來因為某些原因被整個刪除重建(而不是單純 `helm upgrade`),這個標籤不會自動恢復,要記得重新執行一次。
+7. **dify `api`/`worker`/`worker-beat`、hubble-ui `backend` 為什麼完全沒被排到掃描,原因未查明**:一開始懷疑是被 cilium 的死循環佔住 `scanJobsConcurrentLimit: 1` 的唯一並發名額,但 cilium 停止重試後、甚至重啟 trivy-operator 強制做一次全量重新 reconcile 之後,這幾個依然连一次嘗試都沒有——推翻了「被佔用名額」的解釋。不影響這次 IO PSI 的結案判斷(它們只是零掃描,不製造 IO 負載),但要記得feeds into 第 1 點的 Kyverno 稽核清單。之後有空可以用 `kubectl -n trivy-system logs deployment/trivy-operator` 配合手動觸發（例如改動這幾個 Deployment 的一個無害 annotation 逼一次 reconcile)排查。
 
 ## 8. 附:複用命令
 
@@ -183,4 +209,20 @@ for item in data['items']:
 kubectl -n trivy-system run trivy-test --rm -it --image=mirror.gcr.io/aquasec/trivy:0.73.0 \
   --overrides='{"spec":{"containers":[{"name":"trivy-test","image":"mirror.gcr.io/aquasec/trivy:0.73.0","command":["sleep","3600"],"volumeMounts":[{"name":"cfg","mountPath":"/etc/trivy"}]}],"volumes":[{"name":"cfg","configMap":{"name":"<test-configmap>"}}]}}' \
   -- trivy image --config /etc/trivy/trivy-config.yaml <目標image引用>
+
+# 判斷「一個持續失敗的 job 是不是修復真的沒生效」,不要只看 10 分鐘就下結論——
+# 用固定的 --since-time(而非相對時間)重疊查詢,確認某個現象是「修復生效時間點之後才出現」
+kubectl -n trivy-system logs deployment/trivy-operator --since-time=<修復生效的UTC時間戳> | \
+  grep -oE '"job":"trivy-system/scan-vulnerabilityreport-<hash>","container":"[a-z-]+"' | sort -u
+
+# 找一個持續失敗的 job 目前正在掃哪些 container(即時,而非查歷史 log)
+JOB=<job-hash>
+kubectl -n trivy-system get pod -l job-name=scan-vulnerabilityreport-$JOB \
+  -o jsonpath='{.items[0].spec.containers[*].name}'
+
+# 找出某個工作負載是 ArgoCD 管的還是手動 bootstrap 的(改法完全不同)
+kubectl -n argocd get application -A | grep <關鍵字即可,沒有結果代表是手動裝的>
+# 若確認是手動裝的(例如本次的 cilium),改動生效方式是：
+helm upgrade <release> <chart> --repo <repo-url> --version <ver> \
+  --namespace <ns> -f <values.yaml> --kubeconfig /etc/rancher/k3s/k3s.yaml
 ```
