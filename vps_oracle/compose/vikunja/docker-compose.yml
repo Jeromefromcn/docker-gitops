@@ -1,0 +1,57 @@
+services:
+  vikunja:
+    image: vikunja/vikunja:2.4.0
+    container_name: vikunja
+    hostname: vikunja
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    env_file:
+      - .env   # 需要一行 VIKUNJA_SERVICE_SECRET=<值>
+    environment:
+      TZ: "Asia/Hong_Kong"
+      VIKUNJA_DATABASE_TYPE: sqlite
+      VIKUNJA_DATABASE_PATH: /db/vikunja.db
+      VIKUNJA_SERVICE_PUBLICURL: "https://vikunja.jerome.cloudns.asia"
+      VIKUNJA_SERVICE_ENABLEREGISTRATION: "false"
+      VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS: "true"
+    volumes:
+      - /etc/vikunja/files:/app/vikunja/files
+      - /etc/vikunja/db:/db
+    networks:
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = vikunja, Forward Port = 3456（未发布到宿主机）
+
+  vikunja-notify-relay:
+    image: ghcr.io/jeromefromcn/vikunja-notify-relay@sha256:163e88a174aad5e477e475d8d5d4f2dea66f44de08ecf0ea0771ff24327214b7
+    container_name: vikunja-notify-relay
+    hostname: vikunja-notify-relay
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    user: "65534:65534"
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      VIKUNJA_BASE_URL: "https://vikunja.jerome.cloudns.asia"
+      APPRISE_BASE_URL: "http://apprise:8000"
+      PORT: "8080"
+    networks:
+      - proxy
+    # 纯内部 glue 服务：接 Vikunja webhook，拼好 project/task/超链接的 HTML 消息后转发给 apprise。
+    # 不接 NPM、不发布端口，只在 proxy 网络内被 vikunja 用容器名访问。见 notify-relay/app.py。
+
+networks:
+  proxy:
+    external: true
