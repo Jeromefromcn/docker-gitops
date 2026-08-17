@@ -21,6 +21,13 @@ spec:
           - resources:
               kinds:
                 - Pod
+              selector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - placeholder-hello
+                      - vikunja-notify-relay
       context:
         - name: vulnreports
           apiCall:
