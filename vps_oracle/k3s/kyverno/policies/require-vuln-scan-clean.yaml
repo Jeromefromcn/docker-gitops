@@ -12,7 +12,7 @@ metadata:
     # needed here.
     pod-policies.kyverno.io/autogen-controllers: "none"
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   webhookTimeoutSeconds: 30
   rules:
     - name: block-critical-fixable-cves
