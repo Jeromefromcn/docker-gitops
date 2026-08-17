@@ -1,0 +1,64 @@
+services:
+  llama-cpp:
+    image: amperecomputingai/llama.cpp:3.4.2   # Ampere Altra 优化版，注意不是 -ampereone 后缀（那是另一颗芯片，在 A1 上跑不了）
+    container_name: llama-cpp
+    hostname: llama-cpp
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      LLAMA_ARG_THREADS: "3"
+      LLAMA_ARG_CTX_SIZE: "8192"
+      LLAMA_ARG_CACHE_RAM: "4096"
+    command: >
+      --models-dir /models
+      --models-max 1
+      --host 0.0.0.0
+      --port 8080
+    volumes:
+      - /etc/llama-cpp/models:/models
+    networks:
+      - proxy
+    deploy:
+      resources:
+        limits:
+          cpus: "3"
+          memory: "9G"
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:0.11.0
+    container_name: open-webui
+    hostname: open-webui
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    env_file:
+      - .env   # WEBUI_SECRET_KEY
+    environment:
+      TZ: "Asia/Hong_Kong"
+      ENABLE_OLLAMA_API: "false"
+      OPENAI_API_BASE_URLS: "http://llama-cpp:8080/v1"
+      OPENAI_API_KEYS: "sk-not-required"
+    volumes:
+      - /etc/openwebui/data:/app/backend/data
+    networks:
+      - proxy
+    depends_on:
+      - llama-cpp
+    # NPM 反代配置: Forward Hostname/IP = open-webui, Forward Port = 8080（未发布到宿主机）
+    # 域名仍是 ollama.jerome.cloudns.asia（历史命名，后端早已换成 llama.cpp，未改域名）
+
+networks:
+  proxy:
+    external: true
