@@ -1,3 +1,20 @@
+operator:
+  # scanJobsConcurrentLimit must live under operator: -- it was previously set
+  # at the top level, which the chart schema doesn't recognize, so it was
+  # silently ignored and the chart default (10) was in effect. 10 concurrent
+  # jobs all share one trivy filesystem cache dir with no concurrent-access
+  # support, so they fought over its lock file, timed out, retried, and
+  # some gave up (BackoffLimitExceeded) -- burning disk IO on repeated image
+  # pulls and tripping the io_pressure_critical alert. 1 avoids the lock
+  # contention entirely; this node's 4 vCPU couldn't usefully run more in
+  # parallel anyway -- trivy.slow (chart default: true) already runs each
+  # scan single-threaded.
+  scanJobsConcurrentLimit: 1
+  # Lets a workload opt out of scanning by carrying this label key (see
+  # homepage's deployment.yaml -- its image is arm64-only and trivy's
+  # scanner defaults to amd64, so every attempt fails immediately).
+  skipResourceByLabels: "trivy-operator.skip"
+
 resources:
   requests:
     cpu: 100m
@@ -18,5 +35,3 @@ trivy:
     limits:
       cpu: 500m
       memory: 768Mi
-
-scanJobsConcurrentLimit: 3
