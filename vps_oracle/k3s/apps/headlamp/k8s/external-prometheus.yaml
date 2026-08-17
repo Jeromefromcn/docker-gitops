@@ -1,8 +1,9 @@
 # Points Headlamp's Prometheus plugin at the standalone Prometheus that runs
 # as plain docker compose on this same host (vps_oracle/compose/monitoring/),
-# not inside k3s. No Service selector on purpose — Endpoints below is manual,
-# targeting the container's fixed IP on the monitoring_default bridge
-# (172.20.0.2, pinned in that compose file's networks.default.ipam).
+# not inside k3s. No Service selector on purpose — EndpointSlice below is
+# manual, targeting the container's fixed IP on the docker `proxy` network
+# (172.19.0.4, registered in README.md's 网络隔离 static-IP table and pinned
+# in that compose file's prometheus.networks.proxy.ipv4_address).
 #
 # Headlamp queries this via the k3s apiserver's built-in service proxy
 # (/api/v1/namespaces/headlamp/services/external-prometheus/proxy/...), so
@@ -33,4 +34,4 @@ ports:
     port: 9090
 endpoints:
   - addresses:
-      - 172.20.0.2
+      - 172.19.0.4
