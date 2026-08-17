@@ -1,0 +1,22 @@
+services:
+  evidence-os-website:
+    image: ghcr.io/bridgetlai/evidence-os-website:21aab6e7a2ec2d7a7afeb57519186fa934d92cd9
+    container_name: evidence-os-website
+    hostname: evidence-os-website
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    networks:
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = evidence-os-website, Forward Port = 80（未发布到宿主机）
+
+networks:
+  proxy:
+    external: true
