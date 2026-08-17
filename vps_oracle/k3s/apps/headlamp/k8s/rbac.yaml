@@ -42,6 +42,30 @@ roleRef:
   name: headlamp-node-read
   apiGroup: rbac.authorization.k8s.io
 ---
+# `view` also excludes cluster-scoped `customresourcedefinitions` — without
+# this, the Custom Resources page 403s trying to list CRDs and never resolves.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: headlamp-crd-read
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: headlamp-crd-read
+subjects:
+  - kind: ServiceAccount
+    name: headlamp
+    namespace: headlamp
+roleRef:
+  kind: ClusterRole
+  name: headlamp-crd-read
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: v1
 kind: Secret
 metadata:
