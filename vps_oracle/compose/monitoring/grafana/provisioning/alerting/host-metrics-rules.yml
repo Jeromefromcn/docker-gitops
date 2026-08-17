@@ -255,12 +255,12 @@ groups:
       - uid: io_pressure_warning
         title: IO Pressure Warning
         condition: B
-        for: 3m
+        for: 10m
         noDataState: OK
         labels:
           severity: warning
         annotations:
-          summary: "IO PSI 'some' above 20% for 3 minutes on vps_oracle (processes waiting on IO)"
+          summary: "IO PSI 'some' above 20% for 10 minutes on vps_oracle (processes waiting on IO)"
         data:
           - refId: A
             datasourceUid: prometheus
