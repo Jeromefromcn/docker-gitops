@@ -1,37 +1,75 @@
 # Points Headlamp's Prometheus plugin at the standalone Prometheus that runs
 # as plain docker compose on this same host (vps_oracle/compose/monitoring/),
-# not inside k3s. No Service selector on purpose — EndpointSlice below is
-# manual, targeting the container's fixed IP on the docker `proxy` network
-# (172.19.0.4, registered in README.md's 网络隔离 static-IP table and pinned
-# in that compose file's prometheus.networks.proxy.ipv4_address).
+# not inside k3s, at its fixed IP on the docker `proxy` network (172.19.0.4,
+# registered in README.md's 网络隔离 static-IP table and pinned in that
+# compose file's prometheus.networks.proxy.ipv4_address).
 #
 # Headlamp queries this via the k3s apiserver's built-in service proxy
-# (/api/v1/namespaces/headlamp/services/external-prometheus/proxy/...), so
-# the actual network hop is apiserver -> docker bridge, both on the same
-# host — no port published to any host interface, no firewall change.
-# In Headlamp: Settings > Plugins > Prometheus, disable auto-detect, set
+# (/api/v1/namespaces/headlamp/services/external-prometheus/proxy/...). In
+# Headlamp: Settings > Plugins > Prometheus, disable auto-detect, set
 # address to `headlamp/external-prometheus`.
+#
+# A Service needs a backing EndpointSlice for the proxy subresource to have
+# anything to proxy to. A hand-authored EndpointSlice/Endpoints can't be
+# used here: this cluster's argocd-cm globally excludes both kinds from
+# resource.exclusions (cuts watch/event volume, applies cluster-wide) so
+# ArgoCD silently never applies them — confirmed by pushing one twice and
+# watching `argocd app get headlamp` never list it. So instead of a manual
+# EndpointSlice, this Service gets a selector pointing at a real pod below,
+# and Kubernetes' own endpoint-slice-controller (not ArgoCD, not excluded)
+# creates and self-heals its EndpointSlice automatically forever.
+#
+# That pod is a minimal socat TCP relay, 9090 -> 172.19.0.4:9090, running
+# with hostNetwork so it can reach the docker `proxy` bridge directly (same
+# reachability any host process has — see the same reasoning previously
+# used for the k3s apiserver itself). headlamp namespace has no active Pod
+# Security Standard enforcement (checked live: no
+# pod-security.kubernetes.io/enforce label on the namespace despite
+# vps_oracle/k3s/manifests/pod-security-labels.yaml declaring `baseline`
+# for it — that file isn't actually synced/applied yet, separate issue),
+# and `baseline` itself allows hostNetwork anyway (only `restricted` would
+# block it).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: external-prometheus-proxy
+  namespace: headlamp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: external-prometheus-proxy
+  template:
+    metadata:
+      labels:
+        app: external-prometheus-proxy
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: socat
+          image: alpine/socat@sha256:3ed1cd38741bd445ebffa3aecb9d80c46a83db45f5b5ef03332976c7ca9814af  # 1.8.1.3
+          args:
+            - TCP-LISTEN:9090,fork,reuseaddr
+            - TCP:172.19.0.4:9090
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+---
 apiVersion: v1
 kind: Service
 metadata:
   name: external-prometheus
   namespace: headlamp
 spec:
+  selector:
+    app: external-prometheus-proxy
   ports:
     - port: 9090
       targetPort: 9090
----
-apiVersion: discovery.k8s.io/v1
-kind: EndpointSlice
-metadata:
-  name: external-prometheus
-  namespace: headlamp
-  labels:
-    kubernetes.io/service-name: external-prometheus
-addressType: IPv4
-ports:
-  - protocol: TCP
-    port: 9090
-endpoints:
-  - addresses:
-      - 172.19.0.4
