@@ -17,6 +17,6 @@ trivy:
       memory: 100Mi
     limits:
       cpu: 500m
-      memory: 500Mi
+      memory: 768Mi
 
 scanJobsConcurrentLimit: 3
