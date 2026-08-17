@@ -1,0 +1,92 @@
+- Infra Services:
+    - Nginx Proxy Manager:
+        icon: nginx-proxy-manager.png
+        href: https://npm.jerome.cloudns.asia
+        description: Reverse proxy / SSL management
+
+    - Portainer:
+        icon: portainer.png
+        href: https://portainer.jerome.cloudns.asia
+        description: Docker management
+
+    - Grafana:
+        icon: grafana.png
+        href: https://grafana.jerome.cloudns.asia/d/rYdddlPWk/node-exporter-full?orgId=1&from=now-24h&to=now&timezone=browser&var-job=node&var-nodename=node-exporter&var-node=node-exporter:9100&refresh=1m
+        description: Monitoring dashboard
+
+    - Switchboard:
+        icon: si-anthropic
+        href: https://switchboard.jerome.cloudns.asia
+        description: Config-driven toggle framework (Claude provider switching, and more)
+
+    - CCR Admin:
+        icon: si-anthropic
+        href: https://ccr.jerome.cloudns.asia
+        description: Claude Code Router gateway & admin panel
+
+    - Argo CD:
+        icon: argo-cd.png
+        href: https://argocd.jerome.cloudns.asia
+        description: GitOps CD for the k3s cluster
+
+    - Headlamp:
+        icon: headlamp.png
+        href: https://headlamp.jerome.cloudns.asia
+        description: Read-only Kubernetes cluster dashboard
+
+- Apps:
+    - Trilium:
+        icon: trilium.png
+        href: https://trilium.jerome.cloudns.asia
+        description: Notes
+
+    - Vikunja:
+        icon: vikunja.png
+        href: https://vikunja.jerome.cloudns.asia
+        description: Task management
+
+    - Apprise:
+        icon: apprise.png
+        href: https://apprise.jerome.cloudns.asia
+        description: Notification forwarding
+
+    - Open WebUI:
+        icon: open-webui.png
+        href: https://ollama.jerome.cloudns.asia
+        description: LLM chat (llama.cpp)
+
+    - Dify:
+        icon: si-dify
+        href: https://dify.jerome.cloudns.asia
+        description: LLM app builder (chat / workflow / agent)
+
+    - Evidence OS:
+        icon: si-html5
+        href: https://evidence.jerome.cloudns.asia
+        description: Evidence OS marketing site
+
+    - Plans:
+        icon: si-googlemaps
+        href: https://plans.jerome.cloudns.asia
+        description: Personal trip and activity plans
+
+- Lab:
+    - Consul:
+        icon: consul.png
+        href: https://consul.lab.jerome.cloudns.asia
+        description: Service discovery + KV config (SRE practice lab)
+
+    - Grafana:
+        icon: grafana.png
+        href: https://grafana.lab.jerome.cloudns.asia
+        description: Dashboards for the SRE practice lab
+
+    - Jaeger:
+        icon: jaeger.png
+        href: https://jaeger.lab.jerome.cloudns.asia
+        description: Distributed tracing (SRE practice lab)
+
+    - API Gateway:
+        icon: si-springboot
+        href: https://api.lab.jerome.cloudns.asia
+        description: Spring Petclinic front door (SRE practice lab)
