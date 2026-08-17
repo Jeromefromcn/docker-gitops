@@ -17,7 +17,6 @@ spec:
                     operator: In
                     values:
                       - placeholder-hello
-                      - vikunja-notify-relay
       validate:
         message: >-
           Self-built workload {{ request.object.metadata.name }} does not
