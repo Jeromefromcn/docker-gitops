@@ -15,8 +15,22 @@ k8sServicePort: 6443
 # the initContainers, which were 100% redundant with it) -- accepted
 # because the alternative was an unresolvable retry loop, not a coverage
 # choice made lightly.
-podLabels:
-  trivy-operator.skip: "true"
+#
+# IMPORTANT: this chart has no values key that puts a label on just the
+# cilium-agent DaemonSet's own metadata.labels -- podLabels only reaches
+# spec.template.metadata.labels (the pods, not the DaemonSet object
+# itself), and trivy-operator's skip check reads the DaemonSet object's
+# own labels (kube.GetLabels()), not the pod template. commonLabels DOES
+# reach the DaemonSet's own metadata, but it's applied chart-wide (every
+# resource: hubble-relay, hubble-ui, cilium-operator, cilium-envoy too),
+# which would skip scanning far more than intended. So this label is
+# applied out-of-band instead, directly on the live resource:
+#   kubectl -n kube-system label daemonset cilium trivy-operator.skip=true --overwrite
+# It's metadata-only (no pod template change), so it doesn't trigger a
+# rollout, and Helm leaves labels it doesn't itself template alone on
+# subsequent `helm upgrade` -- but it means this file alone doesn't fully
+# describe live state; re-apply the kubectl command above if the
+# DaemonSet is ever recreated from scratch.
 # Explicit pod CIDR: the chart default (10.0.0.0/8 split into /24s) collided
 # with this node's real Oracle VCN subnet (10.0.0.0/24, DHCP-assigned on
 # enp0s6) — see README.md's "Pod CIDR" section for the incident and fix.
