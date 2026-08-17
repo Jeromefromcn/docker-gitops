@@ -1,0 +1,36 @@
+# Points Headlamp's Prometheus plugin at the standalone Prometheus that runs
+# as plain docker compose on this same host (vps_oracle/compose/monitoring/),
+# not inside k3s. No Service selector on purpose — Endpoints below is manual,
+# targeting the container's fixed IP on the monitoring_default bridge
+# (172.20.0.2, pinned in that compose file's networks.default.ipam).
+#
+# Headlamp queries this via the k3s apiserver's built-in service proxy
+# (/api/v1/namespaces/headlamp/services/external-prometheus/proxy/...), so
+# the actual network hop is apiserver -> docker bridge, both on the same
+# host — no port published to any host interface, no firewall change.
+# In Headlamp: Settings > Plugins > Prometheus, disable auto-detect, set
+# address to `headlamp/external-prometheus`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-prometheus
+  namespace: headlamp
+spec:
+  ports:
+    - port: 9090
+      targetPort: 9090
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: external-prometheus
+  namespace: headlamp
+  labels:
+    kubernetes.io/service-name: external-prometheus
+addressType: IPv4
+ports:
+  - protocol: TCP
+    port: 9090
+endpoints:
+  - addresses:
+      - 172.20.0.2
