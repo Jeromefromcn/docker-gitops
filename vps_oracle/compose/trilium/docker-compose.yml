@@ -1,0 +1,24 @@
+services:
+  trilium:
+    image: ghcr.io/jeromefromcn/trilium@sha256:e88f87b97d31a6304fe9798148f3585d818fa2640f65e36a52a99c8d79f79614
+    container_name: trilium
+    hostname: trilium
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /etc/trilium/data:/home/node/trilium-data
+    networks:
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = trilium, Forward Port = 8080（未发布到宿主机）
+
+networks:
+  proxy:
+    external: true
