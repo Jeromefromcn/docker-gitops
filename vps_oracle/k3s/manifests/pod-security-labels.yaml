@@ -15,13 +15,6 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: dify
-  labels:
-    pod-security.kubernetes.io/enforce: baseline
----
-apiVersion: v1
-kind: Namespace
-metadata:
   name: llm
   labels:
     pod-security.kubernetes.io/enforce: baseline
