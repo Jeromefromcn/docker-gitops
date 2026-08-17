@@ -1,0 +1,25 @@
+services:
+  homepage:
+    image: ghcr.io/jeromefromcn/homepage@sha256:02b2641e7097b67656f8408edf01c28f2e7d6c61008ed720f888d6355a018040
+    container_name: homepage
+    hostname: homepage
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      HOMEPAGE_ALLOWED_HOSTS: "homepage.jerome.cloudns.asia"  # 需与访问用的域名一致，不然 403
+    volumes:
+      - ./config:/app/config
+    networks:
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = homepage, Forward Port = 3000（未发布到宿主机）
+
+networks:
+  proxy:
+    external: true
