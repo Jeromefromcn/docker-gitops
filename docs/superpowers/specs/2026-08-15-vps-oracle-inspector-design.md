@@ -83,7 +83,7 @@ vps_oracle/inspector/
 
 | Check | 判定條件 | 報告內容 | 原因 |
 |---|---|---|---|
-| 疑似卡死的 session | transcript 無 `result`（可能仍在執行）但進程存活超過異常長時間（預設 6 小時） | PID、cwd、session id、存活時長 | 無法區分"長任務"與"卡死"，早期預警——對應事故裡"積累期 20 小時無人察覺"想解決的問題 |
+| 疑似卡死的 session | transcript 無 `result`（互動模式下這行永遠不存在，已確認）,再分兩檔:①最後一行是 assistant 且帶未解決的 `tool_use`、進程目前確認閒置（state=S,非正在跑）→ 疑似無人回應的懸而未決提問,存活超過 30 分鐘就告警;②其餘情況（單純閒置等下一句)→ 存活超過 25 小時才告警,對齊本機 `reconnectionGraceTime=86400` 讓進程合法存活到的時長 | PID、cwd、session id、存活時長、是否為懸而未決提問 | 無法區分"長任務"與"卡死"，早期預警——對應事故裡"積累期 20 小時無人察覺"想解決的問題;閾值單一制曾與刻意拉長的 24 小時 grace time 打架,2026-08-17 拆成兩檔解決 |
 | Docker 重啟風暴 | RestartCount 異常高或持續 `Restarting` | 容器名、重啟次數 | 自動重啟不解決根因，可能掩蓋配置錯誤 |
 | Docker 未用 volume | 存在但未被任何容器掛載 | volume 名 | 可能有資料，誤刪風險不對稱（容器/image 可重建，volume 數據不一定能） |
 | compose 檔 logging 配置漂移 | 掃描 `<host>/compose/*/docker-compose.yml`，找出沒有 `logging.options.max-size` 的服務 | 檔案路徑、服務名 | 這是"發現配置漏洞"，不該由巡檢腳本自己改 compose 檔案 |

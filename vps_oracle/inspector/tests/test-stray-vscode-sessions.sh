@@ -69,6 +69,69 @@ output3="$(
 assert_true "emits an alert-tier flagged line" \
   "$(grep -q '"tier":"alert"' <<<"$output3" && grep -q '"action":"flagged"' <<<"$output3" && echo true || echo false)"
 
+echo "== plain idle turn, under the (25h-aligned) idle threshold: should NOT flag =="
+output3b="$(
+  INSPECTOR_DRY_RUN=1 \
+  INSPECTOR_CLAUDE_SESSIONS_DIR="$sessions_dir" \
+  INSPECTOR_CLAUDE_PROJECTS_DIR="$projects_dir" \
+  INSPECTOR_STUCK_SESSION_ALERT_SECONDS=999999 \
+  "$SCRIPT_DIR/../checks/stray-vscode-sessions.sh"
+)"
+assert_true "no alert when under the idle threshold" \
+  "$([ -z "$output3b" ] && echo true || echo false)"
+
+echo "== unresolved tool_use as last line, process idle (S state): pending-dangling-question alert =="
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{}}]}}' \
+  > "$transcript_dir/test-session-1.jsonl"
+output4="$(
+  INSPECTOR_DRY_RUN=1 \
+  INSPECTOR_CLAUDE_SESSIONS_DIR="$sessions_dir" \
+  INSPECTOR_CLAUDE_PROJECTS_DIR="$projects_dir" \
+  INSPECTOR_STUCK_SESSION_ALERT_SECONDS=999999 \
+  INSPECTOR_STUCK_SESSION_PENDING_SECONDS=0 \
+  "$SCRIPT_DIR/../checks/stray-vscode-sessions.sh"
+)"
+assert_true "flags a dangling-question alert even though the idle threshold is unreached" \
+  "$(grep -q "dangling question" <<<"$output4" && echo true || echo false)"
+
+echo "== same unresolved tool_use, under the pending threshold: should NOT flag =="
+output4b="$(
+  INSPECTOR_DRY_RUN=1 \
+  INSPECTOR_CLAUDE_SESSIONS_DIR="$sessions_dir" \
+  INSPECTOR_CLAUDE_PROJECTS_DIR="$projects_dir" \
+  INSPECTOR_STUCK_SESSION_ALERT_SECONDS=999999 \
+  INSPECTOR_STUCK_SESSION_PENDING_SECONDS=999999 \
+  "$SCRIPT_DIR/../checks/stray-vscode-sessions.sh"
+)"
+assert_true "no alert when under the pending threshold" \
+  "$([ -z "$output4b" ] && echo true || echo false)"
+
+echo "== unresolved tool_use but process is on-CPU right now: not treated as dangling =="
+( while :; do :; done ) &
+busy_victim=$!
+busy_identity="$(capture_pid_identity "$busy_victim")"
+busy_starttime="${busy_identity%%|*}"
+cat > "$sessions_dir/${busy_victim}.json" <<EOF
+{"pid":${busy_victim},"sessionId":"test-session-busy","cwd":"${fake_cwd}","procStart":${busy_starttime}}
+EOF
+echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_2","name":"Bash","input":{}}]}}' \
+  > "$transcript_dir/test-session-busy.jsonl"
+output5="$(
+  INSPECTOR_DRY_RUN=1 \
+  INSPECTOR_CLAUDE_SESSIONS_DIR="$sessions_dir" \
+  INSPECTOR_CLAUDE_PROJECTS_DIR="$projects_dir" \
+  INSPECTOR_STUCK_SESSION_ALERT_SECONDS=999999 \
+  INSPECTOR_STUCK_SESSION_PENDING_SECONDS=0 \
+  "$SCRIPT_DIR/../checks/stray-vscode-sessions.sh"
+)"
+kill -KILL "$busy_victim" 2>/dev/null || true
+wait "$busy_victim" 2>/dev/null || true
+# grep for this session specifically -- test-session-1's own fixture still
+# carries a genuinely-idle dangling tool_use from the scenario above, so a
+# bare "dangling question" match would pass for the wrong reason.
+assert_true "an on-CPU process with an unresolved tool_use is not flagged as a dangling question" \
+  "$(grep -q "test-session-busy.*dangling question" <<<"$output5" && echo false || echo true)"
+
 kill -KILL "$victim" 2>/dev/null || true
 wait 2>/dev/null || true
 rm -rf "$fixture_dir"

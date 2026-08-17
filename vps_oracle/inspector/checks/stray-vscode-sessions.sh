@@ -7,6 +7,31 @@
 # claude sessions with no transcript result yet (alert only). See
 # docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md.
 #
+# Interactive sessions (the VS Code extension always launches claude
+# with --output-format stream-json) never write a "result" transcript
+# line -- confirmed empty across every session on this host -- so the
+# auto-kill branch below only ever fires for one-shot/programmatic
+# invocations, and every long-lived interactive session falls into the
+# alert-only branch instead. That branch used to fire on a flat
+# idle-seconds threshold alone, which made it indistinguishable from
+# this host's own reconnection-grace-time fix (vscode-server now runs
+# with --reconnection-grace-time=86400, so a claude process is expected
+# to sit idle for up to 24h across a client disconnect -- see
+# jerome/oss-devrel/articles/2026-07-14-remote-claude-code-walkaway).
+# It now splits into two buckets instead:
+#   - "pending": the transcript's last line is an assistant turn with
+#     an unresolved tool_use (a permission prompt or question nobody
+#     answered) AND the process is idle (state S, not on-CPU right
+#     now) -- this is the actual dangling-question failure mode the
+#     walk-away article describes. Alerts fast (STUCK_SESSION_PENDING_SECONDS).
+#   - everything else: no evidence of a stuck decision, just idle past
+#     the expected walk-away window. Alerts slow
+#     (STUCK_SESSION_ALERT_SECONDS, aligned to the 24h grace time).
+# A process still on-CPU (state R) is doing real work regardless of
+# what the transcript's last line looks like, so it's never put in the
+# pending bucket -- avoids flagging an in-flight long tool call as a
+# dangling question.
+#
 # Not `set -e`: a single malformed session file or a transient /proc
 # read race must not abort the whole check and skip everything after
 # it -- each iteration guards its own failure paths explicitly instead.
@@ -17,7 +42,8 @@ source "$SCRIPT_DIR/../lib/common.sh"
 CLAUDE_SESSIONS_DIR="${INSPECTOR_CLAUDE_SESSIONS_DIR:-$HOME/.claude/sessions}"
 CLAUDE_PROJECTS_DIR="${INSPECTOR_CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"
 STRAY_SESSION_IDLE_SECONDS="${INSPECTOR_STRAY_SESSION_IDLE_SECONDS:-1800}"
-STUCK_SESSION_ALERT_SECONDS="${INSPECTOR_STUCK_SESSION_ALERT_SECONDS:-21600}"
+STUCK_SESSION_ALERT_SECONDS="${INSPECTOR_STUCK_SESSION_ALERT_SECONDS:-90000}"
+STUCK_SESSION_PENDING_SECONDS="${INSPECTOR_STUCK_SESSION_PENDING_SECONDS:-1800}"
 SERVER_TREE_IDLE_SECONDS="${INSPECTOR_SERVER_TREE_IDLE_SECONDS:-7200}"
 SERVER_TREE_STATE_FILE="$INSPECTOR_STATE_DIR/server-tree-cpu.tsv"
 
@@ -30,6 +56,7 @@ kill_verb() {
 check_claude_sessions() {
   local session_file pid session_id cwd proc_start
   local identity current_starttime transcript last_type age kill_status
+  local last_line pending proc_state
 
   [ -d "$CLAUDE_SESSIONS_DIR" ] || return 0
 
@@ -77,7 +104,20 @@ check_claude_sessions() {
           ;;
       esac
     else
-      if [ "$age" -ge "$STUCK_SESSION_ALERT_SECONDS" ]; then
+      pending="false"; proc_state=""
+      last_line="$(tail -n 1 "$transcript" 2>/dev/null)"
+      if [ "$last_type" = "assistant" ]; then
+        jq -e '[(.message.content // [])[]? | select(.type=="tool_use")] | length > 0' \
+          <<<"$last_line" >/dev/null 2>&1 && pending="true"
+      fi
+      [ "$pending" = "true" ] && proc_state="$(proc_stat_fields "$pid" 2>/dev/null | awk '{print $1}')"
+
+      if [ "$pending" = "true" ] && [ "$proc_state" = "S" ]; then
+        if [ "$age" -ge "$STUCK_SESSION_PENDING_SECONDS" ]; then
+          emit_result "alert" "flagged" "claude PID $pid" \
+            "session $session_id (cwd=$cwd) has an unanswered tool_use/permission prompt and has been idle ${age}s -- likely a dangling question, not just a long task"
+        fi
+      elif [ "$age" -ge "$STUCK_SESSION_ALERT_SECONDS" ]; then
         emit_result "alert" "flagged" "claude PID $pid" \
           "session $session_id (cwd=$cwd) alive ${age}s with no transcript result yet -- may be a long task or stuck"
       fi
