@@ -45,8 +45,18 @@ spec:
         - .spec.rules[]?.validate?.allowExistingViolations
         - .spec.rules[]?.verifyImages[]?.required
         - .spec.rules[]?.verifyImages[]?.useCache
-        - .spec.rules[]?.verifyImages[]?.verifyDigest
         - .spec.rules[]?.verifyImages[]?.attestors[]?.entries[]?.signatureAlgorithm
+    # restrict-image-registry (main-branch policy) relies on Kyverno's injected
+    # verifyDigest:true default (its Deployments are always hand-pinned by
+    # digest already) — scoped by name, not the blanket entry above, so that
+    # restrict-image-registry-pr-lanes' explicit verifyDigest:false (needed
+    # because PR-lane Deployments are tag-pinned, not digest-pinned) actually
+    # gets enforced by ArgoCD instead of being silently ignored too.
+    - group: kyverno.io
+      kind: ClusterPolicy
+      name: restrict-image-registry
+      jqPathExpressions:
+        - .spec.rules[]?.verifyImages[]?.verifyDigest
   syncPolicy:
     automated:
       prune: true
