@@ -1,0 +1,43 @@
+# vps_oracle/k3s/apps/hello/lane/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-backend-lane
+  labels:
+    app: hello-backend
+    lane: template
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hello-backend
+      lane: template
+  template:
+    metadata:
+      labels:
+        app: hello-backend
+        lane: template
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hello-backend
+          image: ghcr.io/jeromefromcn/hello-backend:placeholder
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
