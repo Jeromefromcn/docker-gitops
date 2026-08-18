@@ -16,7 +16,8 @@ spec:
                   - key: app
                     operator: In
                     values:
-                      - placeholder-hello
+                      - hello-frontend
+                      - hello-backend
       validate:
         message: >-
           Self-built workload {{ request.object.metadata.name }} does not
