@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'vps_oracle/k3s/apps/hello/backend/**'
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - 'vps_oracle/k3s/apps/hello/backend/**'
   workflow_dispatch: {}
 
 permissions:
@@ -17,6 +21,7 @@ env:
 
 jobs:
   build-scan-sign:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'pr-lane')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -44,14 +49,20 @@ jobs:
           context: vps_oracle/k3s/apps/hello/backend
           platforms: linux/arm64
           push: true
-          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          tags: >-
+            ${{ env.IMAGE }}:${{ github.event_name == 'pull_request'
+              && github.event.pull_request.head.sha
+              || github.sha }}
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         env:
           TRIVY_PLATFORM: linux/arm64
         with:
-          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          image-ref: >-
+            ${{ env.IMAGE }}:${{ github.event_name == 'pull_request'
+              && github.event.pull_request.head.sha
+              || github.sha }}
           severity: CRITICAL
           exit-code: '1'
           ignore-unfixed: true

@@ -1,0 +1,89 @@
+# vps_oracle/k3s/argocd/apps/pr-lanes-appset.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: pr-lanes
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - pullRequest:
+        requeueAfterSeconds: 30
+        github:
+          owner: Jeromefromcn
+          repo: docker-gitops
+          tokenRef:
+            secretName: github-pr-generator-token
+            key: token
+          labels:
+            - pr-lane
+  template:
+    metadata:
+      name: 'hello-pr-{{.number}}'
+      annotations:
+        argocd.argoproj.io/pull-request-number: '{{.number}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Jeromefromcn/docker-gitops.git
+        targetRevision: main
+        path: vps_oracle/k3s/apps/hello/lane
+        kustomize:
+          images:
+            - name: ghcr.io/jeromefromcn/hello-backend
+              newTag: '{{.head_sha}}'
+          patches:
+            - target:
+                kind: Deployment
+                name: hello-backend-lane
+              patch: |-
+                - op: replace
+                  path: /metadata/name
+                  value: hello-backend-pr-{{.number}}
+                - op: replace
+                  path: /metadata/labels/lane
+                  value: pr-{{.number}}
+                - op: replace
+                  path: /spec/selector/matchLabels/lane
+                  value: pr-{{.number}}
+                - op: replace
+                  path: /spec/template/metadata/labels/lane
+                  value: pr-{{.number}}
+            - target:
+                kind: Service
+                name: hello-backend-lane
+              patch: |-
+                - op: replace
+                  path: /metadata/name
+                  value: hello-backend-pr-{{.number}}
+                - op: replace
+                  path: /metadata/labels/lane
+                  value: pr-{{.number}}
+                - op: replace
+                  path: /spec/selector/lane
+                  value: pr-{{.number}}
+            - target:
+                kind: HTTPRoute
+                name: hello-backend-lane-route
+              patch: |-
+                - op: replace
+                  path: /metadata/name
+                  value: hello-backend-pr-{{.number}}-route
+                - op: replace
+                  path: /spec/rules/0/matches/0/headers/0/value
+                  value: '{{.number}}'
+                - op: replace
+                  path: /spec/rules/0/backendRefs/0/name
+                  value: hello-backend-pr-{{.number}}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: pr-lanes
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+  syncPolicy:
+    preserveResourcesOnDeletion: false
