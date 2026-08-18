@@ -33,8 +33,7 @@ spec:
         path: vps_oracle/k3s/apps/hello/lane
         kustomize:
           images:
-            - name: ghcr.io/jeromefromcn/hello-backend
-              newTag: '{{.head_sha}}'
+            - ghcr.io/jeromefromcn/hello-backend:{{.head_sha}}
           patches:
             - target:
                 kind: Deployment
