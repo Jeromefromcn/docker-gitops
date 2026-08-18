@@ -6,6 +6,7 @@ metadata:
   labels:
     app: hello-backend
     lane: baseline
+    istio.io/use-waypoint: waypoint
 spec:
   selector:
     app: hello-backend
