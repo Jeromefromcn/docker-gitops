@@ -18,9 +18,13 @@ services:
       APPRISE_ADMIN: "y"
     volumes:
       - /etc/apprise/config:/config
+    ports:
+      - "127.0.0.1:8000:8000"
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = apprise, Forward Port = 8000（未发布到宿主机）
+    # NPM 反代配置: Forward Hostname/IP = apprise, Forward Port = 8000（容器名直连，走 proxy 网络）
+    # 127.0.0.1:8000 是给 host-native 脚本用的（inspector 巡检脚本不在任何 docker network 里，
+    # 见 vps_oracle/inspector/lib/common.sh 的 APPRISE_URL），只绑 localhost，不对外网暴露。
 
 networks:
   proxy:
