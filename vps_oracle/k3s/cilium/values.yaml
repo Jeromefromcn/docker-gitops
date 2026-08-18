@@ -110,3 +110,11 @@ hubble:
         limits:
           cpu: 100m
           memory: 64Mi
+# Istio Ambient (phase F+G) chains istio-cni onto this node's CNI config.
+# Cilium defaults to cni.exclusive=true, which actively deletes any other
+# CNI plugin's config file it finds — that would silently break istio-cni's
+# traffic redirection (mesh installs cleanly, intercepts nothing, no error
+# anywhere). bpf.masquerade must stay unset/false: Istio's link-local
+# healthcheck IPs are known-broken under BPF masquerade.
+cni:
+  exclusive: false
