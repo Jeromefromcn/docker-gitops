@@ -21,6 +21,16 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system
+  # istiod's own certificate/webhook controller flips this webhook's
+  # failurePolicy from the chart's Ignore to Fail at runtime. Without
+  # ignoreDifferences this shows permanent OutOfSync and selfHeal keeps
+  # re-syncing it back to Ignore, which istiod immediately reverts —
+  # an unbounded fight. Same pattern as kyverno.yaml's ignoreDifferences.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[].failurePolicy
   syncPolicy:
     automated:
       prune: true
