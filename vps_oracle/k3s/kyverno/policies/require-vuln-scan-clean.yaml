@@ -26,7 +26,8 @@ spec:
                   - key: app
                     operator: In
                     values:
-                      - placeholder-hello
+                      - hello-frontend
+                      - hello-backend
       context:
         - name: vulnreports
           apiCall:
