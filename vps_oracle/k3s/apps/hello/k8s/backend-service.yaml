@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-backend
+  namespace: pr-lanes
+  labels:
+    app: hello-backend
+    lane: baseline
+spec:
+  selector:
+    app: hello-backend
+    lane: baseline
+  ports:
+    - port: 80
+      targetPort: 8080

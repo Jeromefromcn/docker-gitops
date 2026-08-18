@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-backend
+  namespace: pr-lanes
+  labels:
+    app: hello-backend
+    lane: baseline
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hello-backend
+      lane: baseline
+  template:
+    metadata:
+      labels:
+        app: hello-backend
+        lane: baseline
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hello-backend
+          image: ghcr.io/jeromefromcn/hello-backend@sha256:8b3dc653ce946c66d60844cc168cf2a155f3384ed4b6fd9f602b87f1f88b374f
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
