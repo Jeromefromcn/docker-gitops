@@ -1,0 +1,15 @@
+# vps_oracle/k3s/apps/hello/lane/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-backend-lane
+  labels:
+    app: hello-backend
+    lane: template
+spec:
+  selector:
+    app: hello-backend
+    lane: template
+  ports:
+    - port: 80
+      targetPort: 8080

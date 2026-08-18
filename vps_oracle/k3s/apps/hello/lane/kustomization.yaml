@@ -1,0 +1,8 @@
+# vps_oracle/k3s/apps/hello/lane/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: pr-lanes
+resources:
+  - deployment.yaml
+  - service.yaml
+  - httproute.yaml
