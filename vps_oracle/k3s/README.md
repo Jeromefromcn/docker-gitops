@@ -14,6 +14,8 @@ Cluster foundation (phase A) and GitOps bootstrap (phase B) for the [K3s roadmap
 | Sealed Secrets | `2.19.1` (chart), `v0.38.4` (app/`kubeseal`) | 2026-08-15 |
 | Kyverno | `3.8.2` (chart), `v1.18.2` (app) | 2026-08-15 |
 | Trivy Operator | `0.35.0` (chart), `0.33.0` (app) | 2026-08-15 |
+| Istio (base/istiod/cni/ztunnel) | `1.30.3` (chart+app) | 2026-08-18 |
+| Gateway API | `v1.6.1` (standard channel) | 2026-08-18 |
 
 ## Install
 
@@ -258,7 +260,64 @@ Adding a new self-built workload: add it to `restricted-self-built.yaml`'s label
 
 **2026-08-18, later the same day: `dify` (all 9 containers) and `evidence-os-website` migrated off k3s back to/into compose** — see the [migration plan](../../docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md). The `dify` namespace no longer exists; the third-party-CVE carve-out above is kept as historical record of why the policy was scoped that way, but `dify` pods are no longer part of what it needs to account for.
 
-**2026-08-18, same day, third round: `apprise`, `vikunja` (+ `vikunja-notify-relay`), and `llm` (`llama-cpp`+`open-webui`) also migrated back to compose** — see the [second migration plan](../../docs/superpowers/plans/2026-08-18-k3s-to-compose-migration-part2.md). The `llm` namespace no longer exists. This completes the reversal of every phase C/D service migration — only `lab-environment`/`headlamp`/`placeholder-hello` (k3s-native, no compose predecessor) remain on k3s. The `restricted-self-built`/`require-vuln-scan-clean` `app in (placeholder-hello, vikunja-notify-relay)` scoping above is now stale in one respect: `vikunja-notify-relay` no longer runs on k3s either, so it can be dropped from that selector next time either policy is touched (left as-is here since it's harmless — an unmatched selector value, not a broken one).
+**2026-08-18, same day, third round: `apprise`, `vikunja` (+ `vikunja-notify-relay`), and `llm` (`llama-cpp`+`open-webui`) also migrated back to compose** — see the [second migration plan](../../docs/superpowers/plans/2026-08-18-k3s-to-compose-migration-part2.md). The `llm` namespace no longer exists. This completes the reversal of every phase C/D service migration — at this point only `lab-environment`/`headlamp`/`placeholder-hello` (k3s-native, no compose predecessor) remain on k3s. The `restricted-self-built`/`require-vuln-scan-clean` `app in (placeholder-hello, vikunja-notify-relay)` scoping above is now stale in one respect: `vikunja-notify-relay` no longer runs on k3s either, so it can be dropped from that selector next time either policy is touched (left as-is here since it's harmless — an unmatched selector value, not a broken one).
+
+**Same day, subsequently: phase F+G retired `placeholder-hello` outright**, replacing it with the two-tier `hello-frontend`/`hello-backend` app in the new `pr-lanes` namespace — see the "Istio Ambient / PR Lanes" section below. As of that phase, the k3s-native service list is `lab-environment`/`headlamp`/`pr-lanes`, not `lab-environment`/`headlamp`/`placeholder-hello` as stated in the paragraph above (kept as written for historical accuracy about that point in time).
+
+## Istio Ambient / PR Lanes
+
+Phase F+G installs Istio in **Ambient** mode (sidecar-free: a per-node `ztunnel` DaemonSet handles L4, an on-demand `waypoint` Envoy proxy handles L7) plus the Gateway API standard CRDs, and repurposes the old single-tier `placeholder-hello` practice app into a two-tier `hello-frontend` → `hello-backend` pair living in a new `pr-lanes` namespace. The goal: ArgoCD's `ApplicationSet` PR generator spins up an isolated, header-routed "lane" of `hello-backend` per open PR, without cloning the whole environment per PR. Full rationale (why two tiers are required for east-west routing to mean anything at all, the shared-baseline-vs-namespace-per-PR tradeoff, the resource budget math) is in the [phase F+G design doc](../../docs/superpowers/specs/2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md).
+
+**Installed as 4 separate ArgoCD Applications, not one multi-source Application:** `istio-base`, `istio-istiod`, `istio-cni`, `istio-ztunnel` (`argocd/apps/istio-*.yaml`), each a single Helm chart pulled from `istio-release.storage.googleapis.com/charts` plus its own values file under `istio/`. This is a deliberate deviation from the design doc's original single-multi-source-Application sketch, done to match every other Helm-backed component already in this repo (`argocd`, `sealed-secrets`, `kyverno`, `trivy-operator`) — one Application per Helm release. `sync-wave` orders them (`base` → `istiod` → `cni`/`ztunnel`) since each stage depends on CRDs/webhooks the previous one installs. Gateway API's CRDs are their own Application too (`argocd/apps/gateway-api.yaml`, standard channel, `v1.6.1`), installed first (`sync-wave: -4`) since both the waypoint `Gateway` and every `HTTPRoute` need those CRDs to exist before Istio itself comes up.
+
+`placeholder-hello` has been **fully retired** — no Application, Deployment, Service, or CI workflow remains for it anywhere in the repo. `hello-frontend`/`hello-backend` are its sole successor (the frontend even reuses its old signed image — see `apps/hello/k8s/frontend-deployment.yaml`).
+
+### What's meshed, and why only `pr-lanes`
+
+Only the `pr-lanes` namespace carries the `istio.io/dataplane-mode: ambient` label (`apps/hello/k8s/namespace.yaml`). Every other namespace — `lab-environment`, `headlamp`, cluster infra (`argocd`/`cilium`/`kyverno`/`trivy-system`/`sealed-secrets`) — is untouched by the mesh. This is deliberate blast-radius control, not a permanent "mesh is lab-only" stance: the design doc's stated plan is to onboard `workloads`-shaped services in a later batch once `pr-lanes` proves stable, since ztunnel's per-node L4 mTLS already runs cluster-wide regardless of which namespaces opt in to L7. (As of this writing there's no `workloads`-equivalent namespace left on k3s to onboard anyway — see the root README's k3s summary for what actually migrated back to compose the same day this phase shipped.)
+
+### The waypoint / HTTPRoute mechanism
+
+- `hello-frontend` (baseline only, always exactly one copy) is a plain nginx pod with **no waypoint** — it's the mesh-external entry point, exposed via NodePort `30083`. Its `default.conf` (`apps/hello/k8s/frontend-configmap.yaml`) proxies `/api` to `http://hello-backend.pr-lanes.svc.cluster.local/` — **note the trailing slash**. It's required for nginx to strip the `/api` prefix before forwarding, since the backend only serves `/`; without it every proxied request 404s. This was a real bug hit during rollout (fixed in commit `25ace1e`), not a style choice — don't drop it if this file gets touched again.
+- The `hello-backend` Service carries `istio.io/use-waypoint: waypoint` (`backend-service.yaml`). Ambient's per-node `ztunnel` intercepts any request to that Service and diverts it to the waypoint Envoy instead of routing directly to a backend pod.
+- The waypoint itself is a Gateway API `Gateway` (`waypoint-gateway.yaml`, `gatewayClassName: istio-waypoint`, one `HBONE`-protocol listener) — Istio provisions its Envoy Deployment from that resource.
+- Routing rules are plain `HTTPRoute`s, all `parentRefs` pointing at the `hello-backend` **Service** (not a Gateway — the ambient convention for east-west routing): a static catch-all (`backend-httproute.yaml`, no match conditions → baseline `hello-backend`) plus one dynamically-generated route per PR lane (`header x-pr-lane: <N>` → `hello-backend-pr-<N>`). Gateway API's own rule-merge spec ranks header-match count above no-match, so a lane's route always outranks the catch-all — no manual priority juggling needed when a lane is added or removed.
+- **`global.waypoint.resources` in `istio/istiod-values.yaml`** (`50m/128Mi` requests, `200m/256Mi` limits) is **not** in the original design doc text — it was added because the Istio chart's own default waypoint limits (`2` CPU / `1Gi` memory) exceed the entire `pr-lanes` `ResourceQuota` (`1200m`/`1536Mi` limits, total) on their own, and the waypoint pod couldn't schedule at all until this override went in. This is load-bearing, not cosmetic — don't remove it without re-sizing the quota to match.
+
+### Opening a test PR
+
+1. Branch, commit a change under `vps_oracle/k3s/apps/hello/backend/**`, open a PR against `main`.
+2. **Add the `pr-lane` label to the PR on GitHub.** Without it: the ApplicationSet's `pullRequest.github` generator (`argocd/apps/pr-lanes-appset.yaml`, `requeueAfterSeconds: 30`) ignores the PR entirely (no lane gets generated), and CI's `build-scan-sign` job (`.github/workflows/hello-backend.yml`) skips the build outright (`if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'pr-lane')`) — the label gates both halves of the pipeline, not just the ArgoCD side.
+3. CI builds, Trivy-scans, and Cosign-signs `hello-backend`, tagged with the **PR head SHA** (`github.event.pull_request.head.sha` — deliberately not `github.sha`, which under `pull_request` events is GitHub's auto-generated merge-commit SHA and won't match what the ApplicationSet's `{{.head_sha}}` resolves to).
+4. Within ~30s of the label/push, the generator produces an ArgoCD Application named **`hello-pr-<N>`** (`N` = PR number), synced from the Kustomize base at `apps/hello/lane/` (JSON6902-patched per PR — name/labels/header-match/backendRef all rewritten to that PR's number) into the `pr-lanes` namespace, creating that lane's own `Deployment`/`Service`/`HTTPRoute` trio.
+5. Test with `curl -H "x-pr-lane: <N>" http://<node-ip>:30083/api` (lane content) vs. plain `curl http://<node-ip>:30083/api` (baseline, unaffected — proves the shared baseline wasn't polluted).
+6. Closing/merging the PR drops it from the generator's next poll; the `hello-pr-<N>` Application (its template carries `finalizers: [resources-finalizer.argocd.argoproj.io]`) is deleted and its 3 owned resources pruned with it.
+
+Note: `kustomize.images` in `pr-lanes-appset.yaml` uses the **plain string form** (`- ghcr.io/jeromefromcn/hello-backend:{{.head_sha}}`), not the `[{name, newTag}]` object form. This cluster's ArgoCD (`v3.5.0`) CRD only accepts strings there — the object form is rejected at admission (`must be of type string`), which silently prevented the ApplicationSet from being created at all until this was caught and fixed (commit `4013dd1`).
+
+### Rotating the GitHub PAT
+
+The generator authenticates to GitHub via a fine-grained PAT, sealed into `sealed-secrets/secrets/github-pr-generator-token.sealed.yaml` (see "Sealed Secrets" above for the general pattern). Token creation itself can't be automated the way a `kubeseal` migration can — it's a manual step on github.com:
+
+1. github.com → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token.
+2. Repository access: **Only** `Jeromefromcn/docker-gitops`. Permissions: **Pull requests: Read-only**, **Contents: Read-only** (the generator only lists/reads PRs, never writes anything). Expiration: your call — read-only, single-repo, low blast radius, but fine-grained PATs cap out at 1 year so this needs periodic repeating.
+3. Reseal with the new value, **overwriting the existing file** (unlike a fresh migration, there's no old bare Secret to delete first — the controller already owns this Secret's name and updates it in place on the next sync):
+   ```bash
+   kubectl create secret generic github-pr-generator-token \
+     --namespace argocd \
+     --from-literal=token='<new PAT>' \
+     --dry-run=client -o json \
+     | kubeseal --controller-name sealed-secrets --controller-namespace sealed-secrets --format yaml \
+     > vps_oracle/k3s/sealed-secrets/secrets/github-pr-generator-token.sealed.yaml
+   ```
+4. Verify no plaintext leaked before committing: `grep -q 'ghp_\|github_pat_' vps_oracle/k3s/sealed-secrets/secrets/github-pr-generator-token.sealed.yaml && echo STOP || echo OK`.
+5. Commit, push. `kubectl -n argocd get applicationset pr-lanes -o jsonpath='{.status.conditions[?(@.type=="ResourcesUpToDate")].status}'` → `True` confirms the new token authenticates.
+
+### Rollback path
+
+The design doc's known-limitations section calls out Cilium/Istio-ambient CNI chaining as a combination with known community reports of `ztunnel` failing to start cleanly. If that happens and root cause isn't quickly obvious, rolling back beats prolonged debugging: remove the four `istio-*` Applications (`istio-base`/`istio-istiod`/`istio-cni`/`istio-ztunnel`) and drop `pr-lanes`'s `istio.io/dataplane-mode: ambient` namespace label. Cilium's `cni.exclusive: false` flag (`cilium/values.yaml`) is safe to leave set either way — it's a no-op for a pure-Cilium setup with no other chained CNI plugin present, so there's no need to revert it as part of the rollback.
+
+One thing to know before deleting any of those four Application manifests: none of them — and in fact no static `Application` anywhere in this repo, not just these four — sets `resources-finalizer.argocd.argoproj.io`. Only the `pr-lanes` `ApplicationSet`'s generated-Application template does (that's what makes per-PR lanes clean up after themselves). Deleting a static Application's manifest orphans its managed resources instead of cascading their deletion, so expect to clean up the mesh's namespaced/cluster-scoped resources (CRDs, webhooks, DaemonSets) by hand after removing the Application objects, not have them vanish automatically. This is a pre-existing repo-wide gap, not something introduced by phase F+G.
 
 ## Handoff to phase C
 
