@@ -21,3 +21,22 @@ meshConfig:
   # any namespace that DOES opt in. Left at chart default deliberately:
   # no sidecar injection anywhere, ambient is fully sidecar-free.
   accessLogFile: /dev/stdout
+
+global:
+  waypoint:
+    # Chart default (2 CPU / 1Gi limit) blows pr-lanes-quota's
+    # limits.cpu: 1200m cap on its own -- a single waypoint pod alone
+    # exceeded the whole namespace's budget (Task 7 discovered this via
+    # repeated FailedCreate/exceeded-quota events on the waypoint
+    # Deployment's ReplicaSet). This is the design doc's own stated
+    # waypoint budget (phase F+G design, 元件與設定 table), just never
+    # actually wired in anywhere until now. Do not raise pr-lanes-quota
+    # instead -- it's deliberately sized around this exact budget,
+    # including its ~8-concurrent-PR-lane capacity math.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
