@@ -1,0 +1,10 @@
+# vps_oracle/k3s/istio/cni-values.yaml
+profile: ambient
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
