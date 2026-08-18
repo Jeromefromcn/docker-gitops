@@ -94,7 +94,7 @@ cd vps_oracle/inspector
 
 ## apprise target
 
-`inspector-tg` 已於 2026-08-16 註冊完成（沿用 vikunja 既有 bot token，指向 Telegram 群組 "OCI System inspection"）。apprise 現在是 k3s NodePort（`http://localhost:30085`），不是 docker 容器，見 spec 文件「通知格式」節的更新說明。
+`inspector-tg` 已於 2026-08-16 註冊完成（沿用 vikunja 既有 bot token，指向 Telegram 群組 "OCI System inspection"）。apprise 已於 2026-08-18 遷回 docker compose（`vps_oracle/compose/apprise`），只在 `proxy` 網路內用容器名給其他容器訪問；inspector 是 host-native 腳本、不在任何 docker network 裡，因此 apprise compose 額外綁了 `127.0.0.1:8000:8000` 給它用，`APPRISE_URL` 預設值也改成 `http://localhost:8000`（見 `lib/common.sh`）。
 
 ## 上線紀律
 

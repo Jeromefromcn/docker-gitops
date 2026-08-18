@@ -15,7 +15,7 @@ INSPECTOR_ROOT="$(cd "$_COMMON_SH_DIR/.." && pwd)"
 INSPECTOR_STATE_DIR="${INSPECTOR_STATE_DIR:-$INSPECTOR_ROOT/state}"
 mkdir -p "$INSPECTOR_STATE_DIR"
 
-APPRISE_URL="${APPRISE_URL:-http://localhost:30085}"
+APPRISE_URL="${APPRISE_URL:-http://localhost:8000}"
 
 # ---- self-chain: PIDs that must never be a kill target ----
 
