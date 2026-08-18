@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-frontend-conf
+  namespace: pr-lanes
+data:
+  default.conf: |
+    server {
+        listen 8080;
+
+        location /api {
+            proxy_pass http://hello-backend.pr-lanes.svc.cluster.local;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+        }
+    }

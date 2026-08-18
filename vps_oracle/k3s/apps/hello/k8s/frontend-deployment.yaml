@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-frontend
+  namespace: pr-lanes
+  labels:
+    app: hello-frontend
+    lane: baseline
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hello-frontend
+      lane: baseline
+  template:
+    metadata:
+      labels:
+        app: hello-frontend
+        lane: baseline
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hello-frontend
+          image: ghcr.io/jeromefromcn/placeholder-hello@sha256:3b8929d1913203f822539731236bf1127c178729588647703eed7ea15e831992
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: hello-frontend-conf

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-frontend
+  namespace: pr-lanes
+  labels:
+    app: hello-frontend
+    lane: baseline
+spec:
+  type: NodePort
+  selector:
+    app: hello-frontend
+    lane: baseline
+  ports:
+    - port: 80
+      targetPort: 8080
+      nodePort: 30083
