@@ -1,0 +1,28 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registry-pr-lanes
+spec:
+  validationFailureAction: Enforce
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-ghcr-jeromefromcn-signature-pr-lanes
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - pr-lanes
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/jeromefromcn/*"
+          type: SigstoreBundle
+          mutateDigest: false
+          attestors:
+            - entries:
+                - keyless:
+                    subjectRegExp: "^https://github\\.com/Jeromefromcn/docker-gitops/\\.github/workflows/[^/]+\\.yml@refs/(heads/main|pull/[0-9]+/merge)$"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev

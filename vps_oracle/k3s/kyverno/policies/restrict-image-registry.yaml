@@ -12,6 +12,11 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - pr-lanes
       verifyImages:
         - imageReferences:
             - "ghcr.io/jeromefromcn/*"
