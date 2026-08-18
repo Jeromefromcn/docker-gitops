@@ -1,0 +1,23 @@
+# vps_oracle/k3s/istio/istiod-values.yaml
+profile: ambient
+
+# Startup sizing, not a claim about steady state: this mesh has a
+# handful of pods (hello-frontend/hello-backend/waypoint + per-PR-lane
+# pods), nowhere near the ~100-pod baseline the upstream "small
+# cluster" guidance (500m/512Mi requests) assumes. Revisit if istiod
+# gets OOMKilled — see the resource budget table in the phase F+G
+# design doc.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+meshConfig:
+  # Only pr-lanes opts into ambient (namespace label, Task 4) — this
+  # doesn't change that, it's istiod's own default proxy behavior for
+  # any namespace that DOES opt in. Left at chart default deliberately:
+  # no sidecar injection anywhere, ambient is fully sidecar-free.
+  accessLogFile: /dev/stdout
