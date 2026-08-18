@@ -11,6 +11,13 @@
 # and `crictl rmi --prune` (the spec's named action) has none either.
 # Kubelet image GC is the age-aware primary mechanism; this is the
 # backstop that reports what's sitting unused.
+#
+# ionice -c3 (idle) on the actual prune: 2026-08-18 incident — a
+# migration backlog of stale k3s images made one prune run sustain IO
+# PSI full 25-31% for ~7min (vs. no measurable impact on ordinary
+# runs), long enough to cross the io_pressure_critical alert
+# threshold. Idle class makes this check yield IO to every other
+# process on the box instead of contending for it.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
@@ -54,7 +61,7 @@ detail="${count} images not referenced by any container (incl. exited), total ${
 
 if [ "${INSPECTOR_DRY_RUN:-0}" = "1" ]; then
   emit_result "auto" "would-delete" "containerd unused images x${count}" "$detail"
-elif output="$(sudo -n crictl rmi --prune 2>/dev/null)"; then
+elif output="$(sudo -n ionice -c3 crictl rmi --prune 2>/dev/null)"; then
   emit_result "auto" "deleted" "containerd unused images x${count}" "$detail"
 else
   emit_result "alert" "flagged" "containerd unused images x${count}" \
