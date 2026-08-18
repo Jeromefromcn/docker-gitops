@@ -19,6 +19,19 @@ spec:
             - "ghcr.io/jeromefromcn/*"
           type: SigstoreBundle
           mutateDigest: false
+          # Kyverno's verifyDigest defaults to true, which requires the Pod's
+          # image field to already be pinned by digest — the main-branch
+          # policy (restrict-image-registry.yaml) relies on that default
+          # because baseline Deployments are hand-pinned by digest. PR-lane
+          # Deployments are deliberately tag-pinned by commit SHA instead
+          # (ApplicationSet's {{.head_sha}}, see the design doc's Global
+          # Constraints on why a SHA tag counts as pinned) — with the
+          # default verifyDigest:true, Kyverno rejects every PR-lane pod
+          # with "missing digest for ...", since a tag reference never
+          # carries one. Explicitly false here so Kyverno resolves the tag
+          # to a digest internally for signature verification without
+          # requiring one to already be present in the resource.
+          verifyDigest: false
           attestors:
             - entries:
                 - keyless:
