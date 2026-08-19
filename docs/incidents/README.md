@@ -6,6 +6,7 @@
 
 | 日期 | 服务 | 简述 | 记录 |
 |---|---|---|---|
+| 2026-08-19 | npm/k3s | Cilium socket-LB 收窄到 host namespace（istio-cni 需要）意外拿掉 NPM 反代到 k3s NodePort 的隐性依赖，全部 NodePort 反代失联；host-firewall 补显式放行 + 新增 host-netns relay 补上无监听者的缺口 | [链接](2026-08-19-npm-to-k3s-nodeport-outage.md) |
 | 2026-08-17 | trivy-operator | 两处 Helm values 误放层级致扫描并发限制从未生效 + cilium 同 job 内多 container 自我抢锁 + 全部 arm64 单架构镜像扫描必败，叠加触发 IO PSI 告警；修正层级、关闭 initContainer 扫描、根治 arm64 扫描 | [链接](2026-08-17-trivy-operator-scan-concurrency-io-pressure.md) |
 | 2026-08-17 | k3s | 节点内存超卖 110%，jaeger/trivy 相继被 cgroup OOM Kill，页缓存抖动触发 IO PSI 告警；调高两处 limit + 补巡检 check + 收窄告警噪音 | [链接](2026-08-17-k3s-memory-overcommit-io-pressure.md) |
 | 2026-08-15 | vscode-server | 远程会话堆积引发资源尖峰（负载 38.7），根因链上游为 ccr 卡死 bug | [链接](2026-08-15-vscode-sessions-resource-spike.md) |
