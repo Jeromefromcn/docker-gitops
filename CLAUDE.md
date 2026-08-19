@@ -13,3 +13,4 @@ Central repo for server docker-compose files. Each `<host>/compose/<compose>/` d
 - Don't assume a service here matches what's live — confirm with the user before applying changes that recreate a container.
 - Need to configure/edit an NPM reverse proxy host? Follow the steps in README.md's "给服务接入 NPM 反代" section (includes a known SSL-toggle-resets-itself gotcha).
 - Every time a new service is added to this repo, also add it as a card in the homepage dashboard — follow README.md's "给新服务加 homepage 卡片" section.
+- Diagrams in any markdown file: use Mermaid, not ASCII art.
