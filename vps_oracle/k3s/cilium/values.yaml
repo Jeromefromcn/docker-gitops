@@ -133,6 +133,24 @@ cni:
 # Istio routing rules") — it restricts socket-level Service resolution to
 # the host network namespace only, leaving pod-namespace traffic (like
 # istio-cni's redirect target) alone.
+#
+# IMPORTANT — `helm upgrade` alone does NOT apply this. hostNamespaceOnly
+# only reaches the cilium-config ConfigMap; the agent reads it once at
+# startup and bakes it into the cgroup BPF program it compiles
+# (ENABLE_SOCKET_LB_FULL vs ENABLE_SOCKET_LB_HOST_ONLY in
+# /run/cilium/state/globals/node_config.h). This chart puts no ConfigMap
+# checksum on the cilium DaemonSet's pod template, so a values-only change
+# leaves the template byte-identical and no rollout is triggered — the
+# ConfigMap reads `true` while the running datapath is still `full`, and
+# the mesh keeps silently bypassing waypoints with no error anywhere.
+# This cost a full extra debugging round on 2026-08-19: the setting looked
+# applied and the hypothesis was wrongly written off as disproven.
+# After changing anything under socketLB, always follow with:
+#   kubectl -n kube-system rollout restart daemonset/cilium
+# and verify the live datapath (not the ConfigMap) actually changed:
+#   kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+#     cilium-dbg status --verbose | grep 'Socket LB Coverage'
+# Expect "Hostns-only"; "Full" means the restart never happened.
 socketLB:
   enabled: true
   hostNamespaceOnly: true
