@@ -23,6 +23,15 @@
 #   - 443/80 for the NPM reverse proxy (2026-07-26 migration)
 #   - pod CIDR → host ports 6443/4244/10250 (2026-08-05/06 Cilium fix,
 #     see k3s/README.md "host firewall blocked pod traffic")
+#   - docker `proxy` network → k3s NodePort range (2026-08-19 fix, see
+#     docs/incidents/2026-08-19-npm-to-k3s-nodeport-outage.md): NPM's proxy_host
+#     confs target 10.0.0.95:<NodePort> directly for headlamp/grafana/argocd/
+#     etc. This always relied on Cilium's socket-LB transparently redirecting
+#     those connect() calls before they hit this INPUT chain — never an
+#     explicit allow here. Phase F+G's socketLB.hostNamespaceOnly (needed for
+#     istio-cni ambient routing) restricted that redirect to the host netns
+#     only, silently dropping every non-host-netns caller (i.e. every docker
+#     compose container) into this chain's default-REJECT.
 #   - DOCKER-USER drop: external iface → published 3001/9090/8080
 #     (Grafana/Prometheus/Nginx must not be reachable from the internet)
 set -euo pipefail
@@ -46,6 +55,7 @@ ipt INPUT -p tcp -m tcp --dport 80 -j ACCEPT                       # NPM cert re
 ipt INPUT -s 10.42.0.0/16 -p tcp -m tcp --dport 6443 -j ACCEPT     # kube-apiserver (pods)
 ipt INPUT -s 10.42.0.0/16 -p tcp -m tcp --dport 4244 -j ACCEPT     # cilium hubble-peer (pods)
 ipt INPUT -s 10.42.0.0/16 -p tcp -m tcp --dport 10250 -j ACCEPT    # kubelet metrics (pods)
+ipt INPUT -s 172.19.0.0/16 -p tcp -m tcp --dport 30000:32767 -j ACCEPT  # docker `proxy` net (NPM) → k3s NodePorts (2026-08-19)
 iptables -A INPUT -j REJECT --reject-with icmp-host-prohibited
 
 # --- OCI InstanceServices (image default: instance metadata, iSCSI, NTP) ---

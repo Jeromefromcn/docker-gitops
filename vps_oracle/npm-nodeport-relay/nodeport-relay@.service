@@ -1,0 +1,19 @@
+[Unit]
+Description=Host-netns TCP relay for k3s NodePort %i (NPM hairpin fix)
+Documentation=file:///home/ubuntu/jerome/docker-gitops/vps_oracle/npm-nodeport-relay/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/socat TCP-LISTEN:%i,fork,reuseaddr TCP:127.0.0.1:%i
+Restart=on-failure
+RestartSec=2
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+
+[Install]
+WantedBy=multi-user.target
