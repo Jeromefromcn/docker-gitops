@@ -1,6 +1,6 @@
 services:
   homepage:
-    image: ghcr.io/jeromefromcn/homepage@sha256:02b2641e7097b67656f8408edf01c28f2e7d6c61008ed720f888d6355a018040
+    image: ghcr.io/gethomepage/homepage:v2.0.0@sha256:638dacf5c844e908dc06c1fd57a2b5694f8efd91f91f152829ea0c2f547458f2
     container_name: homepage
     hostname: homepage
     restart: unless-stopped
