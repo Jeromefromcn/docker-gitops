@@ -34,6 +34,18 @@ spec:
             capabilities:
               drop:
                 - ALL
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
           resources:
             requests:
               cpu: 25m
