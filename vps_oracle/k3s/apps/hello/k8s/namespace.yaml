@@ -4,3 +4,4 @@ metadata:
   name: pr-lanes
   labels:
     istio.io/dataplane-mode: ambient
+    pod-security.kubernetes.io/enforce: baseline

@@ -39,10 +39,3 @@ metadata:
   name: sealed-secrets
   labels:
     pod-security.kubernetes.io/enforce: baseline
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: pr-lanes
-  labels:
-    pod-security.kubernetes.io/enforce: baseline
