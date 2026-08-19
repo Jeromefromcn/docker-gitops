@@ -40,6 +40,16 @@ Installed via Helm with `kube-proxy-replacement: true` — k3s's own kube-proxy 
 
 Reinstall/upgrade: `helm upgrade cilium cilium/cilium --version 1.20.0 --namespace kube-system -f cilium/values.yaml`
 
+**`helm upgrade` alone does not restart cilium-agent — after any `values.yaml` change (especially anything under `socketLB`), always follow up with:**
+```bash
+kubectl -n kube-system rollout restart daemonset/cilium
+```
+**and verify the live datapath, not the ConfigMap:**
+```bash
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg status --verbose | grep 'Socket LB Coverage'
+```
+Expect `Hostns-only` if `socketLB.hostNamespaceOnly` is set to `true`; `Full` means the restart never happened. This chart puts no ConfigMap checksum on the DaemonSet's pod template, so `helm upgrade` only updates the ConfigMap — the agent reads `socketLB` settings once at startup and bakes them into the cgroup BPF program it compiles, so a values-only change leaves the running pods untouched and silently stale, with no error anywhere. Full root cause and history in `cilium/values.yaml`'s comments above the `socketLB:` block.
+
 Check health: `cilium status --wait`. View flows: `kubectl -n kube-system port-forward svc/hubble-ui 12000:80`, then open `http://localhost:12000` through an SSH tunnel.
 
 ### Pod CIDR
@@ -98,7 +108,7 @@ Then verify immediately: `argocd login argocd.jerome.cloudns.asia:443 --username
 
 **Known transient issue:** on first install, `argocd-server`'s logs may show a handful of `redis: ... connect: no route to host` errors in the first couple of seconds after the pods start, then nothing further — this looks like Cilium's service map not being fully programmed yet at the exact moment `argocd-server` opens its first Redis connection, not a persistent problem. It self-resolved without intervention and didn't recur; if it ever shows up as a *sustained* pattern (not just at startup), treat it like phase A's documented host-firewall-blocks-node-local-ClusterIP-traffic gotcha (see the Cilium section above) — check `cilium-dbg service list` for the backend and, if needed, scope an `iptables INPUT` allow rule for the current pod CIDR rather than one port at a time, since on a single-node cluster every ClusterIP's backend is node-local.
 
-**Never test self-heal by scaling `argocd-repo-server` to 0.** It's the component that renders manifests for every Application's sync, including reconciling itself — scaling it down deadlocks self-heal (nothing can compute the fix because the thing that computes fixes is what's down); `argocd app sync`/`diff` also fail outright while it's down for the same reason. Recovery requires a manual `kubectl -n argocd scale deployment argocd-repo-server --replicas=1`. To actually verify self-heal, break something in a regular workload Application instead (e.g. `placeholder-hello`, see below) — that has no such circularity.
+**Never test self-heal by scaling `argocd-repo-server` to 0.** It's the component that renders manifests for every Application's sync, including reconciling itself — scaling it down deadlocks self-heal (nothing can compute the fix because the thing that computes fixes is what's down); `argocd app sync`/`diff` also fail outright while it's down for the same reason. Recovery requires a manual `kubectl -n argocd scale deployment argocd-repo-server --replicas=1`. To actually verify self-heal, break something in a regular workload Application instead (e.g. `hello-backend`, see below) — that has no such circularity.
 
 ### Install
 
@@ -114,19 +124,26 @@ Re-applying `argocd/values.yaml` after an edit: prefer editing the file and lett
 
 - `argocd` — self-manages this Helm release (multi-source: the `argo-cd` chart + `argocd/values.yaml` from this repo as an external values source) plus `argocd/manifests/argocd-server-nodeport.yaml` (a third plain-directory source in the same Application, since it's infrastructure for exposing ArgoCD itself)
 - `phase-a-foundation` — the namespace/quota/limitrange from phase A (now GitOps-managed, no longer hand-applied)
-- `placeholder-hello` — the demo app proving the CI → GitOps loop (see `vps_oracle/k3s/apps/placeholder-hello/`)
+- `hello` — the two-tier `hello-frontend`/`hello-backend` practice app proving the CI → GitOps loop (see `vps_oracle/k3s/apps/hello/k8s`), successor to the retired `placeholder-hello`
+- `gateway-api` (phase F+G) — the Gateway API standard-channel CRDs, `sync-wave: -4` so the waypoint `Gateway` and every `HTTPRoute` have the CRDs they need before Istio itself comes up
+- `istio-base`, `istio-istiod`, `istio-cni`, `istio-ztunnel` (phase F+G) — the four Helm-chart Applications making up Istio Ambient mode, one Application per Helm release, `sync-wave`d `-3` → `-2` → `-1`/`-1` (`base` → `istiod` → `cni`/`ztunnel`) — see the "Istio Ambient / PR Lanes" section below
+- `pr-lanes` (phase F+G) — **an `ApplicationSet`, not a plain Application** (`argocd/apps/pr-lanes-appset.yaml`): its GitHub `pullRequest` generator creates one `hello-pr-<number>` Application per open PR labeled `pr-lane`, each an isolated header-routed lane of `hello-backend`
 
 All Applications run `prune: true` / `selfHeal: true` — manual `kubectl` changes to anything they manage get reverted automatically, usually within seconds. **Editing `argocd.yaml` (or any other file directly under `argocd/apps/`) requires syncing `root`, not the Application the edit is about** — `root` is what applies changes to the Application *objects themselves*; syncing `argocd` only re-applies whatever `sources` are already live, silently ignoring an uncommitted-to-cluster edit to its own spec. To add a brand new Application, write its manifest into `argocd/apps/`, commit, push, and either wait for the next poll or force it: `argocd app sync root`.
 
-**CLI gotcha:** `argocd-repo-server` renders manifests for every Application's sync, including reconciling itself. Never test self-heal by scaling it to 0 — that deadlocks self-heal (and breaks `argocd app sync`/`diff` for everything) since the thing that would compute the fix is what's down. Recovery is a manual `kubectl -n argocd scale deployment argocd-repo-server --replicas=1`. Use a regular workload (e.g. `placeholder-hello`) to verify self-heal instead.
+**CLI gotcha:** `argocd-repo-server` renders manifests for every Application's sync, including reconciling itself. Never test self-heal by scaling it to 0 — that deadlocks self-heal (and breaks `argocd app sync`/`diff` for everything) since the thing that would compute the fix is what's down. Recovery is a manual `kubectl -n argocd scale deployment argocd-repo-server --replicas=1`. Use a regular workload (e.g. `hello-backend`) to verify self-heal instead.
 
-### CI pipeline (placeholder-hello)
+### CI pipeline (hello-backend)
 
-`.github/workflows/placeholder-hello.yml` triggers on push to `vps_oracle/k3s/apps/placeholder-hello/**` (plus manual `workflow_dispatch`): builds `linux/arm64` on a standard `ubuntu-latest` x64 runner via QEMU emulation (no self-hosted runner, no server resource cost), Trivy-scans the result and fails the job on any `CRITICAL` finding, then signs it with keyless Cosign (GitHub OIDC → Sigstore Fulcio/Rekor — no key material anywhere). Verify a signature: `cosign verify ghcr.io/jeromefromcn/placeholder-hello:<sha> --certificate-identity-regexp '^https://github.com/Jeromefromcn/docker-gitops/.github/workflows/placeholder-hello.yml@refs/heads/main$' --certificate-oidc-issuer https://token.actions.githubusercontent.com`.
+`.github/workflows/hello-backend.yml` triggers on `push` to `main` (path filter `vps_oracle/k3s/apps/hello/backend/**`) and on `pull_request` events (`opened`/`synchronize`/`reopened`/`labeled`, same path filter), plus manual `workflow_dispatch`. On `pull_request`, the build job's `if` only runs when the PR carries the `pr-lane` label (`github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'pr-lane')`) — opening or pushing to a PR without that label triggers the workflow but skips the job, so labeling a PR is what turns its lane's image build on.
 
-Deploying a new image is a manual two-step, not automated: after CI signs and pushes a new tag, edit `apps/placeholder-hello/k8s/deployment.yaml` to point at it, commit, push. This is deliberate — it still satisfies "deploys go through git, not `kubectl apply`" without pulling in an image-updater's extra moving parts. Watch for the CI workflow's `paths:` filter also matching `k8s/deployment.yaml` itself — bumping the tag re-triggers a (harmless, redundant) rebuild of unchanged app source.
+When it runs: builds `linux/arm64` on a standard `ubuntu-latest` x64 runner via QEMU emulation (no self-hosted runner, no server resource cost), tags the image with the PR head SHA (`pull_request`) or the push SHA (`main`), Trivy-scans it and fails the job on any `CRITICAL` finding with a fix available (`ignore-unfixed: true`), then signs it with keyless Cosign (GitHub OIDC → Sigstore Fulcio/Rekor — no key material anywhere). Verify a signature: `cosign verify ghcr.io/jeromefromcn/hello-backend@<digest> --certificate-identity-regexp '^https://github.com/Jeromefromcn/docker-gitops/.github/workflows/hello-backend.yml@refs/heads/main$' --certificate-oidc-issuer https://token.actions.githubusercontent.com`.
 
-The `placeholder-hello` GHCR package (`ghcr.io/jeromefromcn/placeholder-hello`) is public — its content is a static placeholder page with nothing sensitive, and public avoids needing an `imagePullSecret` in the cluster.
+Deploying the baseline (`main`) image is still a manual two-step, not automated: after CI signs and pushes a new digest, edit `apps/hello/k8s/backend-deployment.yaml` to point at it, commit, push — same "deploys go through git" rationale as before. PR lanes work differently: the `pr-lanes` ApplicationSet (`argocd/apps/pr-lanes-appset.yaml`) Kustomize-patches each lane's image to the PR's head SHA automatically, no manual deployment edit needed per PR.
+
+`hello-frontend` has no CI workflow of its own — it still reuses the old signed `placeholder-hello` image (`apps/hello/k8s/frontend-deployment.yaml`), unchanged since phase F+G retired that app.
+
+The `hello-backend` GHCR package (`ghcr.io/jeromefromcn/hello-backend`) is public — same reasoning as before: nothing sensitive, avoids needing an `imagePullSecret` in the cluster.
 
 ## Sealed Secrets
 
@@ -225,7 +242,7 @@ The root README's convention (`TZ: "Asia/Hong_Kong"`) applies here too, but **wh
 | trilium | `environment.TZ` in its Deployment | `HKT` | ✅ |
 | Cilium (agent/operator/hubble-relay/hubble-ui) | `extraEnv` in `cilium/values.yaml` | `UTC` | ❌ image has no `/usr/share/zoneinfo` — left set anyway (harmless, and future Cilium image bumps may add tzdata) |
 | homepage | `environment.TZ` in its Deployment | `UTC` | ❌ same cause, not investigated further (low priority — see phase C's design doc) |
-| placeholder-hello, kube-system system pods (CoreDNS, local-path-provisioner, metrics-server) | not set | `UTC` | expected, never configured |
+| hello (frontend/backend), kube-system system pods (CoreDNS, local-path-provisioner, metrics-server) | not set | `UTC` | expected, never configured |
 
 **This isn't just cosmetic — it's a log-correlation risk.** Once more than one component prints timestamps in different zones, manually cross-referencing raw log text across services (e.g. "did the NPM cutover happen before or after this ArgoCD sync") gets error-prone: the same wall-clock moment prints as two different clock times depending on which service logged it. Two mitigations, deliberately not more:
 - `kubectl logs --timestamps` / `docker logs --timestamps` prepend the container runtime's own capture timestamp (RFC3339 with an explicit UTC offset) ahead of whatever the app itself printed — that prefix is always unambiguous and safe to cross-reference regardless of the app's own TZ handling. Use it, don't trust the app's printed text alone, when correlating across services.
@@ -236,8 +253,8 @@ The root README's convention (`TZ: "Asia/Hong_Kong"`) applies here too, but **wh
 Phase E's admission-control stack: Trivy Operator (`trivy-operator/trivy-operator` chart `0.35.0`, `trivy-system` ns, `Standalone`/Job-only scan mode) generates `VulnerabilityReport` CRDs cluster-wide; Kyverno (`kyverno/kyverno` chart `3.8.2`, `kyverno` ns, **admission-controller only** — `backgroundController`/`reportsController`/`cleanupController` all disabled) enforces three `ClusterPolicy` resources against them (all three started in `Audit` mode; current enforcement status is summarized in "Net effect" below):
 
 - `restrict-image-registry` — Cosign keyless signature verification, scoped to `ghcr.io/jeromefromcn/*` only (`imageReferences`, not `skipImageReferences` — everything else is untouched by default)
-- `require-vuln-scan-clean` — denies Pods with a `VulnerabilityReport` showing a `CRITICAL` vulnerability that **has a fix available** (`fixedVersion != ''`). Originally cluster-wide; narrowed on 2026-08-18 to self-built images only (`app in (placeholder-hello, vikunja-notify-relay)`, same selector pattern as `restricted-self-built`) — see the 2026-08-18 finding below for why. Deliberately does NOT deny on unfixable CRITICALs — blocking those has no resolution path and would just deadlock the workload forever
-- `restricted-self-built` — Kubernetes `restricted` Pod Security profile via Kyverno's built-in `validate.podSecurity`, scoped by pod label (`app in (placeholder-hello, vikunja-notify-relay)`) rather than namespace, since `workloads` mixes self-built and third-party images
+- `require-vuln-scan-clean` — denies Pods with a `VulnerabilityReport` showing a `CRITICAL` vulnerability that **has a fix available** (`fixedVersion != ''`). Originally cluster-wide; narrowed on 2026-08-18 to self-built images only (`app in (hello-frontend, hello-backend)`, same selector pattern as `restricted-self-built`) — see the 2026-08-18 finding below for why. Deliberately does NOT deny on unfixable CRITICALs — blocking those has no resolution path and would just deadlock the workload forever
+- `restricted-self-built` — Kubernetes `restricted` Pod Security profile via Kyverno's built-in `validate.podSecurity`, scoped by pod label (`app in (hello-frontend, hello-backend)`) rather than namespace, since `workloads` mixes self-built and third-party images
 
 Adding a new self-built workload: add it to `restricted-self-built.yaml`'s label selector, and to `require-vuln-scan-clean.yaml`'s label selector (same `app in (...)` pattern, since 2026-08-18) if it should also get the CVE gate.
 
@@ -262,7 +279,7 @@ Adding a new self-built workload: add it to `restricted-self-built.yaml`'s label
 
 **2026-08-18, same day, third round: `apprise`, `vikunja` (+ `vikunja-notify-relay`), and `llm` (`llama-cpp`+`open-webui`) also migrated back to compose** — see the [second migration plan](../../docs/superpowers/plans/2026-08-18-k3s-to-compose-migration-part2.md). The `llm` namespace no longer exists. This completes the reversal of every phase C/D service migration — at this point only `lab-environment`/`headlamp`/`placeholder-hello` (k3s-native, no compose predecessor) remain on k3s. The `restricted-self-built`/`require-vuln-scan-clean` `app in (placeholder-hello, vikunja-notify-relay)` scoping above is now stale in one respect: `vikunja-notify-relay` no longer runs on k3s either, so it can be dropped from that selector next time either policy is touched (left as-is here since it's harmless — an unmatched selector value, not a broken one).
 
-**Same day, subsequently: phase F+G retired `placeholder-hello` outright**, replacing it with the two-tier `hello-frontend`/`hello-backend` app in the new `pr-lanes` namespace — see the "Istio Ambient / PR Lanes" section below. As of that phase, the k3s-native service list is `lab-environment`/`headlamp`/`pr-lanes`, not `lab-environment`/`headlamp`/`placeholder-hello` as stated in the paragraph above (kept as written for historical accuracy about that point in time).
+**Same day, subsequently: phase F+G retired `placeholder-hello` outright**, replacing it with the two-tier `hello-frontend`/`hello-backend` app in the new `pr-lanes` namespace — see the "Istio Ambient / PR Lanes" section below. As of that phase, the k3s-native service list is `lab-environment`/`headlamp`/`pr-lanes`, not `lab-environment`/`headlamp`/`placeholder-hello` as stated in the paragraph above (kept as written for historical accuracy about that point in time). `require-vuln-scan-clean`'s and `restricted-self-built`'s `app in (...)` selectors were updated in the same move, from `placeholder-hello, vikunja-notify-relay` to `hello-frontend, hello-backend` — the selector values shown earlier in this section already reflect that current state, not the pre-phase-F+G one.
 
 ## Istio Ambient / PR Lanes
 
@@ -271,6 +288,8 @@ Phase F+G installs Istio in **Ambient** mode (sidecar-free: a per-node `ztunnel`
 **Installed as 4 separate ArgoCD Applications, not one multi-source Application:** `istio-base`, `istio-istiod`, `istio-cni`, `istio-ztunnel` (`argocd/apps/istio-*.yaml`), each a single Helm chart pulled from `istio-release.storage.googleapis.com/charts` plus its own values file under `istio/`. This is a deliberate deviation from the design doc's original single-multi-source-Application sketch, done to match every other Helm-backed component already in this repo (`argocd`, `sealed-secrets`, `kyverno`, `trivy-operator`) — one Application per Helm release. `sync-wave` orders them (`base` → `istiod` → `cni`/`ztunnel`) since each stage depends on CRDs/webhooks the previous one installs. Gateway API's CRDs are their own Application too (`argocd/apps/gateway-api.yaml`, standard channel, `v1.6.1`), installed first (`sync-wave: -4`) since both the waypoint `Gateway` and every `HTTPRoute` need those CRDs to exist before Istio itself comes up.
 
 `placeholder-hello` has been **fully retired** — no Application, Deployment, Service, or CI workflow remains for it anywhere in the repo. `hello-frontend`/`hello-backend` are its sole successor (the frontend even reuses its old signed image — see `apps/hello/k8s/frontend-deployment.yaml`).
+
+**2026-08-19 measured (`kubectl top pods -n istio-system` / `-n pr-lanes`):** `istiod` 102Mi, `istio-cni` 30Mi, `ztunnel` 29Mi, `waypoint` 26Mi — all well under the design doc's resource budget. Host `swap` usage is 2.6Gi/4.0Gi (`free -h`), unchanged from before this install — the mesh didn't push the host into worse swap pressure.
 
 ### What's meshed, and why only `pr-lanes`
 
