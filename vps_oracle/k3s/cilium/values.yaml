@@ -118,3 +118,21 @@ hubble:
 # healthcheck IPs are known-broken under BPF masquerade.
 cni:
   exclusive: false
+# Discovered live during phase F+G's Task 14: with kubeProxyReplacement
+# (set at the top of this file), Cilium's eBPF datapath resolves a
+# Service ClusterIP to a
+# specific backend Pod IP before istio-cni's iptables REDIRECT rule (which
+# runs inside the pod's own netns) gets a chance to preserve the original
+# ClusterIP as the connection's SO_ORIGINAL_DST — so by the time ztunnel
+# inspects the redirected connection, it already sees a Pod IP instead of
+# the Service VIP, and can never apply a Service's waypoint binding
+# (confirmed live: waypoint's ztunnel-config binding was correct, routes
+# were correctly programmed on the waypoint itself, yet the waypoint pod
+# received zero traffic across every test). socketLB.hostNamespaceOnly is
+# Cilium's own chart-documented fix for exactly this ("used to enable
+# Istio routing rules") — it restricts socket-level Service resolution to
+# the host network namespace only, leaving pod-namespace traffic (like
+# istio-cni's redirect target) alone.
+socketLB:
+  enabled: true
+  hostNamespaceOnly: true
