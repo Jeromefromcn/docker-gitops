@@ -26,6 +26,15 @@ spec:
               value: "Asia/Hong_Kong"
             - name: COLLECTOR_ZIPKIN_HOST_PORT
               value: ":9411"
+            # Default all-in-one memory storage keeps every trace forever with
+            # no eviction, so RSS grows until it hits the memory limit no
+            # matter how high that limit is set (already bumped 128Mi->256Mi
+            # once and it's OOM-killing again days later). Bound the store
+            # instead of chasing the limit.
+            - name: SPAN_STORAGE_TYPE
+              value: "memory"
+            - name: MEMORY_MAX_TRACES
+              value: "5000"
           ports:
             - containerPort: 16686
               name: ui
