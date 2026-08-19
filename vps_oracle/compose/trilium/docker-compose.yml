@@ -1,6 +1,6 @@
 services:
   trilium:
-    image: ghcr.io/jeromefromcn/trilium@sha256:e88f87b97d31a6304fe9798148f3585d818fa2640f65e36a52a99c8d79f79614
+    image: triliumnext/trilium:v0.104.1@sha256:3332fa03198f0b3ecddf11fcf37f3aace352a664728d669a1ffa7a5594a6f2d6
     container_name: trilium
     hostname: trilium
     restart: unless-stopped
