@@ -10,6 +10,18 @@ operator:
   # parallel anyway -- trivy.slow (chart default: true) already runs each
   # scan single-threaded.
   scanJobsConcurrentLimit: 1
+  # Chart default is 24h, which expires every report cluster-wide once a day
+  # and -- with scanJobsConcurrentLimit: 1 -- rebuilds them as one serialized
+  # ~40-minute train of scan Jobs. Each Job's Standalone-mode initContainer
+  # downloads and unpacks the whole trivy DB into a fresh disk-backed
+  # emptyDir: measured ~1.7GB of sda writes for a single Job, ~25GB across
+  # a single daily TTL wave -- this is what tripped the "3+ processes in
+  # D state for 2 minutes" node_procs_blocked alert on 2026-08-19. 72h cuts
+  # that recurring cost to a third. Event-driven rescans (image changed)
+  # are unaffected, and Kyverno's require-vuln-scan-clean only denies on
+  # findings it can actually see, so an expired report never blocks a
+  # deploy (fail-open).
+  scannerReportTTL: "72h"
 
 trivyOperator:
   # Lets a workload opt out of scanning by carrying this label key.
@@ -17,18 +29,20 @@ trivyOperator:
   # operator controller settings (operator:) from scan-job/report
   # behavior (trivyOperator:); skipResourceByLabels lives in the latter.
   skipResourceByLabels: "trivy-operator.skip"
-  # Target workloads' initContainers were being scanned as their own,
-  # fully-parallel containers inside the same scan Job pod (not true
-  # sequential K8s initContainers) -- e.g. cilium's DaemonSet has 6
-  # initContainers that all share cilium's own main-container image, so
-  # its scan job launched 7 concurrent trivy processes racing for the
-  # one shared filesystem cache lock, repeatedly hitting
-  # BackoffLimitExceeded regardless of scanJobsConcurrentLimit (that
-  # setting only bounds cross-job concurrency, not containers within one
-  # job). Checked every pod cluster-wide: only two initContainers
-  # (kyverno-pre, homepage's busybox seed-config) use an image different
-  # from their main container, so the real coverage loss from turning
-  # this off is small and known, not blanket.
+  # NOTE (corrected 2026-08-19): this does NOT stop the operator from
+  # scanning initContainers as their own containers within a Job -- in
+  # trivy-operator 0.33.0, pkg/plugins/trivy/jobspec.go's getContainers()
+  # appends spec.InitContainers unconditionally and never consults this
+  # setting. It only affects whether the operator treats a workload as
+  # needing a rescan when an initContainer's report is missing. cilium's
+  # DaemonSet (6 initContainers sharing cilium's own image, so its scan
+  # Job launched 7 trivy processes racing for one filesystem cache lock)
+  # is excluded via `trivy-operator.skip` label instead -- see
+  # vps_oracle/k3s/cilium/values.yaml. The lock-contention problem this
+  # comment originally described is actually fixed by trivy.configFile's
+  # cache.backend: memory below, which removes the shared lock file
+  # entirely. Left enabled because it's still correct for its real
+  # purpose and harmless.
   skipInitContainers: true
 
 resources:
@@ -59,6 +73,26 @@ trivy:
   configFile:
     image:
       platform: linux/arm64
+    # Every scan Job pod runs one trivy process per container of the scanned
+    # workload -- initContainers included, because trivy-operator 0.33.0's
+    # pkg/plugins/trivy/jobspec.go getContainers() appends spec.InitContainers
+    # unconditionally and never consults skipInitContainers above. All of them
+    # share one --cache-dir on the pod's single /tmp emptyDir, and trivy
+    # 0.73's default `fs` scan cache is a BoltDB behind a flock, so in any
+    # workload with >=2 scannable containers at least one trivy process loses
+    # the lock race, FATALs, and fails the whole Job with
+    # BackoffLimitExceeded -- which the operator then retries forever.
+    # Measured over 30h on 2026-08-19: 18 such failures (hubble-ui `backend`
+    # x14 -- permanently zero VulnerabilityReport coverage until this fix --
+    # argocd-repo-server's `copyutil` initContainer x2, kyverno's
+    # `kyverno-pre` initContainer x2), each retry re-downloading the ~1.5GB
+    # trivy DB to disk. `memory` is Trivy's own documented fix for this exact
+    # lock error and needs no shared file at all. Safe for the DB-download
+    # initContainer: that path (trivy run.go initDB) only uses --cache-dir
+    # and returns SkipScan before any scan cache is constructed, so the DB
+    # download itself is untouched by this setting.
+    cache:
+      backend: memory
   resources:
     requests:
       cpu: 100m
