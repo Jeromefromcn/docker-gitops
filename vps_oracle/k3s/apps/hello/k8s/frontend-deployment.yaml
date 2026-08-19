@@ -19,6 +19,16 @@ spec:
       labels:
         app: hello-frontend
         lane: baseline
+      annotations:
+        # sha256 of frontend-configmap.yaml's data["default.conf"] content (as
+        # rendered, not the raw YAML block). subPath-mounted ConfigMap files are
+        # NOT hot-reloaded by kubelet, so a content-only edit to the ConfigMap
+        # silently has no effect on running pods until they're recreated.
+        # Whoever edits default.conf in frontend-configmap.yaml MUST recompute
+        # this hash and update it here too, or the change won't take effect:
+        #   kubectl get configmap hello-frontend-conf -n pr-lanes \
+        #     -o jsonpath='{.data.default\.conf}' | sha256sum
+        configmap-checksum: "e80fd33fbf8ac9f38e059f51634963eb9582a2ad55e459db20c2ca7b6b1e7425"
     spec:
       securityContext:
         runAsNonRoot: true

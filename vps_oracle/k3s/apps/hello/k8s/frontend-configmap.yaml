@@ -3,6 +3,11 @@ kind: ConfigMap
 metadata:
   name: hello-frontend-conf
   namespace: pr-lanes
+# NOTE: hello-frontend mounts default.conf via subPath, which kubelet never
+# hot-reloads. If you edit data["default.conf"] below, you MUST also update
+# the `configmap-checksum` annotation in frontend-deployment.yaml (sha256 of
+# this content) so the pod template actually changes and a rollout happens —
+# otherwise running pods keep serving the stale config. See frontend-deployment.yaml.
 data:
   default.conf: |
     server {
