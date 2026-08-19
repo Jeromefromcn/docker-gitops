@@ -36,15 +36,22 @@ spec:
             # ~100Mi heap — pin it explicitly.
             - name: JAVA_TOOL_OPTIONS
               value: "-Xmx192m -Xms64m -XX:MaxDirectMemorySize=64m -XX:MaxRAM=512m"
+            # RSS sits ~270Mi above what the JVM's own heap/metaspace metrics
+            # report (confirmed flat over 15h with zero traffic, so it's not
+            # a leak) — glibc's default per-thread malloc arenas over
+            # fragment native memory the JVM never sees. Cap arena count
+            # instead of leaving it unbounded.
+            - name: MALLOC_ARENA_MAX
+              value: "2"
           ports:
             - containerPort: 8082
           resources:
             requests:
               cpu: 50m
-              memory: 512Mi
+              memory: 768Mi
             limits:
               cpu: 250m
-              memory: 512Mi
+              memory: 768Mi
 ---
 apiVersion: v1
 kind: Service
