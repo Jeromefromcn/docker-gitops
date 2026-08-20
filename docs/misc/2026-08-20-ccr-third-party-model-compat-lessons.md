@@ -1,8 +1,8 @@
-# CCR 接第三方模型的三个坑：Anthropic 直通吐空 + opus/sonnet/haiku 分档路由失效 + NODE_OPTIONS 注入脚本的两条暗坑
+# CCR 接第三方模型的三个坑：Anthropic 直通吐空 + opus/sonnet/haiku 分档路由失效 + NODE_OPTIONS 注入脚本的三条暗坑
 
 - 日期：2026-08-20
-- 触发场景：用户新购了火山方舟（Volcano Engine Ark / Byteplus）的 coding plan，通过 ccr（claude-code-router v3.0.20）接入，经常"发出去没反应"；后续为了让 opus/sonnet/haiku 分档路由生效，又做了一版"ccr 面板唯一权威来源"的架构改造
-- 涉及仓库改动：`vps_oracle/compose/ccr/{docker-compose.yml,export-model-routing.cjs,model-routing/}`、`vps_oracle/compose/switchboard/{docker-compose.yml,.env,.env.example}`、`vps_oracle/compose/switchboard/switches/{jerome,bridget,evidence}-ccr/{on.sh,status.sh}`
+- 触发场景：用户新购了火山方舟（Volcano Engine Ark / Byteplus）的 coding plan，通过 ccr（claude-code-router v3.0.20）接入，经常"发出去没反应"；后续为了让 opus/sonnet/haiku 分档路由生效，又做了一版"ccr 面板唯一权威来源"的架构改造，最后从"打开页面才自愈"升级成"ccr 保存后主动推送通知"
+- 涉及仓库改动：`vps_oracle/compose/ccr/{docker-compose.yml,export-model-routing.cjs,model-routing/}`、`vps_oracle/compose/switchboard/{app.py,docker-compose.yml,.env,.env.example}`、`vps_oracle/compose/switchboard/switches/{jerome,bridget,evidence}-ccr/{on.sh,status.sh}`
 - 本文档定位：不是某一次具体故障的时间线（那种记法见 `docs/incidents/`），而是接第三方模型这件事本身的经验总结，给以后加新 provider / 排类似故障时直接查
 
 ## 结论先行
@@ -11,7 +11,8 @@
 2. **opus/sonnet/haiku 分档路由，靠的是 Claude Code CLI 自己认的 `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` 环境变量，不是 ccr 网关自动识别请求里的模型名去分流。** 不设这三个环境变量，换模型（`/model opus` 之类）在 ccr 这条链路上是摆设，实际永远打 profile 里的默认 `model`。要让三个目录（jerome/bridget/evidence）各配各的，得在 ccr 面板建三个独立 profile（各绑一把 token），而不是共用一个——见坑二"最终方案"。
 3. ccr 改配置（provider 的 `type`、profile 的 `opusModel` 等）**不保证热生效**，运行中的网关进程会把配置缓存在内存里；改完不确定是否生效时，`cd vps_oracle/compose/ccr && docker compose restart` 一下最省事。
 4. ccr 内置的 provider"预设模板"（比如"Byteplus"那个）填的接入点路径可能是错的/不完整的（`source: "preset"` 而非 `"detected"`）——加 provider 时优先用会实际探测连通性的方式（勾 Auto detect protocols，或手动填自定义 provider 让 ccr 去 `detected`），不要无条件信预设。
-5. **往 ccr 容器塞 `NODE_OPTIONS --require` 脚本：只用 `console.error`（永远不用 `console.log`），且 `fs.watch` 千万别把 `config.sqlite-wal`/`-shm` 也算进去。** 两条都是这次真实把 ccr 搞挂过的坑，细节见坑三。改这类脚本一律先拿卷的副本（`docker volume create` + `cp -a`）在隔离环境里验证，不要直接在线上容器上试错。
+5. **往 ccr 容器塞 `NODE_OPTIONS --require` 脚本：只用 `console.error`（永远不用 `console.log`），`fs.watch` 千万别把 `config.sqlite-wal`/`-shm` 也算进去，跨容器通知别做成同步阻塞接口。** 三条都是这次真实把系统搞挂/搞卡过的坑，细节见坑三。改这类脚本一律先拿卷的副本（`docker volume create` + `cp -a`）在隔离环境里验证，不要直接在线上容器上试错。
+6. **Claude Code 显示的模型名没法自定义。** `ANTHROPIC_DEFAULT_OPUS_MODEL` 等环境变量的值只要不是 CLI 内置认识的官方型号，模型选择器里就只会原样显示这串字符串（配一行"Custom Opus model"之类的小字说明档位），查过 `--help`/`settings`/`config` 均无相关开关——大概率是有意为之的透明度设计（不希望第三方模型被无声地伪装成官方 Opus/Sonnet），不是能配置掉的。
 
 ## 坑一：Anthropic Messages 直通，第三方模型吐空
 
@@ -130,10 +131,21 @@ ANTHROPIC_DEFAULT_HAIKU_MODEL
 
 **3. `on.sh`/`status.sh` 从摘要文件里按自己的 profile id 取值**
 
-`on.sh`（切换那一刻）和 `status.sh`（**每次 switchboard 页面加载都会跑**，见 `config.py` 头注"nothing here is cached, by design"）都读 `routing.json`，按各自 profile id 取三档模型写进 `.env`。`status.sh` 顺手做自愈：只要 base_url 显示"on"，就把 `.env` 里那三行跟 `routing.json` 当前值对比、不一致就重写——所以 ccr 面板一改，**不用手动切换开关，下次谁打开 switchboard 页面就自动同步**。`on.sh` 只在切换那一刻管 token/base_url，token 各组独立（`switchboard/.env` 里 `CCR_TOKEN_JEROME`/`CCR_TOKEN_BRIDGET`/`CCR_TOKEN_EVIDENCE`，走 gitignore，不进 git）。
+`on.sh`（切换那一刻）和 `status.sh`（**每次 switchboard 页面加载都会跑**，见 `config.py` 头注"nothing here is cached, by design"）都读 `routing.json`，按各自 profile id 取三档模型写进 `.env`。`status.sh` 顺手做自愈：只要 base_url 显示"on"，就把 `.env` 里那三行跟 `routing.json` 当前值对比、不一致就重写。`on.sh` 只在切换那一刻管 token/base_url，token 各组独立（`switchboard/.env` 里 `CCR_TOKEN_JEROME`/`CCR_TOKEN_BRIDGET`/`CCR_TOKEN_EVIDENCE`，走 gitignore，不进 git）。
 
-同步链路的三跳，只有最后一跳做不到自动（见上面跟用户对话里画的图）：
-`ccr 面板保存 → routing.json 自动更新（秒级）→ .env 下次 status.sh/on.sh 时更新 → 已经在跑的 claude 进程要开新 session 才读到新值`（最后一跳是 direnv 本身的限制，仓库 README 早有记录，不是这次引入的）。
+**4. ccr 保存后主动推送，而不是等 switchboard 自己发现**
+
+第一版只依赖"打开页面触发自愈"，实测有个真实缺口：在 ccr 面板改完模型、没人恰好打开过 switchboard 页面之前，`.env` 会一直停在旧值——`routing.json` 早就更新了，但没人告诉 switchboard 该重新扫一遍。等了几十秒、开了新 session 还是旧模型，就是撞上了这个缺口。
+
+修法是加一个推送通知，两头都不用引入新依赖：
+
+- `export-model-routing.cjs` 每次写完 `routing.json`，顺手 `POST http://switchboard:8091/refresh`（ccr 和 switchboard 同在 `proxy` docker 网络，容器名直连；用 Node 内置的 `fetch`，2s 超时，失败只打日志不影响主流程——switchboard 暂时不可达，下一次真正的配置变化还会再通知一次，且页面自愈仍是兜底）。
+- `switchboard/app.py` 加一个通用的 `POST /refresh`：收到就在**后台线程**里跑一次 `config.scan_all(...)`，立刻返回。这跟"有人打开页面"触发的是同一个函数，只是换了个触发源——`app.py` 完全不需要知道 routing.json 是什么、谁在通知它，通用性没被破坏。
+
+**这里踩了一个坑：`/refresh` 最初写成同步等 `scan_all()` 跑完再返回。** `scan_all` 要把 6 个开关（3 ccr + 3 account）的 `status.sh` 全跑一遍，其中一个还带网络探测，实测端到端要 1.7 秒——跟 ccr 那边 2 秒的通知超时贴得太近，稍微一慢通知就被判定"失败"（其实请求本身是成功的，只是慢）。改成"收到请求立刻 202 返回、真正的扫描扔进后台线程"之后，响应时间从 1.7s 降到几毫秒，问题消失。**教训：跨容器的"通知"接口必须是 fire-and-forget、立刻返回，不能让通知方等被通知方把重活干完。**
+
+同步链路现在是三跳，前两跳都自动、只有最后一跳做不到（见上面跟用户对话里画的图）：
+`ccr 面板保存 → routing.json 更新 + 推送通知（毫秒级，两个都失败时兜底靠页面加载/30s 轮询）→ .env 立刻更新 → 已经在跑的 claude 进程要开新 session 才读到新值`（最后一跳是 direnv 本身的限制，仓库 README 早有记录，不是这次引入的）。
 
 ### 验证
 
@@ -145,9 +157,9 @@ claude -p "hi" --model haiku  --output-format json | grep -o '"canonicalModel":"
 # 应该分别打到该组 profile 在 ccr 面板里配的 opus/sonnet/haikuModel
 ```
 
-## 坑三：往 ccr 容器里塞 `NODE_OPTIONS --require` 脚本的两条真实踩坑
+## 坑三：往 ccr 容器里塞 `NODE_OPTIONS --require` 脚本 + 跨容器通知的三条真实踩坑
 
-写 `export-model-routing.cjs`（同款 `sse-coalesce.cjs` 手法）过程中，两次把 ccr 搞挂，都在隔离的卷副本里复现、定位、修复后才敢重新上线上。记录下来，以后再往这个容器里塞类似脚本时先看这条。
+写 `export-model-routing.cjs`（同款 `sse-coalesce.cjs` 手法）过程中，两次把 ccr 搞挂；后来加推送通知时又把响应速度搞慢到快要"看起来像失败"。前两次都在隔离的卷副本里复现、定位、修复后才敢重新上线上。记录下来，以后再往这个容器里塞类似脚本、或者加跨容器通知时先看这条。
 
 ### 3.1 只读连接会自己触碰 `-wal`/`-shm`，`fs.watch` 连着监听就是自触发死循环
 
@@ -162,3 +174,9 @@ claude -p "hi" --model haiku  --output-format json | grep -o '"canonicalModel":"
 ccr 自己的 entrypoint 会跑一个 node 子进程去生成管理面板 token，**把该子进程的 stdout 原样捕获、直接嵌进生成的 nginx 配置文件**（`return 302 ...?ccr_web_token=<这里>`）。任何 `--require` 脚本只要往 stdout 打印任何东西，且恰好在这次 token 生成的那个 node 进程里被加载到，输出就会混进 token 字符串中间，把 nginx 配置文件搅成语法错误，`ccr-nginx` 反复崩溃重启，网关整个不可用。
 
 `sse-coalesce.cjs` 从一开始就只用 `console.error`，从没出过这个问题；这次 `export-model-routing.cjs` 一开始用了 `console.log` 就立刻炸了，改成 `console.error` 后问题消失。**结论：容器里任何 `NODE_OPTIONS --require` 脚本，一律只用 `console.error`，永远不用 `console.log`**——不确定某条日志会不会被下游当成"命令输出"来解析时，默认往 stderr 走最安全。
+
+### 3.3 跨容器"通知"接口如果同步阻塞，会把"变慢"伪装成"失败"
+
+给 `export-model-routing.cjs` 加"写完就通知 switchboard"时，第一版 `switchboard/app.py` 的 `POST /refresh` 是同步的：收到请求先把 `config.scan_all()`（6 个开关的 `status.sh` 全跑一遍，其中一个还带网络探测）跑完才返回，实测端到端 1.7 秒。通知方给的客户端超时是 2 秒——两个数字挨得太近，稍微一慢通知就被 `AbortSignal` 判定超时，日志里一片 `switchboard notify failed`，看起来像是链路坏了，其实请求本身没错，就是**主动把响应做慢了**。
+
+改法：`/refresh` 收到请求立刻 `202` 返回，真正的 `scan_all()` 扔进一个后台线程去跑（`threading.Thread(daemon=True).start()`）。响应时间从 1.7s 降到几毫秒，误报消失。**结论：任何"A 通知 B 发生了什么事"的接口，B 都应该只管"收到"就立刻应答，真正要做的重活扔到后台——不要让通知方的响应时间绑定被通知方内部工作的耗时，两者是两回事。**
