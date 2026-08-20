@@ -37,7 +37,12 @@ services:
       #   后的 claude CLI 去连一个只在容器网络里存在的地址，直接连不上。
       CCR_BASE_URL: "http://ccr:8080"
       CCR_HOST_BASE_URL: "http://127.0.0.1:3456"
-      CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # CCR client key，走 .env
+      # 三组各自一把 CCR client key，各自绑定 ccr 面板里一个独立的 profile
+      # （Jerome/Bridget/Evidence），互不共用——这样每组能在 ccr 面板里各配
+      # 各的 opus/sonnet/haiku 分档模型，不会互相覆盖。走 .env。
+      CCR_TOKEN_JEROME: "${CCR_TOKEN_JEROME}"
+      CCR_TOKEN_BRIDGET: "${CCR_TOKEN_BRIDGET}"
+      CCR_TOKEN_EVIDENCE: "${CCR_TOKEN_EVIDENCE}"
     env_file:
       - .env
     volumes:
@@ -45,6 +50,11 @@ services:
       # jerome-account 開關寫的 CLAUDE_CONFIG_DIR 指標檔。只 mount 指標檔目錄，
       # 絕不 mount ~/.claude 或 ~/.claude-configs——那兩處含 .credentials.json（登入 token）。
       - /home/ubuntu/.claude-account:/home/ubuntu/.claude-account
+      # ccr 导出的模型路由摘要（只含 model/opus/sonnet/haikuModel 字符串，不
+      # 含任何 key），供 on.sh/status.sh 读取分档模型。只读——写入方是 ccr
+      # 自己（export-model-routing.cjs），见该文件头注和
+      # docs/misc/2026-08-20-ccr-third-party-model-compat-lessons.md。
+      - ../ccr/model-routing:/model-routing:ro
     # NPM 反代：switchboard.jerome.cloudns.asia → switchboard:8091，access list=self-only。
     # 配置方法见 vps_oracle/compose/npm/README.md 的自动化 API 一节。
 

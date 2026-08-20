@@ -1,0 +1,5 @@
+# routing.json is generated at runtime by export-model-routing.cjs — never
+# hand-edited, never committed. Keep this directory (and this file) tracked
+# so `docker compose up` always has a bind-mount source that already exists.
+*.json
+*.tmp
