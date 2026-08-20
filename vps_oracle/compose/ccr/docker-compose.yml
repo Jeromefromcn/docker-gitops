@@ -21,7 +21,12 @@ services:
       # 让容器内所有 node 进程（core server、gateway child 等）都加载 SSE delta
       # 合併中间件（/data 是持久卷）。Zhipu 等上游按 token 粒度发 SSE delta，
       # 逐事件转发会打爆 VS Code 扩展的远程渲染管线，见 sse-coalesce.cjs 头注。
-      NODE_OPTIONS: "--require /data/.claude-code-router/sse-coalesce.cjs"
+      # 同样机制再挂一个 export-model-routing.cjs：把 claude-code 各 profile
+      # 的模型路由字符串（不含任何 key）导出到 /model-routing/routing.json，
+      # 供 switchboard 只读挂载消费，实现 opus/sonnet/haiku 分档路由。见
+      # export-model-routing.cjs 头注 和
+      # docs/misc/2026-08-20-ccr-third-party-model-compat-lessons.md。
+      NODE_OPTIONS: "--require /data/.claude-code-router/sse-coalesce.cjs --require /data/.claude-code-router/export-model-routing.cjs"
       # 合併窗口（毫秒）。Zhipu 每 25-50ms 吐一个 delta，40ms 窗口常只抓到 1-2 个，
       # 實測合併率僅 3-5x；加大窗口 + thinking 專用大窗口（thinking 佔事件 ~99%
       # 且顯示平滑度無關緊要）可把合併率提到 15-30x，擴展提問延遲 3min → <1min。
@@ -46,6 +51,12 @@ services:
       # core 每次启动会重建 gateway-proxy-preload.cjs，所以中间件不走 preload，
       # 而是经上面 NODE_OPTIONS --require 直挂（模块加载时自调用 install()）。
       - ./sse-coalesce.cjs:/data/.claude-code-router/sse-coalesce.cjs:ro
+      - ./export-model-routing.cjs:/data/.claude-code-router/export-model-routing.cjs:ro
+      # 导出文件的落地目录——刻意不放在上面 ccr-data 卷里：那个卷（含
+      # config.sqlite）目录权限是 700 root:root，其他容器挂了也读不到；这里
+      # 单独开一个非敏感的 bind mount，只装模型路由字符串，不含任何 key。
+      # switchboard 那边只读挂载同一个宿主机目录消费。
+      - ./model-routing:/model-routing
     networks:
       - proxy
 
