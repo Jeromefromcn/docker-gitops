@@ -13,10 +13,18 @@
 // literal "model" string in an incoming request. See
 // docs/misc/2026-08-20-ccr-third-party-model-compat-lessons.md.
 //
-// Regenerates on every config.sqlite/-wal/-shm change (fs.watch, debounced)
-// plus a 30s safety-net poll in case an inotify event is ever missed. Runs in
-// every node process ccr starts (loaded via NODE_OPTIONS --require, same
-// mechanism as sse-coalesce.cjs), so it's idempotent and process-local.
+// Regenerates on every config.sqlite change (fs.watch, debounced) plus a 30s
+// safety-net poll in case an inotify event is ever missed. Runs in every
+// node process ccr starts (loaded via NODE_OPTIONS --require, same mechanism
+// as sse-coalesce.cjs), so it's idempotent and process-local.
+//
+// After a successful write, best-effort-notifies switchboard (same "proxy"
+// docker network, reachable by container name) so it re-syncs each group's
+// .env tier vars immediately instead of waiting for someone to load its page
+// or for its own poll — push, not poll, on both hops. A failed/timed-out
+// notify is not an error: switchboard's own page-load self-heal is still the
+// backstop, so a save while switchboard is briefly unreachable just means
+// that one save waits for the backstop instead of applying instantly.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -26,6 +34,8 @@ const OUT_DIR = "/model-routing";
 const OUT_FILE = path.join(OUT_DIR, "routing.json");
 const DEBOUNCE_MS = 500;
 const SAFETY_POLL_MS = 30000;
+const SWITCHBOARD_REFRESH_URL = "http://switchboard:8091/refresh";
+const NOTIFY_TIMEOUT_MS = 2000;
 
 function readClaudeCodeProfiles() {
   const Database = require("/app/node_modules/better-sqlite3");
@@ -87,12 +97,27 @@ function writeRoutingFile() {
     console.error(
       `[export-model-routing] wrote ${OUT_FILE} (${Object.keys(data).length} profiles)`,
     );
+    notifySwitchboard();
   } catch (err) {
     console.error(
       "[export-model-routing] failed to write routing.json:",
       err.message,
     );
   }
+}
+
+function notifySwitchboard() {
+  fetch(SWITCHBOARD_REFRESH_URL, {
+    method: "POST",
+    signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS),
+  }).catch((err) => {
+    // Best-effort only — see the header comment for why this is fine to
+    // ignore (switchboard's own page-load self-heal is the backstop).
+    console.error(
+      "[export-model-routing] switchboard notify failed (non-fatal):",
+      err.message,
+    );
+  });
 }
 
 let pendingWrite = null;

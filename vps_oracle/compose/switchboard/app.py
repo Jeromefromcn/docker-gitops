@@ -1,9 +1,18 @@
 """Generic config-driven switch UI. GET / re-scans every switch's status.sh
 live; nothing is cached. POST /toggle runs the appropriate on.sh/off.sh for
-one switch. See docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md.
+one switch. POST /refresh re-runs the same status scan without rendering a
+page — for an external service to call after it changes something a
+status.sh might self-heal against (e.g. ccr's export-model-routing.cjs, after
+it rewrites routing.json — see
+docs/misc/2026-08-20-ccr-third-party-model-compat-lessons.md). Deliberately
+generic: this file has no idea what any given switch's status.sh actually
+checks or heals, or who calls /refresh — it just re-runs the same status scan
+a page load would trigger. See
+docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md.
 """
 import html
 import os
+import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -79,6 +88,26 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        if self.path == "/refresh":
+            # Fire-and-forget: scanning every switch (each spawning a
+            # status.sh subprocess, one of which does a network reachability
+            # check) takes over a second end to end. The caller (ccr's
+            # export-model-routing.cjs) only wants to kick this off, not
+            # block on it — an earlier version awaited scan_all() here and
+            # regularly blew past the caller's own short client-side
+            # timeout, so the "fire" half looked like it was failing when it
+            # was just slow. Respond immediately; run the scan in the
+            # background instead.
+            def run_scan():
+                try:
+                    config.scan_all(config.load_switches())
+                except Exception as exc:
+                    print(f"/refresh background scan failed: {exc}", flush=True)
+
+            threading.Thread(target=run_scan, daemon=True).start()
+            self.send_response(202)
+            self.end_headers()
+            return
         if self.path != "/toggle":
             self.send_response(404)
             self.end_headers()
