@@ -142,11 +142,11 @@ per-type 未设或 ≤0 都回落全局值（不允许 per-type 单独停用，�
 
 Claude Code 的 opus/sonnet/haiku 分档，靠的是 CLI 自己认的 `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` 环境变量，不是 ccr 网关自动识别请求里的模型名去分流（否则永远落到 profile 兜底的 `model` 字段）。这三个环境变量得由 `../switchboard/` 的 `on.sh`/`status.sh` 写进各组 `.env`，而它们要写什么值，来自 ccr 面板里每个 profile 自己的 `opusModel`/`sonnetModel`/`haikuModel`——但 `config.sqlite`（连同所在目录）权限是 `700 root:root`，装着所有 provider 的原始 API key，其他容器根本读不了。
 
-`export-model-routing.cjs` 只读 `profiles[]` 里那四个模型字符串（不碰任何 key），经 `NODE_OPTIONS --require` 挂到容器内所有 node 进程，`fs.watch` 盯 `config.sqlite` 主文件（配 500ms 防抖 + 30s 兜底轮询）变化就重新导出，写到独立的、非敏感的 bind mount `./model-routing/routing.json`（`chmod 644`）——跟装 key 的具名卷完全隔离，`../switchboard/` 只读挂载同一个宿主机目录消费。三个 ccr 开关各自的 `on.sh`/`status.sh` 按自己的 profile id 从这份文件里取值。
+`export-model-routing.cjs` 只读 `profiles[]` 里那四个模型字符串（不碰任何 key），经 `NODE_OPTIONS --require` 挂到容器内所有 node 进程，`fs.watch` 盯 `config.sqlite` 主文件（配 500ms 防抖 + 30s 兜底轮询）变化就重新导出，写到独立的、非敏感的 bind mount `./model-routing/routing.json`（`chmod 644`）——跟装 key 的具名卷完全隔离，`../switchboard/` 只读挂载同一个宿主机目录消费。每次写完还会 `POST http://switchboard:8091/refresh` 主动通知一声（两个容器同在 `proxy` 网络，容器名直连；失败只记日志不影响主流程）。三个 ccr 开关各自的 `on.sh`/`status.sh` 按自己的 profile id 从这份文件里取值。
 
-要给 ccr 面板建的每个 profile 配对应的 `on.sh`/`status.sh`：**Effect Scope 选 `Only opened from CCR`**（不要选 `System default`——多个 profile 都选它会抢着写同一份 Claude Code 全局 settings.json，后建的覆盖先建的）。完整背景、两条真实踩过的坑（只读连接自触发 `fs.watch` 死循环、`console.log` 污染 ccr 自己 nginx 配置生成）：`docs/misc/2026-08-20-ccr-third-party-model-compat-lessons.md`。
+要给 ccr 面板建的每个 profile 配对应的 `on.sh`/`status.sh`：**Effect Scope 选 `Only opened from CCR`**（不要选 `System default`——多个 profile 都选它会抢着写同一份 Claude Code 全局 settings.json，后建的覆盖先建的）。完整背景、三条真实踩过的坑（只读连接自触发 `fs.watch` 死循环、`console.log` 污染 ccr 自己 nginx 配置生成、`/refresh` 同步阻塞把"变慢"伪装成"失败"）：`docs/misc/2026-08-20-ccr-third-party-model-compat-lessons.md`。
 
-**同步链路只有最后一跳不是自动的**：ccr 面板保存 → `routing.json` 秒级自动更新 → 各组 `.env` 下次 `status.sh`/`on.sh` 跑的时候（每次打开 switchboard 页面都会跑）自动同步 → 但已经在跑的 claude 进程要开新 session 才会读到新的环境变量（direnv 本身的限制，见上面「四个坑」第 3 条）。
+**同步链路只有最后一跳不是自动的**：ccr 面板保存 → `routing.json` 更新 + 推送通知 switchboard（毫秒级；推送失败时兜底靠打开页面或 30s 轮询）→ 各组 `.env` 立刻同步 → 但已经在跑的 claude 进程要开新 session 才会读到新的环境变量（direnv 本身的限制，见上面「四个坑」第 3 条）。`../switchboard/app.py` 的 `POST /refresh` 是这条通知链路的接收端，收到就在后台线程跑一次 `config.scan_all(...)`（跟页面加载触发的是同一个函数），立刻返回，不阻塞通知方。
 
 ## CCR 管理面板（改路由 / 加 provider / 生成 client key）
 
