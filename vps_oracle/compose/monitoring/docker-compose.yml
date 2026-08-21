@@ -28,8 +28,9 @@ services:
     # proxy host 记录，proxy 网络里其他容器能直连但公网连不到。k3s 里的 headlamp
     # 通过 k3s apiserver 自带的 service proxy 访问这个 IP (apiserver 是宿主机进程，
     # 本来就能直连 docker 网桥，见 vps_oracle/k3s/apps/headlamp/k8s/
-    # external-prometheus.yaml) —— 固定 IP 是因为那个 EndpointSlice 是手写的，
-    # 容器重建后 IP 漂移的话需要跟着改
+    # external-prometheus.yaml) —— 那边是一个 hostNetwork 的 socat relay pod 把
+    # 9090 转发到这个 IP，IP 直接硬编在 socat 参数里，所以这里必须钉死；容器重建
+    # 后 IP 漂移的话，k3s 那份 manifest 要跟着改
 
   node-exporter:
     image: prom/node-exporter@sha256:c9ef89f9464f09e7234decaae68a80ab856ff0014435677a99fd48b03dd410ea  # v1.12.1
