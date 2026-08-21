@@ -124,6 +124,7 @@ services:
         "cp /docker-entrypoint-mount.sh /docker-entrypoint.sh && sed -i 's/\r$$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh && /docker-entrypoint.sh",
       ]
     environment:
+      TZ: "Asia/Hong_Kong"
       HTTP_PORT: "3128"
       COREDUMP_DIR: "/var/spool/squid"
     networks:
