@@ -3,12 +3,16 @@
 # access. Applies rbac.yaml with the admin kubeconfig, waits for the SA
 # token secret, and writes a least-privilege token kubeconfig to
 # state/kubeconfig (gitignored). Safe to re-run: apply is idempotent and
-# the existing token is reused, not rotated.
+# the existing token is reused, not rotated. The SA lives in the
+# dedicated `inspector` namespace (see rbac.yaml); the namespace itself
+# is ArgoCD-managed, so a fresh cluster only needs this script after the
+# namespace exists.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSPECTOR_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 STATE_DIR="$INSPECTOR_ROOT/state"
 KUBECONFIG_FILE="$STATE_DIR/kubeconfig"
+SA_NS="inspector"
 mkdir -p "$STATE_DIR"
 
 kubectl apply -f "$SCRIPT_DIR/rbac.yaml"
@@ -16,7 +20,7 @@ kubectl apply -f "$SCRIPT_DIR/rbac.yaml"
 echo "waiting for token secret to be populated..." >&2
 token=""
 for _ in $(seq 1 30); do
-  token="$(kubectl -n workloads get secret docker-gitops-inspector-token \
+  token="$(kubectl -n "$SA_NS" get secret docker-gitops-inspector-token \
     -o jsonpath='{.data.token}' 2>/dev/null | base64 -d)" && [ -n "$token" ] && break
   sleep 1
 done
@@ -53,8 +57,8 @@ echo "verifying the kubeconfig works AND is not over-privileged..." >&2
 kubectl --kubeconfig "$KUBECONFIG_FILE" get pods -A >/dev/null
 kubectl --kubeconfig "$KUBECONFIG_FILE" get jobs -A >/dev/null
 kubectl --kubeconfig "$KUBECONFIG_FILE" get pv >/dev/null
-if kubectl --kubeconfig "$KUBECONFIG_FILE" -n workloads get secrets >/dev/null 2>&1; then
+if kubectl --kubeconfig "$KUBECONFIG_FILE" -n "$SA_NS" get secrets >/dev/null 2>&1; then
   echo "ERROR: kubeconfig can read secrets — RBAC is broader than intended" >&2
   exit 1
 fi
-echo "OK: wrote $KUBECONFIG_FILE (SA workloads/docker-gitops-inspector)" >&2
+echo "OK: wrote $KUBECONFIG_FILE (SA $SA_NS/docker-gitops-inspector)" >&2

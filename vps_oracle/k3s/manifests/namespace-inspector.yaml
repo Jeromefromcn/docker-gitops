@@ -1,0 +1,12 @@
+# Dedicated namespace for the host inspector's cluster identity (phase 2
+# k3s checks). The inspector's ServiceAccount + non-expiring token used to
+# live in `workloads`, borrowing that namespace's quota — moved here so a
+# monitoring identity no longer shares the namespace it's supposed to be
+# monitoring from the outside. Like `workloads`, it enforces PSS baseline
+# (see pod-security-labels.yaml).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inspector
+  labels:
+    pod-security.kubernetes.io/enforce: baseline

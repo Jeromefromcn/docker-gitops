@@ -85,14 +85,16 @@ sudo systemctl enable --now docker-gitops-inspector.timer
 
 ## k3s 存取（phase 2 一次性設置）
 
-k3s checks 不用 admin kubeconfig，用最小權限 SA（`workloads/docker-gitops-inspector`：pods/jobs get+list+delete、PV get+list，其余一律拒絕）：
+k3s checks 不用 admin kubeconfig，用最小權限 SA（`inspector/docker-gitops-inspector`：pods/jobs get+list+delete、PV get+list，其余一律拒絕）：
 
 ```bash
 cd vps_oracle/inspector
 ./k3s/setup-kubeconfig.sh     # apply RBAC + 寫 state/kubeconfig（gitignored，600）
 ```
 
-腳本冪等，重跑安全。RBAC manifest 在 `k3s/rbac.yaml`——不在 `vps_oracle/k3s/manifests/`（那是 ArgoCD 地盤，見 k3s/README）。
+腳本冪等，重跑安全。RBAC manifest 在 `k3s/rbac.yaml`——不在 `vps_oracle/k3s/manifests/`（那是 ArgoCD 地盤，見 k3s/README）。SA 所在的 `inspector` namespace 由 ArgoCD 管理（`manifests/namespace-inspector.yaml`），所以全新機器上要先等 ArgoCD 同步好 namespace 再跑這個腳本。
+
+**2026-08-21 遷移**：SA 原本住在 `workloads`（借它的配額）。已遷到專屬 `inspector` namespace；舊的 `workloads/docker-gitops-inspector` SA 會在 ArgoCD 同步後手動刪除。已嵌入 state/kubeconfig 的 token 屬於遷移前的 SA，功能不受影響——重跑 setup 腳本會換到新 SA。
 
 兩個 check 用到密碼免輸入的 `sudo -n`（都是唯讀列舉或單一清理指令）：`docker-oversized-logs.sh`（讀 `/var/lib/docker/containers`）、`k3s-containerd-images.sh`（`crictl` socket 是 root-only）。若日後收回 NOPASSWD，這兩個 check 會在報告裡發 alert 說明被跳過，不會掛住。
 
