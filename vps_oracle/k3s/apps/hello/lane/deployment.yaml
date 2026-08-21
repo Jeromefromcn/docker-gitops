@@ -31,6 +31,9 @@ spec:
           # PR's actual commit SHA. Should this placeholder ever get resolved as-is,
           # it fails safe: ImagePullBackOff, and Kyverno rejects it at admission first.
           image: ghcr.io/jeromefromcn/hello-backend:placeholder
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
           ports:
             - containerPort: 8080
           securityContext:

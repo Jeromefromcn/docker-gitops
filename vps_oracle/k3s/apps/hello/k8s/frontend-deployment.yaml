@@ -37,6 +37,9 @@ spec:
       containers:
         - name: hello-frontend
           image: ghcr.io/jeromefromcn/placeholder-hello@sha256:3b8929d1913203f822539731236bf1127c178729588647703eed7ea15e831992
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
           ports:
             - containerPort: 8080
           securityContext:
