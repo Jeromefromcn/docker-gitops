@@ -25,8 +25,19 @@
 # used for the k3s apiserver itself). The headlamp namespace enforces the
 # `baseline` Pod Security Standard (label from
 # vps_oracle/k3s/manifests/pod-security-labels.yaml, synced by the
-# phase-a-foundation Application), and `baseline` allows hostNetwork —
-# only `restricted` would block it.
+# phase-a-foundation Application), and `baseline` DOES NOT allow hostNetwork
+# (verified via `kubectl apply --dry-run=server`:
+# "violates PodSecurity baseline: host namespaces (hostNetwork=true)";
+# only the `restricted` tier is stricter, but baseline already rejects this).
+# This deployment predates the enforce label (created 2026-08-17, label
+# applied 2026-08-18), so it still runs today — PSS only blocks pod creation,
+# it does not evict existing pods. KNOWN HAZARD: the moment this pod is
+# recreated (node restart, rollout, ArgoCD prune+recreate), admission will
+# refuse it and headlamp's Prometheus datasource breaks. Do not delete this
+# pod/deployment without first migrating it off hostNetwork (there is no
+# drop-in replacement: pod network cannot reach the docker `proxy` bridge —
+# tested 2026-08-21, a non-hostNetwork socat pod gets CONNECT_FAIL to
+# 172.19.0.4:9090) or relaxing headlamp's PSS label.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
