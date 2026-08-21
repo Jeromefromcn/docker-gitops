@@ -4,7 +4,7 @@
 
 ## 背景
 
-`vps_oracle` 目前用 docker compose 管理約十個獨立棧（見 [container-topology.md](../../container-topology.md)）。目標是在同一台機器（4C/24G，Oracle Cloud VPS）上用 K3s 復刻一套完整的雲原生軟件開發運維實驗平台，涵蓋 CNI、服務網格、GitOps CI/CD、供應鏈安全、多環境泳道等業界標準組件棧，用於貼近 SRE 崗位的技術對標與學習。
+`vps_oracle` 目前用 docker compose 管理約十個獨立棧（見 [container-topology.md](../../container-topology/v1.md)）。目標是在同一台機器（4C/24G，Oracle Cloud VPS）上用 K3s 復刻一套完整的雲原生軟件開發運維實驗平台，涵蓋 CNI、服務網格、GitOps CI/CD、供應鏈安全、多環境泳道等業界標準組件棧，用於貼近 SRE 崗位的技術對標與學習。
 
 這是一個橫跨數月、包含多個獨立子系統的工程，拆成多個階段，每階段各自走 spec → plan → implement → 驗證的完整循環。本文件是跨階段的總覽路線圖，不是某一階段的詳細設計——各階段的詳細設計文檔會回頭連結到這裡。
 
@@ -17,7 +17,7 @@
 
 ## 現狀約束
 
-來自 [container-topology.md](../../container-topology.md) 與現場 `free -h` 實測（2026-08-05）：
+來自 [container-topology.md](../../container-topology/v1.md) 與現場 `free -h` 實測（2026-08-05）：
 
 - 記憶體：23Gi 總量，已用 11Gi，可用約 6.4Gi；CPU 4 核心。既有負載（llm、dify 等）已佔用相當一部分 headroom
 - `npm`（Nginx Proxy Manager）是唯一發布宿主機 80/443 的容器，其餘服務靠 `proxy` 網路 + Docker DNS 被反代，不直接發布端口
@@ -79,6 +79,19 @@
 - C：[遷移範本 + 首批服務設計](2026-08-09-k3s-phase-c-migration-template-design.md)
 - D：[剩餘服務遷移設計](2026-08-12-k3s-phase-d-remaining-migrations-design.md)
 - D+：待建立
-- E：待建立
+- E：[供應鏈安全設計](2026-08-15-k3s-phase-e-supply-chain-security-design.md)
 - F+G：[服務網格驅動的 PR 泳道設計](2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md)
 - H：待建立
+
+---
+
+## 後記：2026-08-18 的方向逆轉（2026-08-21 補記）
+
+**以上內容全部保留原樣，記錄的是 2026-08-05 立項時的規劃。實際走向從 2026-08-18 起與這份路線圖分歧，讀本文件前先看這一節。**
+
+- **C、D 階段遷進 k3s 的服務已全數遷回 compose**（2026-08-18，用戶主導的評估決定，不是技術故障）：`homepage`、`trilium`、`dify`、`vikunja`（含 `vikunja-notify-relay`）、`apprise`、`llm`（`llama-cpp`+`open-webui`）。同日 `evidence-os-website`（k3s 原生、無 compose 前身）也遷入 compose。過程見[遷移計劃一](../plans/2026-08-18-k3s-to-compose-migration.md)與[遷移計劃二](../plans/2026-08-18-k3s-to-compose-migration-part2.md)。
+- **因此「階段路線圖」表格裡 C、D 的交付物已不代表現狀**，`3x-ui` 的 39876 透傳遷移也從未進行。表中「compose 去留逐服務判斷」這條原則反而是被貫徹到底的結果——判斷結果是全部留在 compose。
+- **H 階段（compose 退場評估）的前提已消失**：既然服務都回到了 compose，就不存在「compose 退場」這個議題；連帶「待 H 階段細化的設計取捨」整節（NPM 讓出 80/443、逐條翻譯 proxy host 成 ingress）都變成無限期擱置，不是待辦。
+- **k3s 現存的負載只剩三個，且都不是從 compose 遷過去的**：`lab-environment`（獨立專案，仍在 k3s）、`headlamp`、`pr-lanes`（phase F+G 的 `hello-frontend`/`hello-backend`），加上基礎設施本身（Cilium、ArgoCD、Istio Ambient、Kyverno、Trivy Operator、Sealed Secrets）。
+- **A、B、E、F+G 的成果全部保留且仍在運行**，逆轉的只有「把既有 compose 服務搬進 k8s」這條線。k3s 現在的定位是雲原生實驗平台本身，而不是 compose 的接班人。
+- 現狀以根 [README.md](../../../README.md) 的「k3s」一節與 [`vps_oracle/k3s/README.md`](../../../vps_oracle/k3s/README.md) 為準；當下拓撲快照見 [container-topology/v3.md](../../container-topology/v3.md)。
