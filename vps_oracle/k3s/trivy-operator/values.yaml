@@ -62,8 +62,8 @@ trivy:
   # to assuming linux/amd64 and refuses to scan anything else ("By
   # default, only Linux amd64 images are supported for scanning") --
   # broke scanning for every image built single-arch arm64 by this repo's
-  # own CI (homepage, trilium, evidence-os-website, placeholder-hello,
-  # vikunja-notify-relay). configFile is rendered verbatim into Trivy's
+  # own CI (currently the `pr-lanes` pair: hello-frontend's image and
+  # hello-backend). configFile is rendered verbatim into Trivy's
   # own --config file (must stay a YAML map here, not a `|` string --
   # the chart's toYaml/nindent double-wraps a string and corrupts it).
   # Safe cluster-wide: everything actually Running on this node is
