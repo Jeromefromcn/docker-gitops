@@ -1,0 +1,17 @@
+# The headlamp image ships no tzdata at all, so the TZ env var in deployment.yaml
+# resolves to nothing and Go silently falls back to UTC. This ConfigMap carries the
+# single IANA zone file (1.2 KB) that makes TZ actually take effect.
+#
+# A hostPath volume would be the obvious alternative, but the headlamp namespace
+# enforces the `baseline` Pod Security Standard, which forbids hostPath.
+#
+# Regenerate (only if the Hong Kong zone definition itself ever changes upstream):
+#   kubectl create configmap headlamp-tzdata -n headlamp --dry-run=client -o yaml \
+#     --from-file=Hong_Kong=/usr/share/zoneinfo/Asia/Hong_Kong
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: headlamp-tzdata
+  namespace: headlamp
+binaryData:
+  Hong_Kong: VFppZjIAAAAAAAAAAAAAAAAAAAAAAAAIAAAACAAAAAAAAABFAAAACAAAABaFaWOQyk0xMMrbkzDLS3F40qDekNNr14DUk1i41UKwONZzOrjXPkG42C4yuNj5ObjaDhS42tkbuNvt9rjcuP243c3YuN6iGjjftvU44IH8OOGWySjiT2k443arKOQvSzjlX8eo5g8tOOc/qajn+Em46R+LqOnYK7jq/22o67gNuOzfT6jtl++47shsKO930bjwqE4o8VezuPKIMCjzQNA49GgSKPUgsjj2R/Qo9yV+OPgVYSj5BWA4+fVDKPrlQjj73l+o/M5euP2+Qaj+rkC4/54jqACOIrgBfgWoAm4EuANd56gETea4BUcEKAY3AzgHJuYoB4M9OAkGyCgJ9sc4CuaqKAvWqTgMxowoEZs5OBJvbKgBAgMEBwIFBgUGBQIFAgUCBQIFAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcAAGsKAAAAAHCAAAQAAH6QAQgAAHeIAQ0AAH6QABIAAHCAAAQAAH6QAQgAAHCAAARMTVQASEtUAEhLU1QASEtXVABKU1QAAAEAAAABAQAAAQAAAAAAAFRaaWYyAAAAAAAAAAAAAAAAAAAAAAAACAAAAAgAAAAAAAAARQAAAAgAAAAW/////4VpY5D/////yk0xMP/////K25Mw/////8tLcXj/////0qDekP/////Ta9eA/////9STWLj/////1UKwOP/////Wczq4/////9c+Qbj/////2C4yuP/////Y+Tm4/////9oOFLj/////2tkbuP/////b7fa4/////9y4/bj/////3c3YuP/////eoho4/////9+29Tj/////4IH8OP/////hlsko/////+JPaTj/////43arKP/////kL0s4/////+Vfx6j/////5g8tOP/////nP6mo/////+f4Sbj/////6R+LqP/////p2Cu4/////+r/baj/////67gNuP/////s30+o/////+2X77j/////7shsKP/////vd9G4//////CoTij/////8VezuP/////yiDAo//////NA0Dj/////9GgSKP/////1ILI4//////ZH9Cj/////9yV+OP/////4FWEo//////kFYDj/////+fVDKP/////65UI4//////veX6j//////M5euP/////9vkGo//////6uQLj//////54jqAAAAAAAjiK4AAAAAAF+BagAAAAAAm4EuAAAAAADXeeoAAAAAARN5rgAAAAABUcEKAAAAAAGNwM4AAAAAAcm5igAAAAAB4M9OAAAAAAJBsgoAAAAAAn2xzgAAAAACuaqKAAAAAAL1qk4AAAAAAzGjCgAAAAAEZs5OAAAAAASb2yoAQIDBAcCBQYFBgUCBQIFAgUCBQIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAABrCgAAAABwgAAEAAB+kAEIAAB3iAENAAB+kAASAABwgAAEAAB+kAEIAABwgAAETE1UAEhLVABIS1NUAEhLV1QASlNUAAABAAAAAQEAAAEAAAAAAAAKSEtULTgK

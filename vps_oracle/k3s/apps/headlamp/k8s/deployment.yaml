@@ -49,3 +49,15 @@ spec:
             limits:
               cpu: 200m
               memory: 256Mi
+          volumeMounts:
+            # subPath yields a plain file rather than the symlink farm a plain
+            # ConfigMap mount creates; tzdata never changes, so subPath's lack of
+            # hot-reload is irrelevant here.
+            - name: tzdata
+              mountPath: /usr/share/zoneinfo/Asia/Hong_Kong
+              subPath: Hong_Kong
+              readOnly: true
+      volumes:
+        - name: tzdata
+          configMap:
+            name: headlamp-tzdata
