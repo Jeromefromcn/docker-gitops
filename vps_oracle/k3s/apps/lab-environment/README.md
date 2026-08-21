@@ -92,3 +92,51 @@ Only `postgres` is stateful (PVC, seeded once from the compose
 `lab-environment_postgres_data` volume). Everything else
 (`prometheus`/`grafana`/`loki`) is ephemeral in the original compose
 setup too — no data volumes there, so no PVC here either.
+
+### Loading data into the `postgres` PVC
+
+`local-path` is node-local: the PVC's contents survive a node reboot but
+not a node rebuild. Restoring (or, historically, first seeding) it needs
+a throwaway Pod that mounts the PVC before anything else does — the
+StorageClass is `WaitForFirstConsumer`, so the PV's host directory isn't
+created until something actually mounts the claim, and there's nowhere
+to copy data into until then.
+
+This Pod is deliberately not part of the ArgoCD-managed manifests under
+`k8s/` (it's a one-off tool, and a synced Pod would be pruned/recreated
+forever). Apply it by hand, copy the data in, delete it:
+
+```bash
+kubectl apply -f - <<'YAML'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres-seed
+  namespace: lab-environment
+  labels:
+    app: postgres-seed
+spec:
+  containers:
+    - name: seed
+      image: busybox:1.36
+      command: ["sleep", "3600"]
+      volumeMounts:
+        - name: postgres-data
+          mountPath: /dst/postgres-data
+      resources:
+        requests:
+          cpu: 50m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+  volumes:
+    - name: postgres-data
+      persistentVolumeClaim:
+        claimName: postgres
+YAML
+
+# copy the data in (kubectl cp, or sudo cp -a straight into
+# /var/lib/rancher/k3s/storage/<pv>_lab-environment_postgres/), then:
+kubectl -n lab-environment delete pod postgres-seed
+```
