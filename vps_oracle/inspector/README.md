@@ -29,6 +29,9 @@ Host-level巡檢腳本，非 docker compose 管理（跟 `vps_oracle/k3s/` 一�
 - `checks/k3s-stuck-terminating.sh`（alert）— 卡超過 15 分鐘的 Terminating pod
 - `checks/k3s-oom-killed-containers.sh`（alert）— `lastState.terminated.reason=OOMKilled` 且發生在 24 小時內；`k3s-evicted-pods.sh` 抓不到這種情況（pod 全程停留 `Running`，只是 container 被殺重啟），2026-08-17 io_pressure_critical 事件（jaeger/trivy 都因 limit 太緊被 OOM Kill）之後補上
 
+已實作（NPM 反代層）：
+- `checks/npm-nginx-config.sh`（alert）— 在 npm 容器裡跑 `nginx -t`。抓的是「配置現在還能跑、但下次冷啟動會起不來」這種看不見的狀態：NPM 的 Custom Location 會把上游主機名寫死進 `proxy_pass`（普通轉發走變數 + Docker DNS，是逐請求解析），一旦那個後端容器消失，nginx 下次載入配置就 emerg 拒絕啟動，**全部**反代站點一起掛，不只是那一個。運行中的 nginx 靠先前解析到的位址繼續跑，所以在重啟之前從監控、面板、日誌都看不出來。`nginx -t` 用的是同一次解析，但跑在獨立行程裡，不影響正在服務的 nginx。2026-08-21 dify 容器停了 45 小時、升級 npm 時才引爆（來龍去脈見 [`vps_oracle/compose/npm/README.md`](../compose/npm/README.md)）之後補上。
+
 閾值都是各腳本開頭的 env var，可從 systemd unit 的 `Environment=` 或手動執行時覆寫。
 
 **範圍邊界**：`vscode-server-versions.sh` 只清 `cli/servers/<version>/` 這種大目錄（單個 500-650M 級別），不動 `~/.vscode-server/code-<commit>` 這類小得多的 CLI tunnel binary（~27M/個）——spec 沒把它們列進范围，之后想扩再加新 check。
@@ -62,6 +65,7 @@ cd vps_oracle/inspector
 ./tests/test-k3s-containerd-images.sh
 ./tests/test-k3s-alerts.sh
 ./tests/test-k3s-oom-killed-containers.sh
+./tests/test-npm-nginx-config.sh
 ```
 
 `tests/test-common.sh` 是全案最重要的一份測試——它驗證的是「絕不誤殺自己」這條規則本身，不能只靠人工看一遍代碼，見 spec 的「自我保護規則」一節。
