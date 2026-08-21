@@ -129,7 +129,7 @@ Vikunja 的任务事件（指派/提醒到期/逾期/完成）通过 webhook 转
 - 每次改动尽量小、单一职责，方便 review 和回滚
 - 每个 compose 目录对应一个独立的 docker-compose 栈，栈内可以有多个服务，但不同栈的文件不要混放到同一个目录
 - **时区**：容器统一用 `environment: TZ: "Asia/Hong_Kong"`，保证日志时间戳跟人对得上。
-  - **光有 `TZ` 不一定生效**：程序还得能在镜像里查到 `/usr/share/zoneinfo/Asia/Hong_Kong`，查不到不报错，直接**静默回退 UTC**。2026-08-21 全量排查：`portainer/portainer-ce`、`headlamp`、cilium（只带 `UTC` 一个 zone）、`alpine/socat`、`busybox` 都不带 tzdata；`ubuntu/squid`、`nginx:*-alpine`、grafana、vikunja、prom 系列自带。
+  - **光有 `TZ` 不一定生效**：程序还得能在镜像里查到 `/usr/share/zoneinfo/Asia/Hong_Kong`，查不到不报错，直接**静默回退 UTC**。2026-08-21 全量排查——镜像里没有 zone 文件、实际跑成 UTC 的：`portainer/portainer-ce`、`headlamp`、cilium（只带 `UTC` 一个 zone）、`alpine/socat`、`busybox`；镜像里带 zone 文件的：`ubuntu/squid`、`nginx:*-alpine`、grafana、prom 系列。**特例**：vikunja、homepage 的镜像里同样没有 zone 文件，但运行时自带 tzdata（Go 的 `time/tzdata`、Node 的 ICU），照样是 `+0800`——所以判断标准始终是程序的实际行为，不是文件在不在。
   - **镜像不带 tzdata 时**，挂那一个 1.2 KB 的 zone 文件，不要挂整个 2.1 MB 目录：
     ```yaml
     volumes:
