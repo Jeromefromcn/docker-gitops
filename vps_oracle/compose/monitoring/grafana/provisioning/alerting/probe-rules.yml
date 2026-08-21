@@ -155,3 +155,275 @@ groups:
                 - evaluator:
                     type: lt
                     params: [1]
+
+      # --- Added 2026-08-21: probe coverage for core services ---
+      - uid: probe_argocd
+        title: ArgoCD Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: critical
+        annotations:
+          summary: "ArgoCD (argocd.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://argocd.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_headlamp
+        title: Headlamp Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: critical
+        annotations:
+          summary: "Headlamp (headlamp.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://headlamp.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_homepage
+        title: Homepage Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Homepage (homepage.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://homepage.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_plans
+        title: Plans Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Plans (plans.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://plans.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_trilium
+        title: Trilium Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Trilium (trilium.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://trilium.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_vikunja
+        title: Vikunja Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Vikunja (vikunja.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://vikunja.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      # Basic-Auth-fronted NPM hosts — 401 (auth required) counts as reachable
+      - uid: probe_apprise
+        title: Apprise Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Apprise (apprise.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://apprise.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_ccr
+        title: CCR Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "CCR (ccr.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://ccr.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: probe_switchboard
+        title: Switchboard Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Switchboard (switchboard.jerome.cloudns.asia) is unreachable"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="https://switchboard.jerome.cloudns.asia"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
