@@ -16,6 +16,12 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock   # 必需:控制宿主机 docker,等同 root 权限,已知风险,无法回避
       - /etc/portainer/data:/data                     # Portainer 自身数据库持久化(stack 定义也存这里,不像 Dockge 需要挂宿主机 compose 目录)
+      # The image ships no tzdata and no /etc/localtime, so the TZ variable above
+      # resolves to nothing and Go silently falls back to UTC. Bind-mounting the
+      # single zone file (1.2 KB) is what actually makes TZ take effect.
+      # Note: mounting /etc/localtime instead would NOT work — once TZ is set to a
+      # zone name, Go only looks it up under /usr/share/zoneinfo and ignores /etc/localtime.
+      - /usr/share/zoneinfo/Asia/Hong_Kong:/usr/share/zoneinfo/Asia/Hong_Kong:ro
     networks:
       - proxy
     # NPM 反代配置: Forward Hostname/IP = portainer, Forward Port = 9000 (HTTP UI,未发布到宿主机;9443 是自带 HTTPS,交给 NPM 统一做 TLS 就不用它)
