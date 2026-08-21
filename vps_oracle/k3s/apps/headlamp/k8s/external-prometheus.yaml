@@ -22,13 +22,11 @@
 # That pod is a minimal socat TCP relay, 9090 -> 172.19.0.4:9090, running
 # with hostNetwork so it can reach the docker `proxy` bridge directly (same
 # reachability any host process has — see the same reasoning previously
-# used for the k3s apiserver itself). headlamp namespace has no active Pod
-# Security Standard enforcement (checked live: no
-# pod-security.kubernetes.io/enforce label on the namespace despite
-# vps_oracle/k3s/manifests/pod-security-labels.yaml declaring `baseline`
-# for it — that file isn't actually synced/applied yet, separate issue),
-# and `baseline` itself allows hostNetwork anyway (only `restricted` would
-# block it).
+# used for the k3s apiserver itself). The headlamp namespace enforces the
+# `baseline` Pod Security Standard (label from
+# vps_oracle/k3s/manifests/pod-security-labels.yaml, synced by the
+# phase-a-foundation Application), and `baseline` allows hostNetwork —
+# only `restricted` would block it.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
