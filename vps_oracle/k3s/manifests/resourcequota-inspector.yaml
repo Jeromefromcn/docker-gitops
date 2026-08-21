@@ -1,0 +1,17 @@
+# Loose quota for the inspector namespace. Nothing workload-shaped runs
+# here — it exists so a monitoring identity has its own, generous ceiling
+# instead of borrowing `workloads`'s tight per-pod limits. Deliberately
+# roomy (deliberately NOT request==limit): the inspector's k3s checks are
+# short-lived host-side processes, and nothing user-facing should ever be
+# scheduled in here.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: inspector-quota
+  namespace: inspector
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 2Gi
+    limits.cpu: "2"
+    limits.memory: 4Gi
