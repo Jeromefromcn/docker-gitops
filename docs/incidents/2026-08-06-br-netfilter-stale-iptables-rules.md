@@ -6,7 +6,7 @@
 
 ## 背景：完整因果鏈的起點
 
-這個問題的起點，是使用者為了給 k3s 騰出記憶體，手動 `docker compose down` 了 `programming-learning-platform` 這個不屬於本 repo 管理的專案（見 [container-topology.md](../../../docs/container-topology.md)「不受本仓库管理的其他项目」一節）。k3s 安裝過程中發現這個 compose 其實還有用，於是使用者又把它 `docker compose up` 回來——**這個 down/up 週期，就是後面一連串問題的真正起點**，跟這次 k3s 安裝工作本身交織在一起，缺一不可。
+這個問題的起點，是使用者為了給 k3s 騰出記憶體，手動 `docker compose down` 了 `programming-learning-platform` 這個不屬於本 repo 管理的專案（見 [container-topology.md](../container-topology/v1.md)「不受本仓库管理的其他项目」一節）。k3s 安裝過程中發現這個 compose 其實還有用，於是使用者又把它 `docker compose up` 回來——**這個 down/up 週期，就是後面一連串問題的真正起點**，跟這次 k3s 安裝工作本身交織在一起，缺一不可。
 
 ## 完整時間線（使用者提供的關鍵背景 + 技術排查串起來）
 
