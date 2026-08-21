@@ -27,6 +27,12 @@ scrape_configs:
       - targets:
           - https://npm.jerome.cloudns.asia
           - https://portainer.jerome.cloudns.asia/
+          - https://argocd.jerome.cloudns.asia
+          - https://headlamp.jerome.cloudns.asia
+          - https://homepage.jerome.cloudns.asia
+          - https://plans.jerome.cloudns.asia
+          - https://trilium.jerome.cloudns.asia
+          - https://vikunja.jerome.cloudns.asia
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -43,6 +49,24 @@ scrape_configs:
       - targets:
           - https://panel.3x.jerome.cloudns.asia
           - https://sub.3x.jerome.cloudns.asia/sub/
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # Basic-Auth-fronted NPM hosts (apprise/ccr/switchboard) — accept 401 as success
+  - job_name: blackbox_http_2xx_or_404_or_401
+    metrics_path: /probe
+    params:
+      module: [http_2xx_or_404_or_401]
+    static_configs:
+      - targets:
+          - https://apprise.jerome.cloudns.asia
+          - https://ccr.jerome.cloudns.asia
+          - https://switchboard.jerome.cloudns.asia
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

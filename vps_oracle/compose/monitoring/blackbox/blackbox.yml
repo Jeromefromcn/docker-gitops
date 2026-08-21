@@ -11,6 +11,16 @@ modules:
     http:
       valid_status_codes: [200, 201, 202, 203, 204, 205, 206, 404]
 
+  # For NPM hosts fronted by Basic Auth (apprise/ccr/switchboard): the probe hits
+  # the auth layer and gets a 401 even when the service is healthy. Accept 401 as
+  # "reverse-proxy link is up" — the auth guard itself confirms the service is
+  # reachable through NPM.
+  http_2xx_or_404_or_401:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [200, 201, 202, 203, 204, 205, 206, 404, 401]
+
   tcp_connect:
     prober: tcp
     timeout: 5s
