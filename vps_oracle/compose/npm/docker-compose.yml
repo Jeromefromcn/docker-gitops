@@ -1,6 +1,13 @@
 services:
   app:
-    image: 'jc21/nginx-proxy-manager:2.12.3' # 固定版本，稳定不踩坑
+    image: 'jc21/nginx-proxy-manager:2.15.1' # 固定版本，稳定不踩坑。2026-08-21 从 2.12.3 升上来，两个原因：
+                                             # 1) Dashboard 的 Proxy Hosts 计数只算当前登录用户拥有的 host
+                                             #    （report.js 把 permission_visibility 写成 visibility，恒为
+                                             #    undefined 于是永远按 owner 过滤），自动化账号建的 host 不计入；
+                                             #    上游在 2.14.0 修好。列表页一直是对的，只有首页数字不准。
+                                             # 2) 2.15.0 修了任意已认证用户可通过 PUT 改自己 roles 字段的提权
+                                             #    问题——直接影响 .npm-automation.env 里那个本该最小权限的
+                                             #    claude 账号。另含 OpenResty CVE 修复。
     container_name: npm
     hostname: npm
     restart: unless-stopped          # 手动停止后不会随宿主机重启被拉起
