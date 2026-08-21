@@ -34,3 +34,39 @@ curl -sS 'http://npm:81/api/nginx/access-lists?expand=items,clients' -H \"Author
 "
 ```
 查完 access list 的 `id` 之後，改用 `PUT /api/nginx/access-lists/{id}` 帶完整的 `clients` 陣列（含要保留的舊規則 + 新規則）更新。
+
+**改完 access list 一定要跑一次 `docker exec npm nginx -t`**：更新 access list 會連帶重新產生掛在它底下的所有 proxy host 配置，可能把下面那個 dify 的問題重新裝回去。
+
+## 2026-08-21：升級到 2.15.1，以及一次 90 秒全站中斷
+
+**升級原因**：面板首頁的 Proxy Hosts 只顯示 16，實際有 24。2.12.3 的 `report.js` 把 `permission_visibility` 寫成 `visibility`，取到的永遠是 `undefined`，計數於是永遠退回「只算當前登入使用者擁有的 host」——用自動化帳號（`claude`）建的那 8 個全部沒算進去。列表頁一直是對的，只有首頁那個數字不準。上游在 **2.14.0** 修好。順帶拿到 2.15.0 的一個安全修復：任何已認證使用者可透過 `PUT` 改自己的 `roles` 欄位——正好打在 `.npm-automation.env` 裡那個本該最小權限的 `claude` 帳號上。
+
+**中斷經過**：`docker compose up -d` 重建容器後，nginx 反覆啟動失敗：
+
+```
+nginx: [emerg] host not found in upstream "dify-api" in /data/nginx/proxy_host/24.conf:74
+```
+
+443 上約 90 秒完全沒有程序監聽——不是某個站 502，是全部站點連不上。處理：把 `24.conf` 改名成 `24.conf.disabled-2026-08-21`，s6 的重試迴圈下一輪就起來了。
+
+**這跟升級無關**。proxy host 24（dify）有 8 條 Custom Location 指向 `dify-api:5001` / `dify-plugin-daemon:5002`，而 dify 全套容器 45 小時前就停了。字面量上游必須在載入配置時解析（機制見 repo 根 README 的「能不用 Custom Locations 就不用」一節），所以回滾到 2.12.3、或單純 `docker restart npm`、或宿主機重啟，結果完全一樣。之前四天沒事，只是因為那個 nginx 行程是在 dify 還活著的時候起來的。
+
+**升級本身驗證過的項目**：兩條 DB migration（`redirect_auto_scheme`、`trust_forwarded_proto`）正常套用；24 張憑證 `certbot renew --dry-run` 全部成功（全是 HTTP-01，沒用任何 DNS plugin，所以 2.15.0 那條 certbot 5.6 的 DNS plugin 警告不適用）；上面那套 API 流程的掛載路徑沒變。
+
+### 遺留狀態：dify 的反代
+
+目前 **DB 裡 host 24 仍是 enabled，磁碟上卻沒有它的 conf**，兩邊不一致。這個狀態下 npm 重啟是安全的。
+
+會把 `24.conf` 寫回去、也就是把雷重新裝上的只有這三件事，**全都需要人手動操作，不會自己發生**——自動續期只跑 `certbot renew` 然後更新資料庫的到期時間，不重新產生任何 host 配置：
+
+| 觸發動作 | 影響範圍 |
+|---|---|
+| 編輯 `self-only` access list（例如公網 IP 變了要更新放行規則） | 重寫掛在它底下的 15 個 host 配置，含 24 |
+| 在面板裡編輯或 enable host 24 | 重寫 24 |
+| 重新**申請**（不是續期）dify 的憑證 | 重寫用到該域名的 host |
+
+要根治就兩條路：把 dify 啟回來（`dify-api` 能解析了，雷自然消失），或在面板裡把 host 24 disable。在那之前，做完上表任一動作都順手 `docker exec npm nginx -t` 確認一次；`vps_oracle/inspector/checks/npm-nginx-config.sh` 也會在 12 小時內抓到。
+
+### 一個已知的日誌噪音
+
+每個請求會寫一行 `[warn] using uninitialized "trust_forwarded_proto" variable`。磁碟上的 host 配置還是 2.12.3 產生的，缺 2.14.0 新增的 `set $trust_forwarded_proto "F";`；新映像的 `conf.d/include/force-ssl.conf` 自己帶兜底預設值，**行為跟升級前完全一致**，純粹是日誌噪音，而且有 logrotate 管著。它不會自己消失，要清掉得讓對應 host 的配置重新產生一次（見上表）——但那同時也會把 dify 的雷裝回去，兩件事是同一個開關。
