@@ -9,6 +9,13 @@ spec:
       kind: Service
       name: hello-backend
   rules:
-    - backendRefs:
+    - timeouts:
+        request: 10s
+        backendRequest: 8s
+      backendRefs:
         - name: hello-backend
           port: 80
+          weight: 90
+        - name: hello-backend-canary
+          port: 80
+          weight: 10
