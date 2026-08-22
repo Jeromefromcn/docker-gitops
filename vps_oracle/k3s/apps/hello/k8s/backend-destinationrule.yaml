@@ -1,0 +1,17 @@
+# vps_oracle/k3s/apps/hello/k8s/backend-destinationrule.yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: hello-backend
+  namespace: pr-lanes
+spec:
+  host: hello-backend.pr-lanes.svc.cluster.local
+  trafficPolicy:
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 30s
+      baseEjectionTime: 30s
+      # 100, not the more typical 50 — see Global Constraints: replicas: 1
+      # means 50% would round down to zero ejectable endpoints and silently
+      # disable this feature entirely for a single-replica demo service.
+      maxEjectionPercent: 100
