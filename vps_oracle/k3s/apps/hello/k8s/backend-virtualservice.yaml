@@ -35,11 +35,12 @@ spec:
       route:
         - destination:
             host: hello-backend.pr-lanes.svc.cluster.local
-    # Default route — no x-fault-test header. Weight and timeout here MUST
-    # match backend-httproute.yaml's values exactly (currently 90/10, 10s):
-    # see Global Constraints for why this is duplicated rather than deferred
-    # to whichever of HTTPRoute/VirtualService the dataplane treats as
-    # authoritative for this host.
+    # Default route — no x-fault-test header. This is the sole config source
+    # for default-traffic routing on this host: an HTTPRoute (backend-httproute.yaml)
+    # previously duplicated this weight/timeout as a hedge, but it compiled to an
+    # unconditional Envoy route that shadowed this VirtualService entirely (its
+    # rules were never reached). Deleted rather than kept in sync — see Task 3
+    # verification for the Envoy config-dump evidence.
     - route:
         - destination:
             host: hello-backend.pr-lanes.svc.cluster.local
