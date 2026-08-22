@@ -37,7 +37,7 @@
 - Consumes: nothing from another task in this plan.
 - Produces: a `hello-backend-canary` Service reachable at `hello-backend-canary.pr-lanes.svc.cluster.local:80`, selecting Pods labeled `app: hello-backend, lane: canary`. Task 2 (HTTPRoute), Task 3 (VirtualService), and Task 4 (DestinationRule) all reference this exact Service name/host.
 
-- [ ] **Step 1: Confirm current state before touching anything**
+- [x] **Step 1: Confirm current state before touching anything**
 
 ```bash
 kubectl -n pr-lanes get pods,svc
@@ -48,7 +48,7 @@ git log --oneline -3
 
 Expected: 3 pods (`hello-backend`, `hello-frontend`, `waypoint`), 3 Services (`hello-backend`, `hello-frontend`, `waypoint`); quota used `limits.cpu: 400m`, `limits.memory: 512Mi` — matches the Global Constraints baseline. `git status` clean (or only this plan's own untracked files); note the current `git log` head so you can tell later if another session has committed here meanwhile.
 
-- [ ] **Step 2: Write the ConfigMap**
+- [x] **Step 2: Write the ConfigMap**
 
 ```yaml
 # vps_oracle/k3s/apps/hello/k8s/backend-canary-configmap.yaml
@@ -72,7 +72,7 @@ data:
     </html>
 ```
 
-- [ ] **Step 3: Compute the checksum and verify it matches this plan's precomputed value**
+- [x] **Step 3: Compute the checksum and verify it matches this plan's precomputed value**
 
 ```bash
 printf '%s\n' '<!DOCTYPE html>' '<html>' '<head><title>hello-backend</title></head>' \
@@ -81,7 +81,7 @@ printf '%s\n' '<!DOCTYPE html>' '<html>' '<head><title>hello-backend</title></he
 
 Expected: `298934fedba8a579276041523ff72986b769872fa3cb89e25cdcd5a69ac552e8` — this is the exact value Step 4's Deployment annotation uses. If your `index.html` block in Step 2 differs from the one above in any whitespace, this hash will differ too — recompute and use your own value instead of the plan's.
 
-- [ ] **Step 4: Write the Deployment**
+- [x] **Step 4: Write the Deployment**
 
 ```yaml
 # vps_oracle/k3s/apps/hello/k8s/backend-canary-deployment.yaml
@@ -160,7 +160,7 @@ spec:
             name: hello-backend-canary-conf
 ```
 
-- [ ] **Step 5: Write the Service**
+- [x] **Step 5: Write the Service**
 
 ```yaml
 # vps_oracle/k3s/apps/hello/k8s/backend-canary-service.yaml
@@ -182,7 +182,7 @@ spec:
       targetPort: 8080
 ```
 
-- [ ] **Step 6: Validate YAML and commit**
+- [x] **Step 6: Validate YAML and commit**
 
 ```bash
 python3 -c "
@@ -204,7 +204,7 @@ not subsets)."
 git push
 ```
 
-- [ ] **Step 7: Verify the pod runs and is reachable**
+- [x] **Step 7: Verify the pod runs and is reachable**
 
 ```bash
 kubectl -n pr-lanes get pods -l app=hello-backend,lane=canary
@@ -215,7 +215,7 @@ kubectl -n pr-lanes run curl-canary-check --rm -i --restart=Never --image=curlim
 
 Expected: one pod `Running`; Service has a `ClusterIP`; the `curl` output contains `hello-backend (canary)`.
 
-- [ ] **Step 8: Confirm Kyverno admission actually ran (not silently skipped) and quota moved as predicted**
+- [x] **Step 8: Confirm Kyverno admission actually ran (not silently skipped) and quota moved as predicted**
 
 ```bash
 kubectl -n kyverno logs -l app.kubernetes.io/component=admission-controller --tail=80 | grep hello-backend-canary
@@ -235,7 +235,7 @@ Expected: at least one admission review log line referencing the new pod (proves
 - Consumes: `hello-backend-canary` Service (Task 1).
 - Produces: the Gateway API side of the 90/10 split and the 10s/8s timeout — Task 3's `VirtualService` duplicates these same two numbers, so if either changes here, it must change there too (Global Constraints).
 
-- [ ] **Step 1: Confirm the current live HTTPRoute before editing**
+- [x] **Step 1: Confirm the current live HTTPRoute before editing**
 
 ```bash
 kubectl -n pr-lanes get httproute hello-backend-baseline -o yaml
@@ -243,7 +243,7 @@ kubectl -n pr-lanes get httproute hello-backend-baseline -o yaml
 
 Expected: single rule, single `backendRefs` entry (`hello-backend`, `port: 80`), no `timeouts`. This is the object you're about to change — compare after Step 4 to confirm the diff took effect.
 
-- [ ] **Step 2: Edit the file**
+- [x] **Step 2: Edit the file**
 
 ```yaml
 # vps_oracle/k3s/apps/hello/k8s/backend-httproute.yaml
@@ -272,7 +272,7 @@ spec:
 
 Don't add a `matches` block — Gateway API defaults an unspecified `matches` to a PathPrefix `/` match (confirmed live: the currently-deployed object already shows this default materialized), and every per-PR-lane `HTTPRoute` header-matches on the same parent, which by Gateway API's own match-specificity rules always outranks this path-only catchall regardless of its `backendRefs`/`weight` content — the header routing you're not touching stays unaffected by this edit for that reason, not by luck.
 
-- [ ] **Step 3: Validate YAML and commit**
+- [x] **Step 3: Validate YAML and commit**
 
 ```bash
 python3 -c "import yaml; yaml.safe_load(open('vps_oracle/k3s/apps/hello/k8s/backend-httproute.yaml'))" && echo OK
@@ -286,7 +286,7 @@ present in the installed v1.6.1 standard channel CRDs."
 git push
 ```
 
-- [ ] **Step 4: Verify the HTTPRoute updated and the ratio holds**
+- [x] **Step 4: Verify the HTTPRoute updated and the ratio holds**
 
 ```bash
 kubectl -n pr-lanes get httproute hello-backend-baseline -o yaml
@@ -297,7 +297,7 @@ kubectl -n pr-lanes run curl-weight-check --rm -i --restart=Never --image=curlim
 
 Expected: the `get httproute` output shows both `backendRefs` with their weights and the `timeouts` block; roughly 5 out of 50 responses (±3, this is a statistical sample, not exact) contain `canary`, the rest `baseline`.
 
-- [ ] **Step 5: Opportunistic PR-lane regression check**
+- [x] **Step 5: Opportunistic PR-lane regression check**
 
 ```bash
 kubectl -n argocd get application -l argocd.argoproj.io/application-set-name=pr-lanes
@@ -325,7 +325,7 @@ If the list is empty (no PR currently open), skip this step — there's nothing 
 
 This refines the spec's sketch (a single header value triggering both delay and abort together) into **two separate header values**, because Envoy applies `fault.delay` before `fault.abort` when both are set on the same rule — combined with this route's own `timeout: 10s`, a combined delay+abort rule would always hit the timeout before the abort ever fired, making the abort untestable. Splitting them lets each be verified independently.
 
-- [ ] **Step 1: Write the VirtualService**
+- [x] **Step 1: Write the VirtualService**
 
 ```yaml
 # vps_oracle/k3s/apps/hello/k8s/backend-virtualservice.yaml
@@ -384,7 +384,7 @@ spec:
       timeout: 10s
 ```
 
-- [ ] **Step 2: Validate YAML and commit**
+- [x] **Step 2: Validate YAML and commit**
 
 ```bash
 python3 -c "import yaml; yaml.safe_load(open('vps_oracle/k3s/apps/hello/k8s/backend-virtualservice.yaml'))" && echo OK
@@ -401,7 +401,7 @@ that hedge turns out to be load-bearing on this cluster."
 git push
 ```
 
-- [ ] **Step 3: Verify normal traffic is unaffected and the weight ratio still holds with the VirtualService now also in place**
+- [x] **Step 3: Verify normal traffic is unaffected and the weight ratio still holds with the VirtualService now also in place**
 
 ```bash
 kubectl -n pr-lanes run curl-weight-recheck --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
@@ -411,7 +411,7 @@ kubectl -n pr-lanes run curl-weight-recheck --rm -i --restart=Never --image=curl
 
 Expected: still roughly 5 out of 50 — same as Task 2 Step 4. This is the plan's central coexistence check (spec's known-limitation item): whichever of `HTTPRoute`/`VirtualService` the dataplane actually honors for default traffic, the ratio holds either way because both configs agree. If this ratio comes back wildly different (e.g. ~50/50, or 0/100), the two configs are in conflict rather than agreement despite matching numbers — stop and investigate with `istioctl proxy-config route deploy/waypoint -n pr-lanes -o json` before continuing to Task 4.
 
-- [ ] **Step 4: Verify the delay path is cut off by the timeout, not by the fault delay completing**
+- [x] **Step 4: Verify the delay path is cut off by the timeout, not by the fault delay completing**
 
 ```bash
 kubectl -n pr-lanes run curl-delay-check --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
@@ -421,7 +421,7 @@ kubectl -n pr-lanes run curl-delay-check --rm -i --restart=Never --image=curlima
 
 Expected: total time close to 10s (the timeout), not 15s (the configured delay), and an HTTP status indicating a timeout/gateway error (`504` is typical for Envoy request timeouts), not `200`. This proves `timeout: 10s` is actually enforced on this route, from whichever of the two configs is providing it.
 
-- [ ] **Step 5: Verify the abort path returns the configured error, cleanly and immediately**
+- [x] **Step 5: Verify the abort path returns the configured error, cleanly and immediately**
 
 ```bash
 kubectl -n pr-lanes run curl-abort-check --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
@@ -431,7 +431,7 @@ kubectl -n pr-lanes run curl-abort-check --rm -i --restart=Never --image=curlima
 
 Expected: `500`, total time well under 1s (no delay configured on this path).
 
-- [ ] **Step 6: Confirm normal traffic (no `x-fault-test` header) is completely unaffected**
+- [x] **Step 6: Confirm normal traffic (no `x-fault-test` header) is completely unaffected**
 
 ```bash
 kubectl -n pr-lanes run curl-normal-check --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
@@ -452,7 +452,7 @@ Expected: `200`, total time well under 1s — proves the two fault-test header r
 - Consumes: `hello-backend`/`hello-backend-canary` Services (Task 1), the `x-fault-test: abort` path (Task 3) as a best-effort ejection trigger.
 - Produces: nothing further tasks in this plan depend on — this is the plan's last capability, Task 5 is verification-only.
 
-- [ ] **Step 1: Write both DestinationRules**
+- [x] **Step 1: Write both DestinationRules**
 
 ```yaml
 # vps_oracle/k3s/apps/hello/k8s/backend-destinationrule.yaml
@@ -493,7 +493,7 @@ spec:
 
 Not shared/combined into one file: `host` is a required, single-value field — `hello-backend` and `hello-backend-canary` are two distinct Service hosts, so this is mechanically two separate resources, not a stylistic choice (see spec's resolution of the "share a DestinationRule?" open question).
 
-- [ ] **Step 2: Validate YAML and commit**
+- [x] **Step 2: Validate YAML and commit**
 
 ```bash
 python3 -c "
@@ -512,7 +512,7 @@ would round down to zero ejectable endpoints."
 git push
 ```
 
-- [ ] **Step 3: Confirm the config reached the Envoy dataplane (reliable regardless of whether ejection can be behaviorally observed below)**
+- [x] **Step 3: Confirm the config reached the Envoy dataplane (reliable regardless of whether ejection can be behaviorally observed below)**
 
 ```bash
 kubectl -n pr-lanes get destinationrule -o wide
@@ -522,7 +522,7 @@ istioctl proxy-config cluster deploy/waypoint -n pr-lanes --fqdn hello-backend-c
 
 Expected: both `DestinationRule` objects listed; both `istioctl` calls show non-empty output referencing outlier detection (the cluster config carries the policy, not just the k8s API object).
 
-- [ ] **Step 4: Best-effort behavioral check — attempt to trigger ejection with the fault-injection abort path**
+- [x] **Step 4: Best-effort behavioral check — attempt to trigger ejection with the fault-injection abort path**
 
 ```bash
 kubectl -n pr-lanes run curl-ejection-attempt --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
@@ -532,7 +532,7 @@ istioctl proxy-config cluster deploy/waypoint -n pr-lanes --fqdn hello-backend.p
 
 This may or may not actually demonstrate ejection: Envoy's fault-injection `abort` returns a local reply before the request reaches the upstream cluster, which means it may never be attributed to `hello-backend`'s own upstream-failure accounting the way outlier detection needs. If the second command shows an ejection count/timestamp, the abort path does count — note this finding in Task 5. If it doesn't, that's not a plan failure — it just means this demo app's only reliable way to prove ejection behaviorally would require the app itself to return a real 5xx, which is out of scope (this phase is CRD-only, no app changes). Either way, Step 3 already proves the configuration itself is correct and live.
 
-- [ ] **Step 5: Confirm no regression — plain traffic and canary ratio still work after all fault-testing**
+- [x] **Step 5: Confirm no regression — plain traffic and canary ratio still work after all fault-testing**
 
 ```bash
 kubectl -n pr-lanes run curl-final-sanity --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
@@ -552,7 +552,7 @@ Expected: `200`; both `hello-backend` and `hello-backend-canary` pods `Running` 
 - Consumes: everything from Tasks 1-4.
 - Produces: nothing — this is the plan's final gate.
 
-- [ ] **Step 1: Full resource quota check**
+- [x] **Step 1: Full resource quota check**
 
 ```bash
 kubectl -n pr-lanes describe resourcequota pr-lanes-quota
@@ -560,7 +560,7 @@ kubectl -n pr-lanes describe resourcequota pr-lanes-quota
 
 Expected: `limits.cpu: 500m / 1200m`, `limits.memory: 640Mi / 1536Mi` — matches Global Constraints, nowhere near the hard cap.
 
-- [ ] **Step 2: Full cluster-wide regression check — nothing outside this plan's scope was disturbed**
+- [x] **Step 2: Full cluster-wide regression check — nothing outside this plan's scope was disturbed**
 
 ```bash
 kubectl get pods -A -o wide | grep -v Running
@@ -569,7 +569,7 @@ kubectl get applications -n argocd -o custom-columns=NAME:.metadata.name,SYNC:.s
 
 Expected: both empty. This is the plan's final gate, same as the FG plan's own closing check — do not consider phase I done until every pod cluster-wide is `Running` and every `Application` is `Synced`/`Healthy`.
 
-- [ ] **Step 3: Re-run the canary ratio and fault-injection checks one more time as a final combined smoke test**
+- [x] **Step 3: Re-run the canary ratio and fault-injection checks one more time as a final combined smoke test**
 
 ```bash
 kubectl -n pr-lanes run curl-smoke-test --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- sh -c '
@@ -584,7 +584,7 @@ curl -s -o /dev/null -w "%{http_code} %{time_total}\n" -H "x-fault-test: abort" 
 
 Expected: roughly 3/30 canary; delay path ~10s with a timeout status; abort path `500` in well under 1s.
 
-- [ ] **Step 4: Record the Task 4 Step 4 finding back into the design doc**
+- [x] **Step 4: Record the Task 4 Step 4 finding back into the design doc**
 
 Open [docs/superpowers/specs/2026-08-22-k3s-phase-i-traffic-resilience-design.md](../specs/2026-08-22-k3s-phase-i-traffic-resilience-design.md)'s "已知限制 / 失敗模式" section and add one line recording whether fault-injection abort actually triggered an observable outlier-detection ejection (Task 4 Step 4's finding) — the spec currently leaves this open, and this plan is what resolves it.
 
@@ -597,7 +597,7 @@ injection abort can trigger outlier detection ejection in practice."
 git push
 ```
 
-- [ ] **Step 5: Final check — confirm this plan's file list matches what actually landed**
+- [x] **Step 5: Final check — confirm this plan's file list matches what actually landed**
 
 ```bash
 git log --oneline --stat -5 -- vps_oracle/k3s/apps/hello/k8s/
