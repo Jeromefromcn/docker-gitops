@@ -22,12 +22,19 @@ content = (
     f"export ANTHROPIC_BASE_URL={os.environ['CCR_HOST_BASE_URL']}\n"
     f"export ANTHROPIC_AUTH_TOKEN={os.environ['CCR_TOKEN_EVIDENCE']}\n"
 )
+# routing.json 里的 model 就是该 profile 的默认模型，映射成 ANTHROPIC_DEFAULT_MODEL
+# 才能让 claude CLI 的 /model default 落到它，否则回落 cc 内置默认再被 ccr 重映射
+# 成 opus 档。与下面三个 tier 变量同一套机制（见 jerome-ccr/on.sh）。
+if routing.get("model"):
+    content += f"export ANTHROPIC_DEFAULT_MODEL={routing['model']}\n"
 if routing.get("opusModel"):
     content += f"export ANTHROPIC_DEFAULT_OPUS_MODEL={routing['opusModel']}\n"
 if routing.get("sonnetModel"):
     content += f"export ANTHROPIC_DEFAULT_SONNET_MODEL={routing['sonnetModel']}\n"
 if routing.get("haikuModel"):
     content += f"export ANTHROPIC_DEFAULT_HAIKU_MODEL={routing['haikuModel']}\n"
+# 第三方模型 cc CLI 不识别时默认按 200k 窗口执行，声明 1M 才放开。
+content += "export CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000\n"
 
 with open(tmp_path, "w") as f:
     f.write(content)
