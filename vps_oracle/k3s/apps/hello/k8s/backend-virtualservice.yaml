@@ -1,0 +1,54 @@
+# vps_oracle/k3s/apps/hello/k8s/backend-virtualservice.yaml
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: hello-backend
+  namespace: pr-lanes
+spec:
+  hosts:
+    - hello-backend.pr-lanes.svc.cluster.local
+  http:
+    # Header-triggered only — see Task 3's own testing steps for why delay
+    # and abort are split into separate header values instead of one.
+    - match:
+        - headers:
+            x-fault-test:
+              exact: "delay"
+      fault:
+        delay:
+          percentage:
+            value: 100
+          fixedDelay: 15s
+      route:
+        - destination:
+            host: hello-backend.pr-lanes.svc.cluster.local
+      timeout: 10s
+    - match:
+        - headers:
+            x-fault-test:
+              exact: "abort"
+      fault:
+        abort:
+          percentage:
+            value: 100
+          httpStatus: 500
+      route:
+        - destination:
+            host: hello-backend.pr-lanes.svc.cluster.local
+    # Default route — no x-fault-test header. Weight and timeout here MUST
+    # match backend-httproute.yaml's values exactly (currently 90/10, 10s):
+    # see Global Constraints for why this is duplicated rather than deferred
+    # to whichever of HTTPRoute/VirtualService the dataplane treats as
+    # authoritative for this host.
+    - route:
+        - destination:
+            host: hello-backend.pr-lanes.svc.cluster.local
+          weight: 90
+        - destination:
+            host: hello-backend-canary.pr-lanes.svc.cluster.local
+          weight: 10
+      retries:
+        attempts: 2
+        perTryTimeout: 2s
+        retryOn: 5xx,reset,connect-failure
+      timeout: 10s
