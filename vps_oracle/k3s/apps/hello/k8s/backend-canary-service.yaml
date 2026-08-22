@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-backend-canary
+  namespace: pr-lanes
+  labels:
+    app: hello-backend
+    lane: canary
+    istio.io/use-waypoint: waypoint
+spec:
+  selector:
+    app: hello-backend
+    lane: canary
+  ports:
+    - port: 80
+      targetPort: 8080

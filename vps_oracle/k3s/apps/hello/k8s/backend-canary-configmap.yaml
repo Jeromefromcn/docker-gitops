@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-backend-canary-conf
+  namespace: pr-lanes
+# NOTE: hello-backend-canary mounts index.html via subPath, which kubelet never
+# hot-reloads. If you edit data["index.html"] below, you MUST also recompute the
+# `configmap-checksum` annotation in backend-canary-deployment.yaml (sha256 of
+# this content, same convention as frontend-configmap.yaml) so the pod template
+# actually changes and a rollout happens — otherwise running pods keep serving
+# stale content.
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head><title>hello-backend</title></head>
+    <body><h1>hello-backend (canary)</h1></body>
+    </html>
