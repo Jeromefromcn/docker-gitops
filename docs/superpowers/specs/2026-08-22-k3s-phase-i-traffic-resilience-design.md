@@ -57,10 +57,10 @@ flowchart LR
 | 項目 | 決定 | 理由 |
 |---|---|---|
 | 金絲雀權重機制 | `VirtualService.http[].route[].weight`（`backend-virtualservice.yaml` 的預設路由規則），兩個獨立 Service（`hello-backend` / `hello-backend-canary`），不用 Istio 傳統的 subset 機制 | 原規劃走 Gateway API `HTTPRoute.backendRefs[].weight`，Task 3 因 HTTPRoute 與 VirtualService 在同一 host 上衝突而刪除 HTTPRoute 後，權重分流併入 VirtualService（見「架構」段落與已知限制）。語意不變：一樣是在多個目的地之間切，不是在同一 Service 底下切 subset；用兩個 Service 仍是 Gateway API 推薦的金絲雀模式精神延續，讓兩個版本各自的 Deployment/label/資源配額完全獨立、互不干擾 |
-| DestinationRule 是否與金絲雀共用 | 不共用——`hello-backend`、`hello-backend-canary` 各一份，只放 outlier detection，不放 subset | 路線圖原本留的懸念（[待細化的設計取捨](2026-08-19-k3s-mesh-capabilities-roadmap.md)）。因為權重分流走 Gateway API 的雙 Service 模式，`DestinationRule` 沒有 subset 可切，共用一份沒有意義，兩個獨立 host 天生就要兩份 |
+| DestinationRule 是否與金絲雀共用 | 不共用——`hello-backend`、`hello-backend-canary` 各一份，只放 outlier detection，不放 subset | 路線圖原本留的懸念（[待細化的設計取捨](2026-08-19-k3s-mesh-capabilities-roadmap.md)）。因為權重分流走的是雙 Service 模式（見上列「金絲雀權重機制」，現由 `VirtualService` 承載），`DestinationRule` 沒有 subset 可切，共用一份沒有意義，兩個獨立 host 天生就要兩份 |
 | 金絲雀比例 | 90/10 | demo 用途的示範值，之後要調整只是改一個數字，不影響機制本身 |
 | canary 版本的實際差異 | 沿用同一張 pinned image（`nginxinc/nginx-unprivileged`），用 ConfigMap 掛載不同的 `index.html`（沿用 `frontend-configmap.yaml` 的 checksum annotation 慣例），顯示文字含「canary」字樣 | 不用另外建 CI pipeline/新 image，驗證時用肉眼或 `curl` 就能分辨打到哪個版本；符合路線圖「零新元件」精神——這裡新增的是既有 app 的另一份 Deployment，不是新的基礎設施元件 |
-| Timeout 值 | `request: 10s`, `backendRequest: 8s` | `hello-backend` 是靜態頁面回應應在毫秒等級，10s/8s 是刻意寬鬆的示範值，用來驗證機制生效（可用故障注入的 delay 測試被 timeout 擋下），不是為了保護真實延遲敏感的服務 |
+| Timeout 值 | `timeout: 10s`（`backend-virtualservice.yaml` 的 `VirtualService.http[].timeout`，套用在預設路由與 delay-match 規則上） | `hello-backend` 是靜態頁面回應應在毫秒等級，10s 是刻意寬鬆的示範值。原規劃走 Gateway API `HTTPRoute` 的兩層欄位（`timeouts.request: 10s`、`timeouts.backendRequest: 8s`），Task 3 改用 VirtualService 後只剩單一 `timeout` 欄位，沒有 request/backendRequest 的兩層區分。原始設計意圖是「用故障注入的 delay 測試驗證機制生效（預期被 timeout 擋下）」，但實測發現 `fault.delay` 與同規則 `timeout` 疊加時並不會生效（見「已知限制」）——這個驗證手段本身不成立，不代表 timeout 對真實的慢請求無效，只是無法用 fault injection 這樣測；不是為了保護真實延遲敏感的服務 |
 | Retry 實作方式 | 定案：`VirtualService.http[].retries`（`attempts: 2, perTryTimeout: 2s, retryOn: 5xx,reset,connect-failure`），與金絲雀權重、timeout、故障注入同一份 `backend-virtualservice.yaml` | 原規劃留待實作階段查證 Gateway API standard channel 的 `HTTPRoute` 是否原生支援 retry 欄位；但 Task 3 已因 HTTPRoute/VirtualService 衝突刪除 HTTPRoute，VirtualService 成為唯一路由來源後，retries 自然併入同一份 VirtualService，不再是需要另外決策的獨立問題 |
 | 熱斷（outlier detection）參數 | `consecutive5xxErrors: 3, interval: 30s, baseEjectionTime: 30s, maxEjectionPercent: 100`（原規劃 50，Task 4 實作時改為 100） | Istio 官方文件/範例的典型示範值是 50%，換算成人話：連續 3 次 5xx 就丟出輪詢池 30 秒；但兩個 backend 都是 `replicas: 1`，50% 會無條件捨去成 0 個可踢出的 endpoint，等於整個功能靜默失效，所以改成 100——單一副本場景下，被踢出的上限本來就只有那唯一一個 endpoint |
 | 故障注入觸發方式 | 只匹配 `x-fault-test: "true"` header，其餘規則不變 | 已跟你確認過——不常駐套用在正常流量上，平時零影響，要做 chaos 測試才手動加 header |
@@ -110,11 +110,11 @@ vps_oracle/k3s/apps/hello/k8s/
 4. 用故障注入的 delay（`fixedDelay: 15s` > 同一條規則的 `timeout: 10s`）驗證 timeout 是否能截斷同規則上的 `fault.delay`——結果：不能。實測請求跑完整整 ~15s 才回應 `200`（Task 5 smoke test：`200 15.007575s`），不是預期中 timeout 對應的錯誤碼。這是 `fault.delay` 與 `timeout` 疊加在同一條 Envoy 規則上時的行為限制（推測是 route timeout 計時器要到 router filter 開始處理 upstream request 才起算，晚於 fault filter 的 decode-time delay），不是本階段的設定錯誤，詳見「已知限制」
 
 **重試：**
-5. 依實作階段查證結果（Gateway API 原生 or VirtualService fallback），用暫時把某個 pod 故意調成不健康的方式驗證重試確實發生（觀察 waypoint/envoy 的 access log 有多次嘗試記錄）
+5. 重試機制定案為 `VirtualService.http[].retries`（見「元件與設定」），用暫時把某個 pod 故意調成不健康的方式驗證重試確實發生（觀察 waypoint/envoy 的 access log 有多次嘗試記錄）
 
 **熱斷：**
-6. 手動讓 `hello-backend` 其中一個 pod 連續回傳 5xx（可暫時改 readiness 邏輯或用 fault injection 的 abort 對內部測試），確認達到 `consecutive5xxErrors` 閾值後該 endpoint 被踢出輪詢池，`istioctl proxy-config endpoint` 或 waypoint 的統計指標能看到 ejection 記錄
-7. `baseEjectionTime` 過後，確認該 endpoint 自動恢復回輪詢池
+6. 結構驗證（可靠、本階段已完成）：用 `istioctl proxy-config cluster`/`istioctl proxy-config route` 或 Envoy config dump 確認兩份 `DestinationRule` 的 `outlierDetection` 設定（`consecutive5xxErrors`/`interval`/`baseEjectionTime`/`maxEjectionPercent`）確實下發到 waypoint 的 Envoy dataplane。行為驗證：**不要**用 `x-fault-test: abort` 測——已證實 fault injection 的 abort 是 local reply，根本不會派送到 upstream cluster，outlier detection 的 `consecutive5xxErrors` 永遠看不到（實測證據見「已知限制」）。真要驗證行為層級的 ejection，必須讓 upstream 真的收到請求並回傳 5xx（例如讓 pod 本身故障，而非用 fault injection 模擬），這超出本階段用 fault injection 做 chaos 測試的既定範圍，留給後續階段
+7. `baseEjectionTime` 過後該 endpoint 應自動恢復回輪詢池——同樣是行為層級驗證，依賴第 6 項所說「upstream 真的收到請求並回傳 5xx」才能實際觸發 ejection 進而觀察恢復，本階段未執行，與第 6 項一併留給後續階段
 
 **故障注入：**
 8. 不帶 `x-fault-test` header 的正常請求完全不受影響，延遲/成功率與本階段改動前一致
