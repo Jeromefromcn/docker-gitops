@@ -1,0 +1,16 @@
+# vps_oracle/k3s/apps/hello/k8s/backend-authorizationpolicy-require-waypoint.yaml
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: hello-backend-require-waypoint
+  namespace: pr-lanes
+spec:
+  selector:
+    matchLabels:
+      app: hello-backend
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/pr-lanes/sa/waypoint
