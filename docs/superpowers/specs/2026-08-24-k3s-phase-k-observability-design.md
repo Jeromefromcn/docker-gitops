@@ -86,7 +86,7 @@ Promtail 讀 kubelet 的 pod 日誌檔案、推到 Loki，這段全程在 k3s po
 | compose Prometheus 新 scrape_configs | 3 個新 job，`static_configs.targets` 指向 `10.0.0.95:30110`／`:30111`／`:30112` | 沿用 `prometheus.yml` 現有的 `static_configs` 風格（這個檔案目前沒有用任何服務發現機制，跟其餘 job 一致） |
 | compose Grafana 新資料源 | 在 `grafana/provisioning/datasources/` 新增 Loki（`http://10.0.0.95:30113`）與 Jaeger（`http://10.0.0.95:30114`）兩個 provisioning 檔 | 沿用現有 `prometheus.yml` provisioning 的模式 |
 | Istio tracing 設定 | `istiod-values.yaml` 的 `meshConfig` 加 `extensionProviders`（`envoyOtelAls` 或 zipkin 類型，指向 `jaeger.mesh-observability.svc.cluster.local:9411`），`pr-lanes` 加一個 `Telemetry` CR 啟用 tracing、引用該 provider | Istio 標準做法（`extensionProviders` + `Telemetry` CR），沿用 lab-environment jaeger.yaml 已經配好的 `COLLECTOR_ZIPKIN_HOST_PORT: ":9411"`（Zipkin 協定相容，Envoy 原生支援送 Zipkin 格式的 span，不需要額外的 collector/sidecar） |
-| **compose `prometheus`/`grafana` 的 docker network 優先權修正** | 兩個 service 的 `networks.proxy` 加 `priority: 1`（或等效機制，讓 `proxy` 網路成為預設閘道，蓋過 `default` 網路） | **本階段能成立的硬性前提，見下方「已知限制」的完整診斷過程**：這兩個容器目前預設閘道解析到 `monitoring_default`（`172.20.0.0/16`），不是 `proxy`（`172.19.0.0/16`）；實測 `docker exec prometheus wget http://10.0.0.95:<NodePort>` 回應 `No route to host`——封包從錯的網路出去，源位址不落在 `host-firewall.sh` 允許規則的 `172.19.0.0/16` 範圍內，被預設 REJECT 擋下。NPM 之所以能連 k3s NodePort（`grafana`/`argocd`/`headlamp` 現有的反代），是因為它只掛了 `proxy` 一張網路，沒有這個歧義。不修這個，`prometheus.yml`/Grafana 資料源即使配對了 IP:Port 也連不通 |
+| **compose `prometheus`/`grafana` 的 docker network 優先權修正** | 兩個 service 的 `networks.proxy` 加 `priority: 1`（或等效機制，讓 `proxy` 網路成為預設閘道，蓋過 `default` 網路） | **本階段能成立的硬性前提**，完整診斷過程見[排查記錄](../../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md)：這兩個容器目前預設閘道解析到 `monitoring_default`，不是 `proxy`，實測連 k3s NodePort 得到 `No route to host`。不修這個，`prometheus.yml`/Grafana 資料源即使配對了 IP:Port 也連不通 |
 
 ## Repo 佈局
 
@@ -140,13 +140,8 @@ vps_oracle/compose/monitoring/
 ## 已知限制
 
 - **路線圖原文對 K 階段的設計前提是錯的,本文件的架構是實地診斷後推翻重寫的結果**。原設計假設「指向 `lab-environment` 既有的 Prometheus/Loki/Jaeger」，但查證發現這套元件全部 `replicas: 0`（平時沒在跑），且 `lab-environment/README.md` 明文宣告「deliberate 不跟 `vps_oracle` 真實監控共用 pipeline」——原設計的方向本身就違反這條邊界。
-- **pod → docker bridge 這個方向被叢集層級的網路重定向機制擋死，已用多層診斷確認根因，刻意不在本階段修復**：
-  - 現象：`pr-lanes` 內任一 pod（含非 ambient mesh 成員的臨時 pod）連 compose 容器的固定 IP（`172.19.0.4:9090`）會 timeout，且封包**完全不出現**在目的地 docker bridge 介面或本機實體網卡上的 tcpdump 捕獲裡
-  - 排除過的假設：不是 host-firewall.sh 的 INPUT chain 擋（那是給「外部呼叫者連 host 服務」設計的規則，這個方向根本沒進到那一步）；不是 ztunnel/ambient mesh 攔截（非 mesh 成員的 pod 一樣連不通）；不是 K8s/Cilium NetworkPolicy（叢集裡目前一條都沒有）；`cilium-dbg monitor --type drop` 對這條特定流量沒有產生任何 drop 事件（代表不是 Cilium policy 層級主動拒絕）
-  - 根因：`ip rule show` 有一條優先權 9 的規則 `from all fwmark 0x200/0xf00 lookup 2004`，table 2004 只有 `local default dev lo`——任何被打上這個 mark 的封包全部被導去 loopback。這個 mark/table 組合幾乎可以肯定是 Cilium 與 istio-cni 之間既有的流量重定向機制的一部分（把疑似要送給 mesh 本地代理的流量標記後導去本地處理），`cilium/values.yaml` 裡已經記錄過同一類「Cilium 與 istio-cni 重定向機制互相搶跑」的先例（phase F+G Task 14，`socketLB.hostNamespaceOnly` 修的那個問題）——這次是同一類問題的另一個實例，只是觸發條件不同（目的地是私網位址）
-  - 為什麼不在本階段修：這條重定向機制目前是 ztunnel/waypoint 流量能正常工作的核心機制之一，貿然調整（例如試著把 `172.19.0.0/16` 排除在外）風險是有可能連帶弄壞現在運作正常的 mesh 流量重定向，而且需要先完整弄懂是哪個元件（Cilium 本身、還是 istio-cni 裝在 pod netns 裡的 iptables 規則）真正寫入這條 fwmark 規則，這是一個值得獨立立項的深度調查，不該在寫可觀測性配置的過程中順手動刀
-  - 這個限制**不是 `pr-lanes` 特有的**——任何 k3s pod 想連到 docker compose 網路裡的任何容器都會撞到同一堵牆，不只是本階段的 Loki/Jaeger。本階段的架構選擇（三種遙測全部走反方向、pod 只需要被動曝露 NodePort）完全繞開這個限制，沒有依賴它被修好
-- **compose `prometheus`/`grafana` 目前連不到任何 k3s NodePort，根因也已查證**：兩個容器都同時掛了 `default` 與 `proxy` 兩張 docker network，Docker 選擇 `monitoring_default`（`172.20.0.0/16`）當預設閘道而不是 `proxy`（`172.19.0.0/16`），導致對外連線（含連 `10.0.0.95:<NodePort>`）從 `172.20.0.0/16` 這個 host-firewall.sh 規則沒有涵蓋的網段出去，被預設 REJECT 擋下（`No route to host`）。NPM 能連是因為它只掛 `proxy` 一張網路，沒有這個歧義。修法（`networks.proxy.priority`）已經寫進「元件與設定」表，是本階段的硬性前提，不是可選的優化
+- **pod → docker bridge 這個方向被叢集層級的網路重定向機制擋死，刻意不在本階段修復**：`pr-lanes` 內任一 pod（含非 ambient mesh 成員）連 compose 容器固定 IP 會 timeout，封包完全不出現在任何網路介面上；根因是 `ip rule` 一條 `fwmark 0x200/0xf00 → table 2004（route via lo）` 的既有規則，幾乎可以肯定是 Cilium/istio-cni 流量重定向機制的一部分。不是 `pr-lanes` 特有——任何 k3s pod 想連 docker compose 網路都會撞到同一堵牆。修這條重定向機制風險高（可能連帶弄壞現在正常運作的 mesh 流量重定向），本階段選擇完全繞開它，不依賴它被修好。完整診斷過程（tcpdump、cilium-dbg monitor、ip rule 逐步排除)見[排查記錄](../../incidents/2026-08-24-k3s-pod-to-docker-bridge-blackhole.md)
+- **compose `prometheus`/`grafana` 目前連不到任何 k3s NodePort，根因是兩個容器的 docker network 預設閘道解析到錯的網段**（`monitoring_default` 而非 `proxy`），修法（`networks.proxy.priority`）已寫進「元件與設定」表，是本階段的硬性前提。完整診斷過程見[排查記錄](../../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md)
 - **Envoy trace 的取樣率**：`Telemetry` CR 若沒有明確設高取樣率，Jaeger 裡不會每個請求都看得到對應的 span，實作與驗證時需要留意，不要把「Jaeger 沒查到某次請求的 trace」誤判為架構沒接通
 - **這次的診斷過程動用了 `sudo iptables -L`、`cilium-dbg monitor`、臨時建立/刪除的診斷用 pod（`netdiag-tmp*`，均已清理，不留在叢集裡）——全程唯讀或使用一次性資源，沒有修改任何 ArgoCD 管理的既有資源，符合「k3s 資源 git-first」的原則**
 
