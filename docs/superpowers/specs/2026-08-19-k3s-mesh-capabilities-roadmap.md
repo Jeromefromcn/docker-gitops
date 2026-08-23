@@ -33,7 +33,7 @@
 | 階段 | 目標 | 交付物 | 依賴 |
 |---|---|---|---|
 | ~~I. 流量彈性與路由治理~~（✅ 已完成） | 金絲雀權重路由、超時重試、熔斷（outlier detection）、故障注入——全部靠新增 Istio/Gateway API 資源達成，零新元件（除了一個 content-variant 的 `hello-backend-canary` Deployment） | `pr-lanes` 具備完整的流量治理能力，可用於後續的漸進式發布與 chaos 測試 | F+G |
-| J. 細粒度存取控制 | AuthorizationPolicy，限定 `hello-frontend`→waypoint→`hello-backend`（及各 PR 泳道 backend）之間的合法呼叫關係 | 網格內東西向流量有身份層級的准入控制，非法呼叫在 ztunnel/waypoint 層被拒絕 | F+G，獨立於 I |
+| ~~J. 細粒度存取控制~~（✅ 已完成） | AuthorizationPolicy，限定 `hello-frontend`→waypoint→`hello-backend`（及各 PR 泳道 backend）之間的合法呼叫關係 | 網格內東西向流量有身份層級的准入控制，非法呼叫在 ztunnel/waypoint 層被拒絕 | F+G，獨立於 I |
 | K. 可觀測性接入 | 指標（istiod/ztunnel/waypoint 的 Prometheus 端點）、日誌（waypoint access log）、追蹤（Envoy trace）全部指向 `lab-environment` 既有的 Prometheus/Loki/Jaeger，不在 `pr-lanes` 新裝 | PR 泳道流量的指標/日誌/追蹤能在既有的 Grafana/Jaeger UI 查到 | F+G，需先確認跨命名空間網路路徑（見現狀約束） |
 | L. 限流（評估性） | 評估 Gateway API experimental channel 升級 vs. Istio EnvoyFilter 兩條路徑的成本，**不預設一定要交付** | 一份取捨紀錄；若評估結果是「不值得」，路線圖到此為止，不強行實作 | I |
 
@@ -81,7 +81,7 @@ AuthorizationPolicy 寫錯的失敗模式跟 I 階段的四項完全不同——
 ## 待細化的設計取捨
 
 - ~~I 階段的金絲雀權重路由要不要跟熔斷共用同一份 `DestinationRule`，還是分開管理~~（✅ 已定案：不共用）——`DestinationRule.host` 是單值欄位，`hello-backend` 與 `hello-backend-canary` 是兩個獨立 Service host，機制上就是兩份（一份 per host），不是風格選擇。且權重分流最終由 `VirtualService` 承載（見 I 實作結果），`DestinationRule` 沒有 subset 可切，共用沒有意義
-- J 階段的 AuthorizationPolicy 粒度：只做「哪些 workload 能呼叫哪些 workload」的服務層級控制，還是要細到「哪些 HTTP method/path」的請求層級控制——後者表達力更強，但策略數量會隨 PR 泳道數量增長，維運成本要一併評估
+- ~~J 階段的 AuthorizationPolicy 粒度：只做「哪些 workload 能呼叫哪些 workload」的服務層級控制，還是要細到「哪些 HTTP method/path」的請求層級控制——後者表達力更強，但策略數量會隨 PR 泳道數量增長，維運成本要一併評估~~（✅ 已定案：服務層級）——J 階段設計文檔定案只做 workload 對 workload 的服務層級控制，不含 HTTP method/path：`hello-backend` 目前只有一個簡單端點，method/path 粒度沒有實際防禦收益，且策略數量會隨 PR 泳道數量增長，維運成本不成比例
 - K 階段引入跨命名空間依賴後，`lab-environment` 的既有告警/巡檢（[inspector](../../../vps_oracle/inspector)）要不要一併涵蓋 `pr-lanes` 的可觀測性健康度——目前 inspector 分 docker 層/k3s 層兩段巡檢，`pr-lanes` 的 mesh 指標算哪一段需要界定清楚
 
 ## 各階段設計文檔
@@ -89,6 +89,6 @@ AuthorizationPolicy 寫錯的失敗模式跟 I 階段的四項完全不同——
 （隨階段推進逐一補上連結）
 
 - I：✅ 已完成 — [設計文檔](2026-08-22-k3s-phase-i-traffic-resilience-design.md)（含實作結果與已知限制）、[實作計畫](2026-08-22-k3s-phase-i-traffic-resilience.md)（已打勾）
-- J：🚧 設計完成，待實作 — [設計文檔](2026-08-23-k3s-phase-j-authorization-design.md)
+- J：✅ 已完成 — [設計文檔](2026-08-23-k3s-phase-j-authorization-design.md)（含實作結果與已知限制）、[實作計畫](../plans/2026-08-23-k3s-phase-j-authorization.md)（已打勾）
 - K：待建立
 - L：待建立
