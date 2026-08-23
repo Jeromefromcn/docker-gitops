@@ -20,6 +20,7 @@ spec:
         app: hello-backend
         lane: template
     spec:
+      serviceAccountName: hello-backend-sa
       securityContext:
         runAsNonRoot: true
         seccompProfile:

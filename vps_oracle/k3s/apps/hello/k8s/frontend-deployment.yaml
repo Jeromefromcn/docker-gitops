@@ -30,6 +30,7 @@ spec:
         #     -o jsonpath='{.data.default\.conf}' | sha256sum
         configmap-checksum: "e80fd33fbf8ac9f38e059f51634963eb9582a2ad55e459db20c2ca7b6b1e7425"
     spec:
+      serviceAccountName: hello-frontend-sa
       securityContext:
         runAsNonRoot: true
         seccompProfile:
