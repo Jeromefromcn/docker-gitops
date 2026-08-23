@@ -3,6 +3,8 @@
 .env.*
 *.env
 !.env.example
+.bash_secrets
+!.bash_secrets.example
 secrets/
 # SealedSecret manifests are encrypted at rest and safe to commit — exempt
 # this path from the blanket "secrets/" rule above.

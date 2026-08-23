@@ -1,0 +1,12 @@
+[user]
+    name = Jerome Jiang
+    email = jeromefromcn@gmail.com
+
+[credential "https://github.com"]
+    helper = store --file=/home/ubuntu/.git-credentials-personal
+
+[includeIf "gitdir:~/evidence/"]
+    path = ~/.gitconfig-evidence
+
+[includeIf "gitdir:~/bridget/"]
+    path = ~/.gitconfig-bridget

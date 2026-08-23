@@ -1,0 +1,10 @@
+{
+    "claudeCode.allowDangerouslySkipPermissions": true,
+    "git.defaultCloneDirectory": "~/jerome",
+    "files.dialog.defaultPath": "/home/ubuntu/jerome",
+    "claudeCode.claudeProcessWrapper": "/home/ubuntu/.claude/claude-direnv-wrapper.sh",
+    "claudeCode.useTerminal": true,
+    "claudeCode.environmentVariables": [
+        
+    ]
+}

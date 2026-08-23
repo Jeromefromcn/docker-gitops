@@ -1,0 +1,7 @@
+{
+  "commands": {
+    "Stop": "/home/ubuntu/.claude/claude-code-notify/hooks/stop.sh",
+    "StopFailure": "/home/ubuntu/.claude/claude-code-notify/hooks/stop_failure.sh",
+    "PermissionRequest": "/home/ubuntu/.claude/claude-code-notify/hooks/permission_request.sh"
+  }
+}

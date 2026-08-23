@@ -18,6 +18,7 @@ Oracle Cloud VPS 上跑的服务。
 | `inspector/` | 宿主机巡检脚本 + systemd timer，跨 docker 与 k3s 两侧做只读体检 | [inspector/README.md](inspector/README.md) |
 | `host-firewall/` | 宿主机 iptables 规则脚本（`INPUT` 默认 REJECT，逐条放行） | 脚本自身注释 |
 | `npm-nodeport-relay/` | host netns 里的 TCP relay，补上 NPM 容器到 k3s NodePort 的可达性 | [npm-nodeport-relay/README.md](npm-nodeport-relay/README.md) |
+| `dotfiles/` | 这台机器上一部分本机配置（Claude Code 全局设置、shell/git 配置、VS Code Server 机器级设置等）软链进仓库纳管 | [dotfiles/README.md](dotfiles/README.md) |
 
 下面的网络约定只适用于 `compose/`；k3s 侧的网络（Cilium pod network、NodePort、NPM 反代到 NodePort 的坑）见 `k3s/README.md` 和根 README。
 
