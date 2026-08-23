@@ -141,3 +141,4 @@ eval "$(direnv hook bash)"
 export SDKMAN_DIR="$HOME/.sdkman"
 [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
 export KUBECONFIG=$HOME/.kube/config
+export PATH="/home/ubuntu/go/go/bin:$PATH"
