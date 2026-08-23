@@ -89,6 +89,6 @@ AuthorizationPolicy 寫錯的失敗模式跟 I 階段的四項完全不同——
 （隨階段推進逐一補上連結）
 
 - I：✅ 已完成 — [設計文檔](2026-08-22-k3s-phase-i-traffic-resilience-design.md)（含實作結果與已知限制）、[實作計畫](2026-08-22-k3s-phase-i-traffic-resilience.md)（已打勾）
-- J：待建立
+- J：🚧 設計完成，待實作 — [設計文檔](2026-08-23-k3s-phase-j-authorization-design.md)
 - K：待建立
 - L：待建立
