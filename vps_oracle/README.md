@@ -16,7 +16,7 @@ Oracle Cloud VPS 上跑的服务。
 | `compose/` | docker compose 栈，每个子目录就是该栈的工作目录 | 根 [README.md](../README.md) |
 | `k3s/` | K3s 云原生实验平台（Cilium / ArgoCD / Istio Ambient / Kyverno / Trivy / Sealed Secrets + `lab-environment`、`headlamp`、`pr-lanes` 三个负载），一律走 GitOps，不手动 `kubectl apply` | [k3s/README.md](k3s/README.md) |
 | `inspector/` | 宿主机巡检脚本 + systemd timer，跨 docker 与 k3s 两侧做只读体检 | [inspector/README.md](inspector/README.md) |
-| `host-firewall/` | 宿主机 iptables 规则脚本（`INPUT` 默认 REJECT，逐条放行） | 脚本自身注释 |
+| `host-firewall/` | 宿主机 iptables 规则脚本（`INPUT` 默认 REJECT，逐条放行） | [host-firewall/README.md](host-firewall/README.md) |
 | `npm-nodeport-relay/` | host netns 里的 TCP relay，补上 NPM 容器到 k3s NodePort 的可达性 | [npm-nodeport-relay/README.md](npm-nodeport-relay/README.md) |
 | `dotfiles/` | 这台机器上一部分本机配置（Claude Code 全局设置、shell/git 配置、VS Code Server 机器级设置等）软链进仓库纳管 | [dotfiles/README.md](dotfiles/README.md) |
 

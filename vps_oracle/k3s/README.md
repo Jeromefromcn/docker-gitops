@@ -160,7 +160,7 @@ kubectl get secret <name> -n <namespace> -o json \
   > vps_oracle/k3s/sealed-secrets/secrets/<name>.sealed.yaml
 ```
 
-Commit the output (safe — it's ciphertext), push, then delete the old bare Secret (`kubectl delete secret <name> -n <namespace>`) so the controller can take ownership without a naming conflict. The `sealed-secrets` Application (`prune: true`/`selfHeal: true`) picks up new files under `vps_oracle/k3s/sealed-secrets/secrets/` automatically.
+Commit the output (safe — it's ciphertext), push, then delete the old bare Secret (`kubectl delete secret <name> -n <namespace>`) so the controller can take ownership without a naming conflict. The `sealed-secrets` Application (`prune: true`/`selfHeal: true`) picks up new files under `vps_oracle/k3s/sealed-secrets/secrets/` automatically — inventory of what's currently sealed: [`sealed-secrets/secrets/README.md`](sealed-secrets/secrets/README.md).
 
 **Key backup is the single point of failure.** The controller's signing key (`sealed-secrets-key*` Secret in the `sealed-secrets` namespace) is the only way to decrypt every `SealedSecret` in the repo — this is a single-node cluster with no etcd HA to fall back on. A GPG-encrypted export lives at `/home/ubuntu/secrets-backup/` on the host (outside git, outside the cluster), with a copy meant to live somewhere physically separate from this VPS too. If the key is ever rotated or the controller reinstalled from scratch, redo that backup — don't assume the old one still applies.
 
@@ -198,6 +198,10 @@ Commit the output (safe — it's ciphertext), push, then delete the old bare Sec
    kubectl delete -f manifests/verification/netpol-test.yaml   # only if still applied
    kubectl get pods -n workloads                  # expect: No resources found
    ```
+
+## lab-environment
+
+K3s-native, migrated from a separate independently-managed project (`~/jerome/lab-environment`), not from anything in this repo's `compose/`. Isolated namespace, `replicas: 0` by default, deliberately no shared Prometheus/Grafana/alerting with this cluster's or compose's own monitoring. Full details: [`apps/lab-environment/README.md`](apps/lab-environment/README.md).
 
 ## homepage
 
@@ -260,7 +264,7 @@ Phase E's admission-control stack: Trivy Operator (`trivy-operator/trivy-operato
 - `require-vuln-scan-clean` — denies Pods with a `VulnerabilityReport` showing a `CRITICAL` vulnerability that **has a fix available** (`fixedVersion != ''`). Originally cluster-wide; narrowed on 2026-08-18 to self-built images only (`app in (hello-frontend, hello-backend)`, same selector pattern as `restricted-self-built`) — see the 2026-08-18 finding below for why. Deliberately does NOT deny on unfixable CRITICALs — blocking those has no resolution path and would just deadlock the workload forever
 - `restricted-self-built` — Kubernetes `restricted` Pod Security profile via Kyverno's built-in `validate.podSecurity`, scoped by pod label (`app in (hello-frontend, hello-backend)`) rather than namespace, since `workloads` mixes self-built and third-party images
 
-Adding a new self-built workload: add it to `restricted-self-built.yaml`'s label selector, and to `require-vuln-scan-clean.yaml`'s label selector (same `app in (...)` pattern, since 2026-08-18) if it should also get the CVE gate.
+Adding a new self-built workload: add it to `restricted-self-built.yaml`'s label selector, and to `require-vuln-scan-clean.yaml`'s label selector (same `app in (...)` pattern, since 2026-08-18) if it should also get the CVE gate. Full policy manifests: [`kyverno/policies/README.md`](kyverno/policies/README.md).
 
 **Known Kyverno gotchas hit during rollout, worth knowing before touching these policies again:**
 - **CRD size vs. client-side apply**: Kyverno's `ClusterPolicy`/`Policy` CRDs have OpenAPI schemas large enough that `kubectl.kubernetes.io/last-applied-configuration` (client-side apply's annotation) exceeds Kubernetes' 262144-byte `metadata.annotations` limit, failing CRD sync outright with `metadata.annotations: Too long`. Fixed by adding `ServerSideApply=true` to the `kyverno` Application's `syncOptions` — don't remove it.

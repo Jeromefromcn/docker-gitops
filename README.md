@@ -46,6 +46,8 @@ cd ~/jerome/docker-gitops/<host>/compose/<compose> && docker compose up -d
 
 compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`），因此工作目录搬到仓库里不影响容器内的数据位置。
 
+部分 compose 栈自己有 README（记录该栈特有的操作步骤/坑），进目录前先看有没有：[`ccr/README.md`](vps_oracle/compose/ccr/README.md)、[`dify/README.md`](vps_oracle/compose/dify/README.md)、[`npm/README.md`](vps_oracle/compose/npm/README.md)、[`switchboard/README.md`](vps_oracle/compose/switchboard/README.md)。
+
 ## 新增一个服务
 
 1. 在对应 `<host>/compose/` 目录下新建 `<compose>/docker-compose.yml`
@@ -157,6 +159,8 @@ Vikunja 的任务事件（指派/提醒到期/逾期/完成）通过 webhook 转
 
 ## Host 列表
 
-| Host | 说明 |
-|---|---|
-| vps_oracle | Oracle Cloud VPS |
+| Host | 说明 | 详情 |
+|---|---|---|
+| vps_oracle | Oracle Cloud VPS | [vps_oracle/README.md](vps_oracle/README.md) |
+
+其他背景/历史资料（故障记录、设计存档等，非日常操作必读）见 [`docs/README.md`](docs/README.md)。
