@@ -42,7 +42,8 @@
 - Prefer doing less and confirming.
 
 ## Memory
-- Before adding any memory, ask the user whether it should go into the project's CLAUDE.md or into persistent memory. Default to the project's CLAUDE.md.
+- Default to persistent memory, not CLAUDE.md — CLAUDE.md loads every session regardless of relevance, so keep it to durable, broadly-applicable rules.
+- If something feels like a standing rule other sessions should see (not just this session's context), surface it and suggest CLAUDE.md instead of saving it straight to memory.
 
 ## Superpowers Policy
 - Clear-cut ops/config changes (K8s/Compose/YAML only): skip superpowers, no need to ask
