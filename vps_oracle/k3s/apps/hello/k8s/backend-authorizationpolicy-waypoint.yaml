@@ -4,8 +4,6 @@ kind: AuthorizationPolicy
 metadata:
   name: hello-backend-waypoint-frontend-only
   namespace: pr-lanes
-  annotations:
-    istio.io/dry-run: "true"
 spec:
   targetRefs:
     - kind: Gateway
