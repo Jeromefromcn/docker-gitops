@@ -1,0 +1,10 @@
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-tracing
+  namespace: pr-lanes
+spec:
+  tracing:
+    - providers:
+        - name: zipkin-mesh-observability
+      randomSamplingPercentage: 100.0

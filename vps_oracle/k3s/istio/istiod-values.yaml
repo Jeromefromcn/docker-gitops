@@ -21,6 +21,15 @@ meshConfig:
   # any namespace that DOES opt in. Left at chart default deliberately:
   # no sidecar injection anywhere, ambient is fully sidecar-free.
   accessLogFile: /dev/stdout
+  # Phase K: lets pr-lanes' Telemetry CR (see
+  # vps_oracle/k3s/apps/hello/k8s/pr-lanes-telemetry.yaml) send Envoy spans
+  # to mesh-observability's Jaeger over its Zipkin-compatible ingest port —
+  # in-cluster ClusterIP call, never crosses the k3s<->compose boundary.
+  extensionProviders:
+    - name: zipkin-mesh-observability
+      zipkin:
+        service: jaeger.mesh-observability.svc.cluster.local
+        port: 9411
 
 global:
   waypoint:
