@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: promtail
+  namespace: mesh-observability
+  labels:
+    app: promtail
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: promtail
+  template:
+    metadata:
+      labels:
+        app: promtail
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: promtail
+          image: grafana/promtail:3.1.0
+          args:
+            - -config.file=/etc/promtail/promtail-config.yml
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/promtail/promtail-config.yml
+              subPath: promtail-config.yml
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+      volumes:
+        - name: config
+          configMap:
+            name: promtail-config
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+            type: Directory

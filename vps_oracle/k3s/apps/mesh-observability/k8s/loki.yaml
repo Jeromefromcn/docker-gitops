@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  namespace: mesh-observability
+  labels:
+    app: loki
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: loki
+          image: grafana/loki:3.1.0
+          args:
+            - -config.file=/etc/loki/loki-config.yml
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+          ports:
+            - containerPort: 3100
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki/loki-config.yml
+              subPath: loki-config.yml
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: loki-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: mesh-observability
+spec:
+  type: NodePort
+  selector:
+    app: loki
+  ports:
+    - port: 3100
+      targetPort: 3100
+      nodePort: 30113
