@@ -81,6 +81,7 @@ Promtail 讀 kubelet 的 pod 日誌檔案、推到 Loki，這段全程在 k3s po
 | Promtail 範圍 | `promtail-config.yml` 的 scrape glob 改成只匹配 `/var/log/pods/pr-lanes_*`（`lab-environment` 的 promtail 用同樣手法把自己限定在自己的 namespace，見它的 `configmaps.yaml` 註解） | 只收 `pr-lanes` 的日誌，不是整個節點——避免把 `kube-system`/`argocd` 等其他 namespace 的日誌也一起吃進來，控制量體與資源用量 |
 | istiod metrics 曝露 | 新增 `Service`（`istio-system` namespace，NodePort，selector `app=istiod,istio=pilot`，指到既有的 `15014` 埠），**不修改 istiod 自己那個由 istio-istiod Application 管理的 ClusterIP Service** | istiod 已經有 `http-monitoring:15014`，只是沒有對外曝露；另開一個獨立 Service 是為了不去動 ArgoCD 管理的既有資源（改了會被下次 sync 覆蓋，或造成不必要的 diff） |
 | ztunnel metrics 曝露 | 新增 `Service`（`istio-system` namespace，NodePort，selector `app=ztunnel`，指到既有的 `15020 ztunnel-stats` 埠） | ztunnel 目前完全沒有 Service，這是新建，不涉及修改既有資源 |
+| istiod/ztunnel metrics Service 歸屬哪個 ArgoCD Application | 併入新建的 `mesh-observability` Application（放進它的 `k8s/` 目錄，每個檔案顯式帶 `metadata.namespace: istio-system`），**不放進 `vps_oracle/k3s/istio/`** | `istio-istiod`/`istio-ztunnel` 兩個 Application 的 `source` 是遠端 Helm chart（`istio-release.storage.googleapis.com`），`vps_oracle/k3s/istio/` 底下的檔案只當 Helm values 用（`valueFiles: - $values/vps_oracle/k3s/istio/istiod-values.yaml`），不是「這個目錄下的檔案會被自動撿到」的 plain-manifests 模式——丟進去的新 YAML 不會被同步。ArgoCD 允許一個 Application 管理 `destination.namespace` 以外的資源，只要 manifest 自己寫明 `metadata.namespace`，`lab-environment` 底下的既有 YAML 也是這樣顯式寫 namespace 的慣例，沿用即可 |
 | waypoint metrics 曝露 | 新增 `Service`（`pr-lanes` namespace，NodePort，selector 對齊 waypoint pod 的 label，指到既有的 `15090 http-envoy-prom` 埠） | waypoint 由 Gateway API 的 `Gateway` 資源自動建立了一個 Service，但只轉發 `15021`/`15008`，不含 metrics 埠——另開一個小 Service 補這個洞，不去動 Gateway 資源自動生成的那個 |
 | NodePort 分配 | `istiod-metrics 30110`、`ztunnel-metrics 30111`、`waypoint-metrics 30112`、`loki 30113`、`jaeger-query 30114`（Jaeger 的 Zipkin 收集埠 `9411` 只用 ClusterIP，不需要 NodePort） | 目前已用：`30083`（hello-frontend）、`30090`（argocd）、`30092-30098`（lab-environment + headlamp）、`30512`（lab-environment jaeger zipkin，未顯式指定被自動分配）。挑一段連號、可讀的範圍，實作時要重新 `kubectl get svc -A --field-selector spec.type=NodePort` 確認沒有新的衝突（這幾天可能有變動） |
 | compose Prometheus 新 scrape_configs | 3 個新 job，`static_configs.targets` 指向 `10.0.0.95:30110`／`:30111`／`:30112` | 沿用 `prometheus.yml` 現有的 `static_configs` 風格（這個檔案目前沒有用任何服務發現機制，跟其餘 job 一致） |
@@ -98,20 +99,18 @@ vps_oracle/k3s/apps/mesh-observability/         # 新目錄
     jaeger.yaml                # 抄 lab-environment/k8s/jaeger.yaml，改 namespace + NodePort（UI/query）
     promtail.yaml              # 抄 lab-environment/k8s/promtail.yaml，改 namespace + scrape glob 限定 pr-lanes
     configmaps.yaml            # loki-config / promtail-config（scrape glob: /var/log/pods/pr-lanes_*）
+    istiod-metrics-service.yaml  # 新增：NodePort Service，metadata.namespace 顯式寫 istio-system，指到既有 istiod Service 選中的 15014
+    ztunnel-metrics-service.yaml # 新增：NodePort Service，metadata.namespace 顯式寫 istio-system，指到 ztunnel 的 15020
 
 vps_oracle/k3s/argocd/apps/
   mesh-observability.yaml     # 新增，照抄 lab-environment.yaml 的格式，path 指到上面那個目錄
 
 vps_oracle/k3s/apps/hello/k8s/
   waypoint-metrics-service.yaml   # 新增：NodePort Service，指到 waypoint pod 的 15090
+  pr-lanes-telemetry.yaml         # 新增：Telemetry CR，啟用 tracing 並引用 istiod 的 zipkin provider
 
 vps_oracle/k3s/istio/
-  istiod-values.yaml           # 修改：meshConfig.extensionProviders 加 zipkin provider
-  istiod-metrics-service.yaml  # 新增：NodePort Service（istio-system），指到既有 istiod Service 選中的 15014
-  ztunnel-metrics-service.yaml # 新增：NodePort Service（istio-system），指到 ztunnel 的 15020
-
-vps_oracle/k3s/apps/hello/k8s/ 或獨立檔案
-  pr-lanes-telemetry.yaml      # 新增：Telemetry CR，啟用 tracing 並引用 istiod 的 zipkin provider
+  istiod-values.yaml           # 修改：meshConfig.extensionProviders 加 zipkin provider（這是 Helm values 檔，istiod-metrics-service.yaml 不放這裡，見「元件與設定」表的說明）
 
 vps_oracle/compose/monitoring/
   docker-compose.yml           # 修改：prometheus + grafana 兩個 service 加 networks.proxy.priority
@@ -121,7 +120,7 @@ vps_oracle/compose/monitoring/
     jaeger.yml                 # 新增
 ```
 
-新的 `istiod-metrics-service.yaml`/`ztunnel-metrics-service.yaml` 放在 `vps_oracle/k3s/istio/` 底下需要確認這個目錄目前是不是由某個 ArgoCD Application（`istio-istiod`/`istio-ztunnel`）直接管理整個目錄——如果是，新增檔案會被那個 Application 自動撿到（通常是好事，不需要新開 Application），但要先讀一下 `istio-istiod.yaml`/`istio-ztunnel.yaml` 的 `source.path` 範圍確認，實作階段的第一步就該做這個確認。
+（`istiod-metrics-service.yaml`/`ztunnel-metrics-service.yaml` 併入 `mesh-observability` Application 這個決定已在「元件與設定」表定案，不再是待確認事項。）
 
 ## 驗證清單（phase K 過關標準，implement 階段會再細化成逐步驟）
 

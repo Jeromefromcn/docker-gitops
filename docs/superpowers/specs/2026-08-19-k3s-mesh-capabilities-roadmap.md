@@ -93,5 +93,5 @@ K 階段的新設計改採兩個決定：`lab-environment` 保留原封不動（
 
 - I：✅ 已完成 — [設計文檔](2026-08-22-k3s-phase-i-traffic-resilience-design.md)（含實作結果與已知限制）、[實作計畫](2026-08-22-k3s-phase-i-traffic-resilience.md)（已打勾）
 - J：✅ 已完成 — [設計文檔](2026-08-23-k3s-phase-j-authorization-design.md)（含實作結果與已知限制）、[實作計畫](../plans/2026-08-23-k3s-phase-j-authorization.md)（已打勾）
-- K：設計完成，待實作 — [設計文檔](2026-08-24-k3s-phase-k-observability-design.md)
+- K：設計與實作計畫完成，待執行 — [設計文檔](2026-08-24-k3s-phase-k-observability-design.md)、[實作計畫](../plans/2026-08-24-k3s-phase-k-observability.md)
 - L：待建立
