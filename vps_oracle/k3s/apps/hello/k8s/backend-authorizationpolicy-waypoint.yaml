@@ -1,0 +1,19 @@
+# vps_oracle/k3s/apps/hello/k8s/backend-authorizationpolicy-waypoint.yaml
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: hello-backend-waypoint-frontend-only
+  namespace: pr-lanes
+  annotations:
+    istio.io/dry-run: "true"
+spec:
+  targetRefs:
+    - kind: Gateway
+      group: gateway.networking.k8s.io
+      name: waypoint
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/pr-lanes/sa/hello-frontend-sa
