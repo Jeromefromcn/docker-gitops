@@ -115,8 +115,11 @@ Policy 2 為什麼不比照 Policy 1 走 dry-run 觀察期：它的判斷條件�
 
 **Policy 1 切 Enforce 後：**
 7. 正常請求（同第 3、5 項的路徑）延遲/成功率與 J 階段改動前一致
-8. 用一個不具備 `hello-frontend-sa` 身份的來源（例如臨時 debug pod，用 `default` SA 或其他 SA）**經過** `hello-frontend`/waypoint 這條路徑呼叫 backend，確認被拒絕（`PERMISSION_DENIED` 或連線被拒）
-9. 用同一個臨時 debug pod **繞過**waypoint、直接呼叫 `hello-backend`/`hello-backend-canary`/`hello-backend-pr-N` 的 ClusterIP，確認同樣被拒絕（驗證 Policy 2 這一層防線獨立生效，不依賴 Policy 1）
+8. 用一個不具備 `hello-frontend-sa` 身份的來源（例如臨時 debug pod，用 `default` SA）呼叫 `hello-backend`/`hello-backend-canary` 的 Service 主機名稱——因為這兩個 Service 本身就有 `use-waypoint` label，ztunnel 會自動把這個請求導去 waypoint，這就是 Policy 1 的驗證路徑，確認被拒絕（`PERMISSION_DENIED` 或連線被拒）
+9. **繞過 waypoint 的直連測試**，驗證 Policy 2 這一層防線獨立生效、不依賴 Policy 1：
+   - 對 `hello-backend`/`hello-backend-canary`：Service 主機名稱本身會被導去 waypoint（見第 8 項），要測真正的繞過必須直接打 **Pod IP**（`kubectl -n pr-lanes get pod -o wide` 取得 IP，直接 curl `http://<pod-ip>:8080/`），跳過 Service 層級的 waypoint 導流機制
+   - 若當下有開啟中的 PR 泳道：`hello-backend-pr-N` 的 Service 本身沒有 `use-waypoint` label，直接 curl 它的 Service 主機名稱（不需要用 Pod IP）就已經是真正的繞過路徑
+   - 兩種情況都應該被拒絕
 10. 若當下有開啟中的 PR 泳道，重跑第 6 項對應的正常流量路徑，確認 Enforce 後仍然放行
 11. `kubectl describe resourcequota pr-lanes-quota -n pr-lanes` 確認新增資源未消耗 quota（預期無變化，`ServiceAccount`/`AuthorizationPolicy` 不計入）
 12. 全部既有 Application 複查仍 `Synced` + `Healthy`
