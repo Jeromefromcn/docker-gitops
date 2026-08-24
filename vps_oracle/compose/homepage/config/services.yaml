@@ -34,6 +34,11 @@
         href: https://headlamp.jerome.cloudns.asia
         description: Read-only Kubernetes cluster dashboard
 
+    - MinIO:
+        icon: minio.png
+        href: https://minio.jerome.cloudns.asia
+        description: S3-compatible object storage
+
 - Apps:
     - Trilium:
         icon: trilium.png

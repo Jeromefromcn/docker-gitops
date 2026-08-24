@@ -1,0 +1,28 @@
+services:
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    container_name: minio
+    hostname: minio
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    env_file:
+      - .env   # MINIO_ROOT_USER / MINIO_ROOT_PASSWORD（gitignore，不提交）
+    environment:
+      TZ: "Asia/Hong_Kong"
+    command: server /data --console-address ":9001"
+    volumes:
+      - /etc/minio/data:/data
+    networks:
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = minio, Forward Port = 9001（控制台，未发布到宿主机）。
+    # 9000（S3 API）不发布、不反代，纯内部使用，需要外部 S3 时再开。
+
+networks:
+  proxy:
+    external: true
