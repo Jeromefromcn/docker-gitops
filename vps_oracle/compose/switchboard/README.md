@@ -43,6 +43,7 @@
 | `projects/` | 软链 → `~/.claude` | 共享 | **memory**（`projects/<路径>/memory/`）+ 每会话转录 `.jsonl` |
 | `sessions/` `history.jsonl` `session-env/` `shell-snapshots/` `file-history/` | 软链 → `~/.claude` | 共享 | **会话索引/全局历史/环境快照/文件编辑历史** |
 | `cache/` `telemetry/` `stats-cache.json` `downloads/` `backups/` `auto-job-log/` `channels/` `plans/` `tasks/` `ide/` | 软链 → `~/.claude` | 共享 | 缓存/日志/应用状态，覆盖无害 |
+| `daemon/` `daemon.lock` `daemon.log` `daemon.status.json` `jobs/` | 软链 → `~/.claude` | 共享 | 后台 daemon（supervisor/worker 进程状态、`/tmp` socket 索引）+ 任务队列，单机唯一进程的运行时状态，不是账号身份 |
 | `.last-cleanup` `.last-update-result.json` `.claude-code-notify-hooks.json` | 软链 → `~/.claude` | 共享 | 清理/更新/notify 状态 |
 | `claude-direnv-wrapper.sh` `direnv-bash-env.sh` `direnv-load.sh` | 软链 → `~/.claude` | 共享 | 分组注入 wrapper 及 helper（实际按绝对路径引用，链了也不碍事） |
 
