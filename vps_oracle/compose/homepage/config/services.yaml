@@ -14,10 +14,15 @@
         href: https://grafana.jerome.cloudns.asia/d/rYdddlPWk/node-exporter-full?orgId=1&from=now-24h&to=now&timezone=browser&var-job=node&var-nodename=node-exporter&var-node=node-exporter:9100&refresh=1m
         description: Monitoring dashboard
 
+    - Jaeger:
+        icon: jaeger.png
+        href: https://jaeger.jerome.cloudns.asia
+        description: Distributed tracing (mesh observability)
+
     - Switchboard:
         icon: si-anthropic
         href: https://switchboard.jerome.cloudns.asia
-        description: Config-driven toggle framework (Claude provider switching, and more)
+        description: Config-driven toggle framework
 
     - CCR Admin:
         icon: si-anthropic

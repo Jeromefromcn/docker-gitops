@@ -17,9 +17,9 @@
 | Access List | 放行規則 | 用在幾個 proxy host | 額外要求 |
 |---|---|---|---|
 | `self-only`（id 1） | `172.19.0.2/32`（3x-ui 在 `proxy` 網路的 IP）、`161.118.254.107`（伺服器目前的公網 IP） | 17 個 | 無 |
-| `self-only-and-auth`（id 2） | 同上兩條 | 9 個 | 還要過 Basic Auth（帳號 `jerome`） |
+| `self-only-and-auth`（id 2） | 同上兩條 | 10 個 | 還要過 Basic Auth（帳號 `jerome`） |
 
-`self-only-and-auth` 掛的 9 個 proxy host 都是**無內建鑑權的管理面板**：`npm`（NPM 自己的管理面板）、`grafana`、`portainer`、`cc-window`（host-native 的 Claude Code 多會話看板，2026-08-24 加入，見 [`vps_oracle/host-native/cc-window/README.md`](../../host-native/cc-window/README.md)）、`redisinsight`（統一 Redis 的管理界面，見 [`vps_oracle/compose/redis/README.md`](../../compose/redis/README.md)，2026-08-24 加入）等。規則：**凡無內建鑑權的服務，一律用 `self-only-and-auth`，不要用 `self-only`**（`self-only` 只擋「來源」，不擋「誰」——同一台機器上任何使用者/程序都能訪問）。
+`self-only-and-auth` 掛的 10 個 proxy host 都是**無內建鑑權的管理面板**：`npm`（NPM 自己的管理面板）、`grafana`、`portainer`、`cc-window`（host-native 的 Claude Code 多會話看板，2026-08-24 加入，見 [`vps_oracle/host-native/cc-window/README.md`](../../host-native/cc-window/README.md)）、`redisinsight`（統一 Redis 的管理界面，見 [`vps_oracle/compose/redis/README.md`](../../compose/redis/README.md)，2026-08-24 加入）、`jaeger`（mesh-observability 的分散式追蹤 UI，反代到 k3s NodePort 30114，2026-08-24 加入）等。規則：**凡無內建鑑權的服務，一律用 `self-only-and-auth`，不要用 `self-only`**（`self-only` 只擋「來源」，不擋「誰」——同一台機器上任何使用者/程序都能訪問）。
 
 `161.118.254.107` 是伺服器目前的公網出口 IP（`curl https://ifconfig.me` 查得到），**不是固定不變的**——如果哪天 Oracle 換了這台機器的公網 IP，這兩條 access list 都要跟著更新，不然沒經過 3x-ui、直接從公網打進來的流量（例如 blackbox_exporter 自己的探測）會被擋在外面。
 

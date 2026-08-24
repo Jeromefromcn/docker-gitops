@@ -14,6 +14,7 @@
 - compose 既有的 Prometheus 加 3 個新 scrape target；既有的 Grafana 加 Loki + Jaeger 兩個新資料源——**沿用 compose 現有的 Prometheus/Grafana，不在 compose 另外新裝一套**
 - Istio 的 tracing 設定指向 `mesh-observability` 裡的 Jaeger（叢集內 ClusterIP，不跨網路邊界）
 - compose 的 `prometheus`、`grafana` 兩個 service 修正 docker network 預設閘道優先權（見下方「已知限制」，這是本階段能成立的前提修正，不修就連不到任何 NodePort）
+- **Jaeger UI 接入 NPM 反代 + homepage 卡片（2026-08-24 完成）**：`jaeger.jerome.cloudns.asia` → `10.0.0.95:30114`（mesh-observability 的 Jaeger-query NodePort），用 `self-only-and-auth` access list（id 2，含 3x-ui 來源 + 公網 IP + Basic Auth），NPM proxy host id 36、憑證 id 38；homepage `Infra Services` 區加 `Jaeger` 卡片（緊鄰主 Grafana）。Loki 沒有獨立 UI，日誌就在既有 Grafana 的 Loki 資料源看（`grafana.jerome.cloudns.asia`）
 
 **這階段不做的（留給後續階段或明確排除）：**
 - 不動 `lab-environment` 的任何東西——它自己那套 Prometheus/Grafana/Loki/Jaeger/Promtail（`replicas: 0`）原封不動保留給 SRE 練習自己用，`pr-lanes` 的可觀測性完全不依賴它、也不共用它的 pipeline（這正是 `lab-environment/README.md` 開頭宣告的「deliberate 不共用」邊界，路線圖原文的設計違反了這個邊界，本文件修正之）
