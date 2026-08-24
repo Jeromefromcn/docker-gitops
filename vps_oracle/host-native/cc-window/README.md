@@ -59,21 +59,25 @@ sudo npm install -g cc-window@0.2.1
 
 ## 部署
 
-unit 檔案裡 `ExecStart` 指向全域安裝的二進位路徑（`/usr/bin/cc-window`），不是這個 repo 裡的檔案，所以用複製、不是軟連結（改動只影響裝了哪個 npm 版本，不影響這份 unit 檔案本身的內容）：
+兩個 unit：`cc-window.service`（服務本體）+ `cc-window-tmux.service`（獨立的 tmux server，PTY 後端）。`ExecStart` 指向全域安裝的二進位路徑（`/usr/bin/cc-window`），不是這個 repo 裡的檔案，所以用複製、不是軟連結：
 
 ```bash
-sudo cp cc-window.service /etc/systemd/system/
+sudo cp cc-window.service cc-window-tmux.service /etc/systemd/system/
 sudo systemctl daemon-reload
+sudo systemctl enable --now cc-window-tmux.service   # 先起 tmux server
 sudo systemctl enable --now cc-window.service
 ```
+
+**為什麼 tmux 要獨立成一個 service（2026-08-24 修復）**：cc-window 的 tmux backend 需要 `ccwindow` socket 上有常駐的 tmux server。若用 `ExecStartPre` 在 `cc-window.service` 裡起 tmux，systemd 會把 `ExecStartPre` 的 tmux server 當成主服務的 cgroup 遺留進程在 `ExecStart` 啟動後清掉（實測日誌 `Found left-over process (tmux: server)`，重啟後 server 即消失）——導致網頁「新建 session」時 `tmux new-session` 建不出交互終端、無法審批/回答。獨立 `cc-window-tmux.service` 讓 tmux server 住在自己的 cgroup，不受 cc-window 重啟影響；裡面的 `cc-window-guard` session 撐住 server 讓它不因空閒自殺。`cc-window.service` 用 `After/Wants=cc-window-tmux.service` 保證順序。
 
 ## 驗證
 
 ```bash
-systemctl status cc-window.service
-curl -sS -o /dev/null -w '%{http_code}\n' http://172.19.0.1:4317/   # 期望 200，宿主機本機可直接測（172.19.0.1 是宿主機自己的 bridge 介面）
-docker exec npm curl -sS -o /dev/null -w '%{http_code}\n' http://172.19.0.1:4317/   # 從 NPM 容器視角再測一次，確認反代那條路徑真的通
-journalctl -u cc-window.service -n 50
+systemctl status cc-window.service cc-window-tmux.service
+tmux -L ccwindow ls                                    # 期望見到 cc-window-guard（server 常駐）
+curl -sS -o /dev/null -w '%{http_code}\n' http://172.19.0.1:4317/   # 期望 200
+# 網頁「新建 session」後，應見到 ccw_<uuid> 的 tmux session 且 pane 內跑著 claude
+tmux -L ccwindow ls
 ```
 
 ## NPM 反代 + homepage

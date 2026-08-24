@@ -1,0 +1,24 @@
+[Unit]
+Description=cc-window tmux server (PTY backend, socket ccwindow)
+Documentation=file:///home/ubuntu/jerome/docker-gitops/vps_oracle/host-native/cc-window/README.md
+After=network.target
+
+# cc-window's tmux backend needs a live tmux server on the "ccwindow" socket.
+# It must live in its OWN cgroup: if started via ExecStartPre in cc-window.service,
+# systemd treats it as a left-over process and reaps it when the main unit starts
+# (observed: "Found left-over process (tmux: server)" + server gone right after).
+# A dedicated service keeps it alive independent of cc-window restarts, and its
+# guard session prevents the tmux server from self-terminating when idle.
+
+[Service]
+Type=forking
+User=ubuntu
+# start-server only creates the socket dir; the server itself forks and exits the
+# parent. A persistent guard session keeps the daemon alive.
+ExecStart=/usr/bin/tmux -L ccwindow new-session -d -s cc-window-guard -c /home/ubuntu
+ExecStop=/usr/bin/tmux -L ccwindow kill-server
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
