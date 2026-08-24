@@ -99,5 +99,6 @@ scrape_configs:
       - targets: ['10.0.0.95:30111']
 
   - job_name: waypoint
+    metrics_path: /stats/prometheus
     static_configs:
       - targets: ['10.0.0.95:30112']
