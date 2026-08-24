@@ -1,0 +1,72 @@
+# Unified PostgreSQL instance for the user's own apps (one database per app,
+# each with its own role). 3rd-party services (dify, love-bird-boss, k3s
+# lab-environment) keep their own Postgres and are deliberately NOT migrated
+# here — see README.md.
+#
+# Network layout:
+#   postgres  -> default network only (pure backend, no published port, no proxy)
+#   pgadmin   -> default (reach postgres) + proxy (reachable via NPM). No host port.
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    container_name: postgres
+    hostname: postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      # Host bind mount, same pattern as dify db_postgres (/etc/dify/db-data).
+      - /etc/postgres/data:/var/lib/postgresql/data
+      # Runs only on first init (empty PGDATA); adds an app's role+db per entry.
+      - ./init/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    # Intentionally NOT on the proxy network and no ports published — pure backend.
+
+  pgadmin:
+    image: dpage/pgadmin4:8.14
+    container_name: pgadmin
+    hostname: pgadmin
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      PGADMIN_DEFAULT_EMAIL: "${PGADMIN_DEFAULT_EMAIL}"
+      PGADMIN_DEFAULT_PASSWORD: "${PGADMIN_DEFAULT_PASSWORD}"
+      # Run in server mode (multi-user admin panel, not desktop mode).
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      # Don't force the master password on every login in the web UI.
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - /etc/pgadmin:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = pgadmin, Forward Port = 80（容器名直连，走 proxy 网络）
+    # 未发布宿主端口 — 管理面板只走 NPM，见仓库 README 约定。
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy --subnet 172.19.0.0/16 --gateway 172.19.0.1 --ip-range 172.19.1.0/24
