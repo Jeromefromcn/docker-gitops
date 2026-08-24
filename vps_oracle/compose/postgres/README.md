@@ -18,24 +18,18 @@
 
 ## 给服务接入 NPM 反代
 
-在 NPM panel 手动建 proxy host（仓库约定：NPM 配置是文档化操作，不提交配置文件）：
+已通过 NPM API 创建完成（2026-08-24），无需手动配置：
 
-**Details 标签页**
+- **Proxy host id 34**：`pgadmin.jerome.cloudns.asia` → `pgadmin` :80（http）
+- **证书 id 36**：Let's Encrypt（HTTP-01），到期 2026-11-22，email `jeromefromcn@gmail.com`
+- **Access List**：`self-only`（放行 3x-ui + 公网出口 IP，其余 deny）
+- ssl_forced / block_exploits / websocket / http2 全开，hsts off
 
-| 字段 | 值 |
-|---|---|
-| Domain Names | `pgadmin.jerome.cloudns.asia` |
-| Scheme | `http` |
-| Forward Hostname / IP | `pgadmin`（容器名，走 proxy 网络，Docker DNS 解析） |
-| Forward Port | `80` |
-| Cache Assets | Off |
-| Block Common Exploits | On |
-| Websockets Support | On |
-| Access List | `self-only` |
+如需重建或核对，用 NPM API（见 `../npm/README.md` 的自动化流程）：
+1. 证书：`POST /api/nginx/certificates`，body 只需 `{"domain_names":["pgadmin.jerome.cloudns.asia"],"provider":"letsencrypt"}`（**2.15.1 不再接受** `meta.letsencrypt_agree`/`dns_challenge`，会 400）
+2. proxy host：`POST /api/nginx/proxy-hosts`，`forward_host: pgadmin`、`forward_port: 80`、`access_list_id: 1`、`certificate_id: <证书id>`
 
-**SSL 标签页**：Domain 新建证书，Email `jeromefromcn@gmail.com`，Force SSL / HTTP/2 On，HSTS Off。
-
-> ⚠️ **已知坑**：创建时打开的 Force SSL / HTTP/2 Support 保存后可能被静默重置回关。保存后重新打开这条记录复查一遍，发现关了再勾一次并保存。
+> ⚠️ **已知坑**：在面板手动编辑该 host 时，Force SSL / HTTP/2 Support 保存后可能被静默重置回关。保存后重新打开这条记录复查一遍。
 
 ## 给新服务加 homepage 卡片
 
