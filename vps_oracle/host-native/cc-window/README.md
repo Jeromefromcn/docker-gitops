@@ -88,3 +88,21 @@ journalctl -u cc-window.service -n 50
 | Access List | `self-only-and-auth` |
 
 homepage 卡片見 `vps_oracle/compose/homepage/config/services.yaml`。
+
+## 上線狀態（2026-08-24）
+
+| 項目 | 值 |
+|---|---|
+| NPM proxy host | id **32**，`cc-window.jerome.cloudns.asia` |
+| 證書 | Let's Encrypt（HTTP-01），id **35**，`/etc/letsencrypt/live/npm-35/`，2026-11-22 到期 |
+| Access List | `self-only-and-auth`（id 2，含 Basic Auth 帳號 `jerome`） |
+| host firewall | `-s 172.19.0.3/32 -p tcp --dport 4317 -j ACCEPT`（見 [`host-firewall.sh`](../host-firewall/host-firewall.sh)，2026-08-24 加入） |
+
+**驗證**（全鏈路，從 NPM 容器視角）：
+
+```bash
+docker exec npm curl -sS -o /dev/null -w '%{http_code}\n' https://cc-window.jerome.cloudns.asia/        # 401（無 Basic Auth → access list 擋下）
+docker exec npm curl -sS -o /dev/null -w '%{http_code}\n' -u jerome:<密碼> https://cc-window.jerome.cloudns.asia/   # 200（HTTP/2，x-powered-by: Express）
+```
+
+新域名憑證：進 NPM 面板 → SSL Certificates → Add → Let's Encrypt，Domain Names 填 `cc-window.jerome.cloudns.asia`（wildcard DNS 已覆蓋，不需新增 A 記錄；自動續期由 NPM 的 certbot 跑）。

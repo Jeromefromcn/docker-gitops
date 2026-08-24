@@ -80,7 +80,7 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 | Cache Assets | 关闭 |
 | Block Common Exploits | 开启 |
 | Websockets Support | 开启 |
-| Access List | 一律选 `self-only` |
+| Access List | 一律选 `self-only`（例外：**无内建鉴权的管理面板**用 `self-only-and-auth`，如 `cc-window`，见 `vps_oracle/host-native/cc-window/README.md`） |
 | Custom Locations | 尽量不加，理由见下面的约定 |
 
 **SSL 标签页**
