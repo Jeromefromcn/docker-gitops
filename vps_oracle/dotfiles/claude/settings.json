@@ -19,7 +19,8 @@
       "Bash(echo \"=== ~/.claude \\(主账号\\) ===\" && ls -la ~/.claude/ 2>/dev/null | head -40; echo; echo \"=== ~/.claude-configs/sub2 \\(副账号\\) ===\" && ls -la ~/.claude-configs/sub2/ 2>/dev/null | head -40)",
       "Read(//home/ubuntu/.claude-configs/sub2/**)",
       "Bash(xargs ls -la)",
-      "Read(//home/ubuntu/jerome/programming-learning-platform/**)"
+      "Read(//home/ubuntu/jerome/programming-learning-platform/**)",
+      "Bash(docker network *)"
     ],
     "defaultMode": "auto"
   },
