@@ -28,3 +28,5 @@ create_role_and_db() {
 # --- user's own apps (add yours here, one line each) ---
 create_role_and_db "app_notes"
 create_role_and_db "app_todo"
+create_role_and_db "boss"
+create_role_and_db "boss_dev"

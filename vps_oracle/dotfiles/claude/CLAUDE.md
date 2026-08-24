@@ -49,3 +49,7 @@
 - Clear-cut ops/config changes (K8s/Compose/YAML only): skip superpowers, no need to ask
 - Clear-cut code logic changes: use superpowers/TDD as needed, no need to ask
 - Ambiguous cases (mixed changes, unclear project type, or you're unsure): ask me before invoking superpowers
+
+## Rules
+- New apps consuming shared resources (minio/postgres/redis) get two isolated pools — prod and dev, dev suffixed `<name>_dev`: two buckets for minio, two DBs for postgres, two ACL users for redis. Existing apps (notes/todo) are not retrofitted.
+- Dev environments use an NPM reverse proxy host in the format `appName.dev.jerome.cloudns.asia`.

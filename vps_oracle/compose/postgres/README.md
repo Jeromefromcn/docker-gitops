@@ -4,7 +4,7 @@
 
 每个应用一个独立 database + 独立 role（应用用自己 role 连接、只看得见自己的库），按库 `pg_dump` 备份。
 
-**范围**：三方服务（dify 自带 `postgres:15` + `pgvector:pg16`、k3s lab-environment `postgres:16`、repo 外 love-bird-boss `postgres:16`）**不迁移到这里**，各自维持现状。本栈只服务用户自建应用。
+**范围**：三方服务（dify 自带 `postgres:15` + `pgvector:pg16`、k3s lab-environment `postgres:16`）**不迁移到这里**，各自维持现状。本栈只服务用户自建应用。
 
 ## 架构
 

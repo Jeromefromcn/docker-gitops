@@ -29,6 +29,12 @@ fi
 {
   # NOTE: redis --aclfile requires EVERY line to be a valid `user ...` rule.
   # No comments/blank lines allowed, so the header lives here in the script.
+  #
+  # Default user = ops superuser, password from REDIS_PASSWORD. Setting a
+  # password on the default user is REQUIRED: with an aclfile, requirepass is
+  # ignored, and a nopass default user leaves protected-mode on, which refuses
+  # non-loopback connections (RedisInsight's AUTH gets DENIED).
+  printf 'user default on >%s ~* &* +@all\n' "$REDIS_PASSWORD"
   for entry in $(env | grep -E '^APP_[A-Z0-9_]+_PASSWORD=' | sed 's/^APP_//' | sed 's/_PASSWORD=.*//' | sort -u); do
     # entry is e.g. "NOTES" from APP_NOTES_PASSWORD
     app_lc="$(echo "$entry" | tr '[:upper:]' '[:lower:]')"

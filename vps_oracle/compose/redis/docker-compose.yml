@@ -34,10 +34,10 @@ services:
     command:
       - redis-server
       - /etc/redis/redis.conf
-      - --requirepass
-      - ${REDIS_PASSWORD}
       - --aclfile
       - /etc/redis/users.acl
+      # default user's password comes from the ACL file (see gen-users-acl.sh).
+      # NOTE: with --aclfile, --requirepass is IGNORED — don't rely on it.
     volumes:
       - /etc/redis/data:/data
       - ./redis/redis.conf:/etc/redis/redis.conf:ro
