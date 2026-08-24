@@ -17,9 +17,9 @@
 | Access List | 放行規則 | 用在幾個 proxy host | 額外要求 |
 |---|---|---|---|
 | `self-only`（id 1） | `172.19.0.2/32`（3x-ui 在 `proxy` 網路的 IP）、`161.118.254.107`（伺服器目前的公網 IP） | 17 個 | 無 |
-| `self-only-and-auth`（id 2） | 同上兩條 | 8 個 | 還要過 Basic Auth（帳號 `jerome`） |
+| `self-only-and-auth`（id 2） | 同上兩條 | 9 個 | 還要過 Basic Auth（帳號 `jerome`） |
 
-`self-only-and-auth` 掛的 8 個 proxy host 都是**無內建鑑權的管理面板**：`npm`（NPM 自己的管理面板）、`grafana`、`portainer`、`cc-window`（host-native 的 Claude Code 多會話看板，2026-08-24 加入，見 [`vps_oracle/host-native/cc-window/README.md`](../../host-native/cc-window/README.md)）等。規則：**凡無內建鑑權的服務，一律用 `self-only-and-auth`，不要用 `self-only`**（`self-only` 只擋「來源」，不擋「誰」——同一台機器上任何使用者/程序都能訪問）。
+`self-only-and-auth` 掛的 9 個 proxy host 都是**無內建鑑權的管理面板**：`npm`（NPM 自己的管理面板）、`grafana`、`portainer`、`cc-window`（host-native 的 Claude Code 多會話看板，2026-08-24 加入，見 [`vps_oracle/host-native/cc-window/README.md`](../../host-native/cc-window/README.md)）、`redisinsight`（統一 Redis 的管理界面，見 [`vps_oracle/compose/redis/README.md`](../../compose/redis/README.md)，2026-08-24 加入）等。規則：**凡無內建鑑權的服務，一律用 `self-only-and-auth`，不要用 `self-only`**（`self-only` 只擋「來源」，不擋「誰」——同一台機器上任何使用者/程序都能訪問）。
 
 `161.118.254.107` 是伺服器目前的公網出口 IP（`curl https://ifconfig.me` 查得到），**不是固定不變的**——如果哪天 Oracle 換了這台機器的公網 IP，這兩條 access list 都要跟著更新，不然沒經過 3x-ui、直接從公網打進來的流量（例如 blackbox_exporter 自己的探測）會被擋在外面。
 
@@ -38,6 +38,18 @@ curl -sS 'http://npm:81/api/nginx/access-lists?expand=items,clients' -H \"Author
 查完 access list 的 `id` 之後，改用 `PUT /api/nginx/access-lists/{id}` 帶完整的 `clients` 陣列（含要保留的舊規則 + 新規則）更新。
 
 **改完 access list 一定要跑一次 `docker exec npm nginx -t`**：更新 access list 會連帶重新產生掛在它底下的所有 proxy host 配置，可能把下面那個 dify 的問題重新裝回去。
+
+## API 建 Let's Encrypt 證書（2.15.1 schema，2026-08-24 踩過）
+
+用 API 建 proxy host 前需要先有證書。NPM 2.15.1 的 `POST /api/nginx/certificates` **不接受**舊文件（repo 根 README 的 SSL 標籤頁）寫的 `email` 頂層欄位、也不接受 `meta.letsencrypt_agree` / `meta.letsencrypt_email`——那些是舊版欄位，新版 schema 會回 `400 data/meta must NOT have additional properties`。
+
+**可用 body**（`meta` 只需 `dns_challenge`；`letsencrypt_email`/`agree` 新版會自己填預設值）：
+```bash
+curl -sS -X POST 'http://npm:81/api/nginx/certificates' -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"provider":"letsencrypt","domain_names":["<domain>"],"meta":{"dns_challenge":false}}'
+```
+建完拿到 `certificate_id`，再建 proxy host（`forward_host` 填容器名、`forward_port` 填容器內埠、`access_list_id` 填對應 list 的 id）。
 
 ## 2026-08-21：升級到 2.15.1，以及一次 90 秒全站中斷
 
