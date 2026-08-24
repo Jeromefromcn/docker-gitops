@@ -865,6 +865,8 @@ Compose changes apply via `docker compose up -d` (already done in Step 3), not v
 - Consumes: NodePorts `30110`/`30111`/`30112` (Task 4), `30113` (Task 2), `30114` (Task 3); the network fix (Task 5).
 - Produces: nothing further tasks in this plan depend on — Task 7 is end-to-end verification.
 
+> **Shipped 2026-08-24 (DONE, commits `977197d`/`9b0197c`/`012402c`)** — execution surfaced a second prerequisite beyond Task 5's gateway fix: every k3s NodePort consumed by a docker-bridge container needs a registered `nodeport-relay@<port>.service` host-netns socat instance (see the design doc's 已知限制 "第二層前置條件" bullet, and `vps_oracle/npm-nodeport-relay/README.md`). The 5 new ports were registered in `012402c` (`nodeport-relay@30110`–`30114`). Also: the `waypoint` scrape job required `metrics_path: /stats/prometheus` (`9b0197c`) — it's an Envoy stats-admin port, not a plain `/metrics` endpoint.
+
 - [ ] **Step 1: Read the current Prometheus config and add three scrape jobs**
 
 ```bash

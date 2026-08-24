@@ -35,6 +35,16 @@ data:
       retention_period: 24h
       reject_old_samples: true
       reject_old_samples_max_age: 168h
+
+    # retention_period alone does nothing in Loki 3.x TSDB — without the
+    # compactor actually running, no data is ever deleted despite the 24h
+    # setting (final-review finding, 2026-08-24). This is the first always-on
+    # instance of this config pattern (lab-environment's copy is replicas: 0),
+    # so the latent bug became operational here.
+    compactor:
+      retention_enabled: true
+      retention_delete_delay: 2h
+      working_directory: /loki/compactor
 ---
 apiVersion: v1
 kind: ConfigMap
