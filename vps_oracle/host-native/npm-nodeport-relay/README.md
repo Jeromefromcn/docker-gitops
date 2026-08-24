@@ -2,7 +2,7 @@
 
 ## Why this exists
 
-Incident 2026-08-19 (full writeup: [docs/incidents/2026-08-19-npm-to-k3s-nodeport-outage.md](../../docs/incidents/2026-08-19-npm-to-k3s-nodeport-outage.md)):
+Incident 2026-08-19 (full writeup: [docs/incidents/2026-08-19-npm-to-k3s-nodeport-outage.md](../../../docs/incidents/2026-08-19-npm-to-k3s-nodeport-outage.md)):
 NPM's proxy_host confs target `10.0.0.95:<NodePort>` directly (e.g.
 `headlamp.jerome.cloudns.asia` → `10.0.0.95:30098`). This only ever worked
 because Cilium's socket-LB, before phase F+G, redirected *any* process's

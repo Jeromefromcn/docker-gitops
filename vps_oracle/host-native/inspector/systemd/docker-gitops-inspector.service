@@ -6,5 +6,5 @@ After=network-online.target
 Type=oneshot
 User=ubuntu
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-WorkingDirectory=/home/ubuntu/jerome/docker-gitops/vps_oracle/inspector
-ExecStart=/home/ubuntu/jerome/docker-gitops/vps_oracle/inspector/inspect.sh
+WorkingDirectory=/home/ubuntu/jerome/docker-gitops/vps_oracle/host-native/inspector
+ExecStart=/home/ubuntu/jerome/docker-gitops/vps_oracle/host-native/inspector/inspect.sh

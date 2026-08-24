@@ -65,7 +65,7 @@ nginx: [emerg] host not found in upstream "dify-api" in /data/nginx/proxy_host/2
 | 在面板裡編輯或 enable host 24 | 重寫 24 |
 | 重新**申請**（不是續期）dify 的憑證 | 重寫用到該域名的 host |
 
-要根治就兩條路：把 dify 啟回來（`dify-api` 能解析了，雷自然消失），或在面板裡把 host 24 disable。在那之前，做完上表任一動作都順手 `docker exec npm nginx -t` 確認一次；`vps_oracle/inspector/checks/npm-nginx-config.sh` 也會在 12 小時內抓到。
+要根治就兩條路：把 dify 啟回來（`dify-api` 能解析了，雷自然消失），或在面板裡把 host 24 disable。在那之前，做完上表任一動作都順手 `docker exec npm nginx -t` 確認一次；`vps_oracle/host-native/inspector/checks/npm-nginx-config.sh` 也會在 12 小時內抓到。
 
 ### 一個已知的日誌噪音
 

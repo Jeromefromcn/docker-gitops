@@ -1,5 +1,5 @@
 [Unit]
-Description=Hand-written host firewall rules (single source of truth: vps_oracle/host-firewall/)
+Description=Hand-written host firewall rules (single source of truth: vps_oracle/host-native/host-firewall/)
 After=network-online.target
 Wants=network-online.target
 # Replaces netfilter-persistent full-snapshot persistence (disabled 2026-08-16;

@@ -7,16 +7,25 @@
 ```
 docker-gitops/
 └── <host>/                # 按服务器分组，如 vps_oracle
-    └── compose/            # 该服务器上所有 docker compose 栈
-        └── <compose>/      # 每个 compose 栈一个目录（可包含多个服务）
-            └── docker-compose.yml
+    ├── compose/            # 该服务器上所有 docker compose 栈
+    │   └── <compose>/      # 每个 compose 栈一个目录（可包含多个服务）
+    │       └── docker-compose.yml
+    └── host-native/        # 直接跑在宿主机上的 systemd 服务（非容器）
+        └── <service>/      # 每个服务一个目录：README + systemd unit
 ```
 
-`<host>/` 下除 `compose/` 外，也可能有其他不属于 docker compose 管理的子目录（如 `k3s/`、`inspector/`），各自遵循自己的约定，见对应子目录的 README。
+`<host>/` 下除 `compose/` 外，也可能有其他不属于 docker compose 管理的子目录：`k3s/`（ArgoCD GitOps 管理的集群，改动走 git push + ArgoCD sync，不是手动命令，见 `vps_oracle/k3s/README.md`）、`dotfiles/`（符号链接式本机配置，见 `vps_oracle/dotfiles/README.md`）、`host-native/`（本节下方说明）。各自遵循自己的约定，见对应子目录的 README。
 
-## inspector（主機巡檢）
+## host-native（直接跑在宿主机上的 systemd 服務）
 
-`vps_oracle/inspector/` 是 host-native bash 巡檢腳本（非容器），由 systemd timer 每天 09:00/21:00 觸發：偵測並清理游離的 VS Code/Claude session 行程樹、堆積的 `.vscode-server` 版本目錄，每輪必發一封英文 Telegram 報告。設計背景（自我保護規則、auto/alert 分級）見 [設計文件](docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md)，執行/測試/部署操作見 [`vps_oracle/inspector/README.md`](vps_oracle/inspector/README.md)。
+`vps_oracle/host-native/` 底下每個子目錄對應一個不適合塞進 docker compose 的服務——需要碰宿主機命名空間、`~/.claude` 之類使用者 home、iptables 這類東西，一律用 systemd unit 常駐，unit 檔案跟原始碼（或第三方套件的部署設定）一起進這個 repo：
+
+| 子目錄 | 是什麼 |
+|---|---|
+| [`inspector/`](vps_oracle/host-native/inspector/README.md) | host-native bash 巡檢腳本，systemd timer 每天 09:00/21:00 觸發，偵測並清理游離的 VS Code/Claude session 行程樹、堆積的 `.vscode-server` 版本目錄，每輪必發一封英文 Telegram 報告。設計背景（自我保護規則、auto/alert 分級）見 [設計文件](docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md) |
+| [`host-firewall/`](vps_oracle/host-native/host-firewall/README.md) | 手寫 iptables 規則的唯一可信來源，systemd oneshot 開機時套用 |
+| [`npm-nodeport-relay/`](vps_oracle/host-native/npm-nodeport-relay/README.md) | host netns 裡的 TCP relay，讓 NPM（docker 容器）連得到宿主機才拿得到的 k3s NodePort |
+| [`cc-window/`](vps_oracle/host-native/cc-window/README.md) | 第三方 Claude Code 多會話管理台（`npm install -g cc-window`），本地網頁看板 |
 
 ## k3s（雲原生實驗平台，进行中）
 
@@ -100,7 +109,7 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 
 - **路径分发优先交给服务自己的 nginx/网关做**，NPM 只做一条普通转发指向那一个容器。dify 之所以需要 8 条 Custom Location，正是因为这个仓库的 dify compose 里没有官方那个 `nginx` service。
 - **停用一个 compose stack 时，同步在 NPM 里把对应的 proxy host disable 掉**。反代记录开着、后端却没了，就是在埋雷。
-- 兜底：`vps_oracle/inspector/checks/npm-nginx-config.sh` 每天 09:00/21:00 跑一次 `nginx -t`，配置坏了会发 Telegram alert。它跑在独立行程里，不影响正在服务的 nginx，所以任何时候都可以手动跑一次确认：`docker exec npm nginx -t`。
+- 兜底：`vps_oracle/host-native/inspector/checks/npm-nginx-config.sh` 每天 09:00/21:00 跑一次 `nginx -t`，配置坏了会发 Telegram alert。它跑在独立行程里，不影响正在服务的 nginx，所以任何时候都可以手动跑一次确认：`docker exec npm nginx -t`。
 
 ## 给新服务加 homepage 卡片
 

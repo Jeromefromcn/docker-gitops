@@ -24,6 +24,11 @@
         href: https://ccr.jerome.cloudns.asia
         description: Claude Code Router gateway & admin panel
 
+    - cc-window:
+        icon: si-anthropic
+        href: https://cc-window.jerome.cloudns.asia
+        description: Claude Code multi-session dashboard
+
     - Argo CD:
         icon: argo-cd.png
         href: https://argocd.jerome.cloudns.asia
@@ -38,6 +43,11 @@
         icon: minio.png
         href: https://minio.jerome.cloudns.asia
         description: S3-compatible object storage
+
+    - PostgreSQL Admin:
+        icon: si-postgresql
+        href: https://pgadmin.jerome.cloudns.asia
+        description: PostgreSQL admin (unified instance)
 
 - Apps:
     - Trilium:

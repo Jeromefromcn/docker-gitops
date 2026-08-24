@@ -44,6 +44,8 @@ sudo systemctl daemon-reload && sudo systemctl enable --now host-firewall.servic
 | `10.42.0.0/16 → 6443/4244/10250` | 2026-08-05/06 Cilium pod-CIDR fix (k3s/README.md has the full diagnosis) |
 | `InstanceServices` chain + OUTPUT jump | OCI image default (metadata/iSCSI/NTP) |
 | `DOCKER-USER -i enp0s6 dports 3001,9090,8080 DROP` | hardening: Grafana/Prometheus/Nginx not reachable from the internet |
+| `172.19.0.3/32 → 4317` | 2026-08-24: npm → cc-window (host-native, binds the `proxy` network's gateway IP; see `vps_oracle/host-native/cc-window/README.md`) |
+| `172.19.0.0/16 → 30000:32767` | 2026-08-19: docker `proxy` net (NPM) → k3s NodePort range (see `docs/incidents/2026-08-19-npm-to-k3s-nodeport-outage.md`) |
 
 ## Verify
 

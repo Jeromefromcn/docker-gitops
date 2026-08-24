@@ -1,0 +1,20 @@
+[Unit]
+Description=cc-window — local web dashboard for Claude Code sessions
+Documentation=file:///home/ubuntu/jerome/docker-gitops/vps_oracle/host-native/cc-window/README.md
+Documentation=https://github.com/pickjason/cc-windows
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=CC_HOST=172.19.0.1
+Environment=CC_PORT=4317
+ExecStart=/usr/bin/cc-window
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

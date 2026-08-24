@@ -34,6 +34,14 @@
 #     compose container) into this chain's default-REJECT.
 #   - DOCKER-USER drop: external iface → published 3001/9090/8080
 #     (Grafana/Prometheus/Nginx must not be reachable from the internet)
+#   - npm (172.19.0.3, the only container with a reason to reach it) →
+#     cc-window's port 4317 (2026-08-24): cc-window is host-native, not a
+#     container, and binds the docker `proxy` network's own gateway address
+#     (172.19.0.1) so NPM can reach it — but a packet from a `proxy`-network
+#     container to 172.19.0.1 has the host itself as its destination, so it
+#     hits this INPUT chain same as any other inbound connection, same class
+#     of gotcha as the pod-CIDR and NodePort-relay rules above. See
+#     vps_oracle/host-native/cc-window/README.md.
 set -euo pipefail
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then echo "must run as root" >&2; exit 1; fi
 
@@ -56,6 +64,7 @@ ipt INPUT -s 10.42.0.0/16 -p tcp -m tcp --dport 6443 -j ACCEPT     # kube-apiser
 ipt INPUT -s 10.42.0.0/16 -p tcp -m tcp --dport 4244 -j ACCEPT     # cilium hubble-peer (pods)
 ipt INPUT -s 10.42.0.0/16 -p tcp -m tcp --dport 10250 -j ACCEPT    # kubelet metrics (pods)
 ipt INPUT -s 172.19.0.0/16 -p tcp -m tcp --dport 30000:32767 -j ACCEPT  # docker `proxy` net (NPM) → k3s NodePorts (2026-08-19)
+ipt INPUT -s 172.19.0.3/32 -p tcp -m tcp --dport 4317 -j ACCEPT   # npm → cc-window (2026-08-24)
 iptables -A INPUT -j REJECT --reject-with icmp-host-prohibited
 
 # --- OCI InstanceServices (image default: instance metadata, iSCSI, NTP) ---

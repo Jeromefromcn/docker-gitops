@@ -1,6 +1,6 @@
 [Unit]
 Description=Host-netns TCP relay for k3s NodePort %i (NPM hairpin fix)
-Documentation=file:///home/ubuntu/jerome/docker-gitops/vps_oracle/npm-nodeport-relay/README.md
+Documentation=file:///home/ubuntu/jerome/docker-gitops/vps_oracle/host-native/npm-nodeport-relay/README.md
 After=network-online.target
 Wants=network-online.target
 
