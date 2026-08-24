@@ -14,11 +14,14 @@ missing=""
 guard_bad=""
 
 # Every top-level entry in ~/.claude must be mirrored into sub2 as a symlink
-# pointing back to ~/.claude/<same-name>. The one deliberate exception is
-# .credentials.json (per-account login token — never mirrored).
+# pointing back to ~/.claude/<same-name>. Deliberate exceptions: .credentials.json
+# (per-account login token) and .oauth_refresh.lock (CLI-internal mutex guarding
+# that token's refresh — lives beside it, scoped to CLAUDE_CONFIG_DIR, recreated
+# independently wherever it's needed). Neither should ever be mirrored.
 while IFS= read -r -d '' e; do
   name=$(basename "$e")
   [ "$name" = ".credentials.json" ] && continue
+  [ "$name" = ".oauth_refresh.lock" ] && continue
   target="$SUB2/$name"
   if [ ! -L "$target" ] || [ "$(readlink "$target")" != "$MAIN/$name" ]; then
     missing="$missing,$name"

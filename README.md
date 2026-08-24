@@ -69,6 +69,8 @@ compose 文件里涉及的挂载卷统一用绝对路径（如 `/etc/x-ui/...`�
 
 > NPM 已于 2026-08-21 从 2.12.3 升到 2.15.1，而 2.13.0 起换成了 React 新界面。下面的字段本身都还在，但位置/名称可能跟旧界面有出入——下次照着操作时如果对不上，顺手把这段改掉。
 
+**没有 Custom Locations、不用反代到 k3s NodePort 的常规情况**，可以直接跑 [`vps_oracle/compose/npm/add-proxy-host.sh`](vps_oracle/compose/npm/add-proxy-host.sh) 一次建好（含证书申请/复用、access list 按名字选、建完自动验证 SSL 设置没被静默重置），用法见 [`vps_oracle/compose/npm/README.md`](vps_oracle/compose/npm/README.md) 的「用腳本一次建好 proxy host」一节。下面的字段表是这个脚本自动套用的值，也是手动走 UI/API 时的参照。
+
 **Details 标签页**
 
 | 字段 | 值 |

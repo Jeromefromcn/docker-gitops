@@ -18,6 +18,9 @@ layout:
   Apps:
     style: row
     columns: 3
+  Dev:
+    style: row
+    columns: 3
   Lab:
     style: row
     columns: 3

@@ -95,6 +95,12 @@
         href: https://plans.jerome.cloudns.asia
         description: Personal trip and activity plans
 
+- Dev:
+    - BOSS (dev):
+        icon: si-mariadb
+        href: https://boss.dev.jerome.cloudns.asia
+        description: Matchmaking operations system (dev)
+
 - Lab:
     - Consul:
         icon: consul.png

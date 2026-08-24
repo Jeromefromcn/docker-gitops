@@ -51,6 +51,24 @@ curl -sS -X POST 'http://npm:81/api/nginx/certificates' -H "Authorization: Beare
 ```
 建完拿到 `certificate_id`，再建 proxy host（`forward_host` 填容器名、`forward_port` 填容器內埠、`access_list_id` 填對應 list 的 id）。
 
+## 用腳本一次建好 proxy host（`add-proxy-host.sh`）
+
+上面「mint token → 查 access list id → 建/複用證書 → 建 proxy host → 驗證 SSL 設定沒被靜默重置」這一串，如果被拆成好幾條**分開執行**的命令（例如 Claude Code 的 Bash 工具——每條命令都是獨立 shell 進程，變量不跨命令保留，只有工作目錄會保留），第一步 mint 出來的 token 到下一步就已經不存在了，只能重新 mint，體感就是「建反代時 token 常常找不到」。根因不是 NPM 的問題，是多步驟手動操作跟 Bash 工具的無狀態特性對不上。
+
+`vps_oracle/compose/npm/add-proxy-host.sh` 把整串流程包進**同一個** shell 進程執行到底，token 全程留在腳本內部，同時把上面文檔裡踩過的坑都處理掉：access list 按名字查 id（不寫死 1/2）、證書用 2.15.1 的新 schema、domain 已有證書就複用不重新申請、建完 proxy host 後重新 GET 一次驗證 `ssl_forced`/`http2_support` 有沒有被靜默重置（有就自動 PUT 修回去），最後跑一次 `nginx -t`。
+
+用法：
+```bash
+./add-proxy-host.sh <service>.jerome.cloudns.asia <forward-host> <forward-port> [self-only|self-only-and-auth]
+```
+第 4 個參數預設 `self-only`；無內建鑑權的管理面板要傳 `self-only-and-auth`（規則見根 README「给服务接入 NPM 反代」）。
+
+**不處理、要走本文件其他章節手動流程的情況**：
+- domain 已經有 proxy host——腳本直接報錯退出，不做覆蓋更新（改用 UI 或上面的手動 API 流程）
+- 需要 Custom Locations 的服務——repo 約定盡量不用（見根 README「能不用 Custom Locations 就不用」），腳本沒實作
+- 反代到 k3s NodePort——`forward-host` 傳 `10.0.0.95` 就行，腳本本身沒特殊處理，但這個 IP 是 DHCP 分配的，用之前照根 README 那條已知坑先確認沒變
+- 新服務記得跑完後手動補一張 homepage 卡片（`vps_oracle/compose/homepage/config/services.yaml`），腳本不會自動加
+
 ## 2026-08-21：升級到 2.15.1，以及一次 90 秒全站中斷
 
 **升級原因**：面板首頁的 Proxy Hosts 只顯示 16，實際有 24。2.12.3 的 `report.js` 把 `permission_visibility` 寫成 `visibility`，取到的永遠是 `undefined`，計數於是永遠退回「只算當前登入使用者擁有的 host」——用自動化帳號（`claude`）建的那 8 個全部沒算進去。列表頁一直是對的，只有首頁那個數字不準。上游在 **2.14.0** 修好。順帶拿到 2.15.0 的一個安全修復：任何已認證使用者可透過 `PUT` 改自己的 `roles` 欄位——正好打在 `.npm-automation.env` 裡那個本該最小權限的 `claude` 帳號上。
