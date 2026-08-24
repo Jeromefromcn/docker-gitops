@@ -113,7 +113,9 @@ vps_oracle/k3s/istio/
   istiod-values.yaml           # 修改：meshConfig.extensionProviders 加 zipkin provider（這是 Helm values 檔，istiod-metrics-service.yaml 不放這裡，見「元件與設定」表的說明）
 
 vps_oracle/compose/monitoring/
-  docker-compose.yml           # 修改：prometheus + grafana 兩個 service 加 networks.proxy.priority
+  docker-compose.yml           # 已完成（2026-08-24）：networks.default 改 internal: true，讓 proxy 成為
+                               # prometheus/grafana 唯一出口；blackbox-exporter 另掛新的 egress 網路保留出公網能力
+                               #（原規劃的 networks.proxy.priority 實測無效，別再加，見「元件與設定」表）
   prometheus/prometheus.yml    # 修改：加 3 個 scrape_configs job
   grafana/provisioning/datasources/
     loki.yml                   # 新增
@@ -126,7 +128,7 @@ vps_oracle/compose/monitoring/
 
 1. `mesh-observability` namespace 建立、ArgoCD Application `Synced` + `Healthy`，Loki/Jaeger/Promtail 三個 Pod `Running`
 2. `kubectl describe resourcequota -n mesh-observability` 確認用量在額度內，且**不影響** `pr-lanes-quota`（`kubectl describe resourcequota pr-lanes-quota -n pr-lanes` 用量應該完全不變，新增的三個 metrics Service 都是純控制面資源）
-3. 修正 compose `prometheus`/`grafana` 的 network priority 後，`docker exec prometheus wget -qO- http://10.0.0.95:<istiod-metrics NodePort>` 成功回應（用這個當作「網路修正生效」的最小驗證，不用等整個 Prometheus scrape 迴圈跑一輪）
+3. compose `prometheus`/`grafana` 的預設閘道修正已生效（`default` 網路改 internal，兩者出口落在 `proxy`）：`docker exec prometheus wget -qO- http://10.0.0.95:<istiod-metrics NodePort>` 成功回應（用這個當作「網路修正生效」的最小驗證，不用等整個 Prometheus scrape 迴圈跑一輪；`docker exec prometheus ip route` 第一行應該是 `default via 172.19.0.1`）
 4. compose Prometheus targets 頁面（`http://172.19.0.4:9090/targets`，只走內網）三個新 job 都是 `UP`
 5. compose Grafana 新增的 Loki/Jaeger 資料源測試連線成功（`Test` 按鈕綠燈）
 6. 對 `hello-frontend`/`hello-backend` 打一輪測試流量，在 compose Grafana 裡：

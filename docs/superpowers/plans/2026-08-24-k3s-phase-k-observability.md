@@ -6,7 +6,7 @@
 
 **Architecture:** A new, independent k3s namespace (`mesh-observability`) hosts Loki, Jaeger, and a `pr-lanes`-scoped Promtail — none of it in `pr-lanes-quota`, none of it in `lab-environment`. Three new NodePort `Service`s expose istiod's, ztunnel's, and waypoint's existing Prometheus endpoints; two more expose Loki's query API and Jaeger's query UI. Compose's *existing* Prometheus/Grafana pull/query all five over NodePort — the one cross-boundary direction proven to work in production (matches how NPM already reaches k3s NodePorts). Promtail→Loki and Envoy→Jaeger's Zipkin collector both stay inside the cluster (ClusterIP), never crossing the docker↔k3s boundary. Compose's `prometheus`/`grafana` containers need one prerequisite fix first — their docker network gateway currently resolves to the wrong network, so they can't reach *any* k3s NodePort yet.
 
-**Tech Stack:** Kubernetes plain manifests (no Kustomize needed — same pattern as `hello`/`lab-environment`), ArgoCD (`project: default`, automated prune+selfHeal), Grafana Loki `3.1.0`, Jaeger `jaegertracing/all-in-one:1.60`, Grafana Promtail `3.1.0` (same pinned versions already running in `lab-environment`), Istio `telemetry.istio.io/v1` `Telemetry` CR + `meshConfig.extensionProviders` (istiod `1.30.3`, confirmed live), Docker Compose `v5.1.4` / Engine `29.6.0` (confirmed supports `networks.<name>.priority`).
+**Tech Stack:** Kubernetes plain manifests (no Kustomize needed — same pattern as `hello`/`lab-environment`), ArgoCD (`project: default`, automated prune+selfHeal), Grafana Loki `3.1.0`, Jaeger `jaegertracing/all-in-one:1.60`, Grafana Promtail `3.1.0` (same pinned versions already running in `lab-environment`), Istio `telemetry.istio.io/v1` `Telemetry` CR + `meshConfig.extensionProviders` (istiod `1.30.3`, confirmed live), Docker Compose `v5.5.0` / Engine `29.6.0` (compose network `internal:` flag — **not** `networks.<name>.priority`, which this host's compose silently drops; see Task 5).
 
 **Spec:** [docs/superpowers/specs/2026-08-24-k3s-phase-k-observability-design.md](../specs/2026-08-24-k3s-phase-k-observability-design.md)
 
@@ -31,7 +31,7 @@
 - **`istio-istiod` and `istio-ztunnel` are remote-Helm-chart ArgoCD Applications, not plain-manifest ones.** Their `source` is `https://istio-release.storage.googleapis.com/charts` (`chart: istiod`/`chart: ztunnel`); `vps_oracle/k3s/istio/*.yaml` is Helm **values** only (`valueFiles: - $values/vps_oracle/k3s/istio/istiod-values.yaml`), referenced via a second `ref: values` source. A plain `Service` YAML dropped into `vps_oracle/k3s/istio/` is **not** picked up by either Application — this is why `istiod-metrics-service.yaml` and `ztunnel-metrics-service.yaml` (Task 4) live in `mesh-observability`'s own directory instead, each with an explicit `metadata.namespace: istio-system`. ArgoCD applies a manifest to whatever namespace it names in `metadata.namespace`, regardless of the owning Application's own `destination.namespace` — `lab-environment`'s existing YAMLs already rely on this same explicit-namespace convention.
 - **Kyverno does not interfere with anything in this plan** (confirmed by reading every policy file under `vps_oracle/k3s/kyverno/policies/`): `restrict-image-registry.yaml`'s `verifyImages` only matches `ghcr.io/jeromefromcn/*` image references — `grafana/loki`, `jaegertracing/all-in-one`, `grafana/promtail` don't match, so the rule doesn't apply to them at all. `require-vuln-scan-clean.yaml` and `restricted-self-built.yaml` both match only `app` label `in [hello-frontend, hello-backend]` — no pod this plan creates carries either label. `restrict-image-registry-pr-lanes.yaml` is scoped to the `pr-lanes` namespace and only concerns image *registries*, not Service objects (Task 4's `waypoint-metrics` Service, the only `pr-lanes` resource this plan adds besides the `Telemetry` CR, has no image).
 - **`mesh-observability`'s namespace must carry no Pod Security Standards label** (no `pod-security.kubernetes.io/enforce`), matching `lab-environment`'s namespace exactly (confirmed live: `kubectl get namespace lab-environment -o jsonpath='{.metadata.labels}'` → only the automatic `kubernetes.io/metadata.name`). `pr-lanes`, by contrast, carries `pod-security.kubernetes.io/enforce: baseline`, which forbids `hostPath` volumes — Promtail's `/var/log/pods` mount (Task 2) would be rejected at admission if it ever landed in a baseline-enforced namespace. Do not add a PSS label to `mesh-observability`'s `namespace.yaml`.
-- **Docker Compose `networks.<name>.priority` is confirmed supported** on this host (`docker compose version` → `v5.1.4`; `docker version --format '{{.Server.Version}}'` → `29.6.0`, both well above the Compose Spec version that introduced this field). Task 5 depends on this.
+- **Docker Compose `networks.<name>.priority` does NOT work on this host** — this assumption was wrong and was disproved during Task 5. The plugin parses and validates the field (so `docker compose config` gives no hint of a problem) but never forwards it to the engine, leaving `GwPriority` at `0`; verified against plugin versions 5.1.1, 5.1.4 and 5.5.0, including `--force-recreate`. Task 5 instead marks the project's own `default` network `internal: true`, which excludes it from default-route election and leaves `proxy` as the only egress. Never assume a Compose Spec field reaches the engine because `docker compose config` accepts it — confirm with `docker inspect` after applying.
 - **`host-firewall.sh` already allows the traffic this plan needs — no firewall changes anywhere in this plan.** The existing rule `ipt INPUT -s 172.19.0.0/16 -p tcp -m tcp --dport 30000:32767 -j ACCEPT` (added 2026-08-19, see [that incident](../../incidents/2026-08-19-npm-to-k3s-nodeport-outage.md)) already covers every NodePort this plan adds. If any verification step in this plan fails with something that looks like a firewall block, re-read [docs/incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md](../../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md) before touching `vps_oracle/host-firewall/host-firewall.sh` — the actual root cause found there was the compose containers' own network gateway, not the firewall.
 - **Never attempt to make a k3s pod connect out to a docker-compose container.** [docs/incidents/2026-08-24-k3s-pod-to-docker-bridge-blackhole.md](../../incidents/2026-08-24-k3s-pod-to-docker-bridge-blackhole.md) confirmed this direction is cluster-wide blackholed (a `fwmark 0x200/0xf00 → table 2004` policy route sends it to `lo`). Every data flow in this plan crosses the boundary in the other direction only (compose initiates, k3s NodePort receives) or stays entirely inside the cluster (ClusterIP). If a task in this plan is ever tempted to add a k3s→compose egress path, stop — that's a design change, not an implementation detail, and belongs back in brainstorming.
 - **Envoy trace sampling is set to 100% deliberately** (Task 3's `Telemetry` CR, `randomSamplingPercentage: 100.0`), not left at Istio's low default — `pr-lanes` carries no real user traffic (same reasoning the roadmap's Phase L section already gives for skipping rate-limiting), so there's no cost concern, and Phase K's own verification (Task 7) needs traces to actually show up without needing dozens of retries.
@@ -776,7 +776,7 @@ Expected: each section prints Prometheus exposition-format lines (`# HELP ...` /
 
 ---
 
-### Task 5: Fix compose `prometheus`/`grafana` docker network gateway priority
+### Task 5: Fix compose `prometheus`/`grafana` docker network default gateway (DONE 2026-08-24, commit `cf66872`)
 
 **Files:**
 - Modify: `vps_oracle/compose/monitoring/docker-compose.yml`
@@ -785,7 +785,7 @@ Expected: each section prints Prometheus exposition-format lines (`# HELP ...` /
 - Consumes: nothing from another task — this is a standalone prerequisite, testable against an *existing* NodePort (`headlamp`, `30098`), not one this plan created.
 - Produces: compose `prometheus`/`grafana` containers whose default gateway is the `proxy` network. Task 6 depends on this — without it, the new scrape_configs/datasources this plan adds will all show as down, for a reason that looks unrelated (see the incident doc).
 
-- [ ] **Step 1: Confirm the current broken state (don't skip this — it's the baseline Step 4 compares against)**
+- [x] **Step 1: Confirm the current broken state (don't skip this — it's the baseline Step 4 compares against)**
 
 ```bash
 docker exec prometheus wget -T4 -qO- http://10.0.0.95:30098 2>&1
@@ -794,63 +794,61 @@ docker inspect prometheus --format '{{.NetworkSettings.Networks.monitoring_defau
 
 Expected: `wget: can't connect to remote host (10.0.0.95): No route to host`, gateway shows `172.20.0.1` (the `monitoring_default` network, not `proxy`) — matches [the incident write-up](../../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md) exactly.
 
-- [ ] **Step 2: Read the current file and add `priority` to both services' `proxy` network entry**
+- [x] **Step 2: Make `proxy` the only default-gateway candidate**
 
-```bash
-cat vps_oracle/compose/monitoring/docker-compose.yml
-```
+> **This step was originally written as "add `priority: 1` to both services' `proxy`
+> entry". That mechanism is dead — do NOT implement it.** `docker-compose-plugin`
+> 5.1.1, 5.1.4 and 5.5.0 all parse and validate `networks.<name>.priority` but never
+> forward it to the engine, so `GwPriority` stays `0` and nothing changes. The engine
+> primitive (`docker network connect --gw-priority`) works; compose is what drops it.
+> Full write-up, including the four other approaches that were weighed, is in the
+> [incident doc](../../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md).
 
-`prometheus`'s `networks:` block (already long-form — add one line):
-
-```yaml
-    networks:
-      default: {}
-      proxy:
-        ipv4_address: 172.19.0.4
-        priority: 1
-```
-
-`grafana`'s `networks:` block (currently short-form list — must convert to long-form to carry `priority`):
+What actually shipped: mark the compose project's own `default` network `internal:
+true`. An internal network is assigned no gateway and is excluded from default-route
+election, so `proxy` becomes the only egress candidate for `prometheus`/`grafana` and
+their source IP lands back inside `172.19.0.0/16`, where `host-firewall.sh`'s existing
+NodePort allow rule already applies. Neither service's `networks:` block changes.
 
 ```yaml
-    networks:
-      default: {}
-      proxy:
-        priority: 1
+networks:
+  default:
+    internal: true          # the fix itself (why-comments live in the compose file)
+  egress:                   # blackbox-exporter's public-internet path, see below
+  proxy:
+    external: true
 ```
 
-Every other line in the file (both services' `image`, `environment`, `volumes`, `logging`, etc., and the top-level `networks:` block at the bottom of the file) is unchanged.
+`blackbox-exporter` is the one container that genuinely needs the public internet (it
+probes the `https://*.jerome.cloudns.asia` targets), so it gets `networks: [default,
+egress]` — deliberately *not* the shared `proxy` network, which would put an exporter
+that can be aimed at arbitrary URLs onto the reverse-proxy plane. `node-exporter` needs
+no egress and loses it, which is a small win.
 
-- [ ] **Step 3: Apply and verify the fix**
+- [x] **Step 3: Apply and verify the fix**
 
 ```bash
 cd vps_oracle/compose/monitoring
-docker compose up -d
-docker inspect prometheus --format '{{.NetworkSettings.Networks.proxy.GwPriority}}'
-docker inspect grafana --format '{{.NetworkSettings.Networks.proxy.GwPriority}}'
+docker compose up -d      # compose removes + recreates monitoring_default in place; no `down` needed
+docker exec prometheus ip route | head -1
+docker exec grafana ip route | head -1
 docker exec prometheus wget -T4 -qO- http://10.0.0.95:30098 2>&1 | head -c 200; echo
 docker exec grafana wget -T4 -qO- http://10.0.0.95:30098 2>&1 | head -c 200; echo
 ```
 
-Expected: both `GwPriority` values are `1`. Both `wget` calls now return HTML content (headlamp's index page), not `No route to host` — this is the same known-good NodePort used in Step 1, now reachable.
+Expected: both `ip route` lines read `default via 172.19.0.1` (was `172.20.0.1`). Both
+`wget` calls now return HTML content (headlamp's index page), not `No route to host` —
+this is the same known-good NodePort used in Step 1, now reachable.
 
-- [ ] **Step 4: Commit**
+Also re-check the things this network change could plausibly break: all 18 Prometheus
+targets still `up` (especially the blackbox public probes), `https://grafana.jerome.cloudns.asia`
+still 200 through NPM, and the k3s socat relay still reaching `prometheus` at its pinned
+`172.19.0.4`.
 
-```bash
-cd /home/ubuntu/jerome/docker-gitops
-git status
-git add vps_oracle/compose/monitoring/docker-compose.yml
-git commit -m "Fix prometheus/grafana docker network gateway priority
+- [x] **Step 4: Commit**
 
-Both containers are multi-homed (default + proxy) and Docker was
-picking 'default' (monitoring_default, 172.20.0.0/16) as the actual
-gateway instead of 'proxy' (172.19.0.0/16) -- the network
-host-firewall.sh's k3s-NodePort allow rule is scoped to. Root cause
-fully diagnosed in docs/incidents/2026-08-24-compose-prometheus-
-grafana-k3s-nodeport-gateway.md. Without this, neither container can
-reach any k3s NodePort, which Phase K's remaining tasks depend on."
-git push
-```
+Shipped as `cf66872` ("Make monitoring's default network internal so proxy is the egress
+route"), with the incident doc + design doc corrections in `c7ce91f`.
 
 Compose changes apply via `docker compose up -d` (already done in Step 3), not via ArgoCD — this commit records the change in git per repo convention, it doesn't trigger anything by itself.
 
@@ -1051,6 +1049,6 @@ Expected: commits from Tasks 1-7, touching exactly the files listed across this 
 
 ## Self-Review Notes
 
-- **Spec coverage:** every item in the design doc's 驗證清單 maps to a task here — item 1 (namespace/Application/pods) is Task 1 Step 5 + Task 2/3 Step 5; item 2 (quota isolation) is Task 1 Step 5 and Task 7 Step 1; item 3 (network fix minimal check) is Task 5 Step 3; item 4 (Prometheus targets UP) is Task 6 Step 5; item 5 (Grafana datasource connectivity) is Task 6 Step 6; item 6 (metrics/logs/traces visible for real traffic) is Task 7 Step 3; item 7 (`lab-environment` unchanged) is Task 7 Step 2; item 8 (all Applications healthy) is Task 7 Step 1. The design doc's "元件與設定" table row for the network-priority fix maps directly to Task 5; the istiod/ztunnel/waypoint metrics row maps to Task 4; the Istio tracing row maps to Task 3.
+- **Spec coverage:** every item in the design doc's 驗證清單 maps to a task here — item 1 (namespace/Application/pods) is Task 1 Step 5 + Task 2/3 Step 5; item 2 (quota isolation) is Task 1 Step 5 and Task 7 Step 1; item 3 (network fix minimal check) is Task 5 Step 3; item 4 (Prometheus targets UP) is Task 6 Step 5; item 5 (Grafana datasource connectivity) is Task 6 Step 6; item 6 (metrics/logs/traces visible for real traffic) is Task 7 Step 3; item 7 (`lab-environment` unchanged) is Task 7 Step 2; item 8 (all Applications healthy) is Task 7 Step 1. The design doc's "元件與設定" table row for the default-gateway fix maps directly to Task 5; the istiod/ztunnel/waypoint metrics row maps to Task 4; the Istio tracing row maps to Task 3.
 - **Placeholder scan:** no TBD/TODO. Task 3 Step 6 and Task 7 Step 3 explicitly instruct recording the *actual* observed Jaeger service name rather than assuming one in advance — that's an honestly-framed unknown with a concrete resolution step (Task 7 Step 4), not a placeholder.
 - **Type/name consistency:** `zipkin-mesh-observability` (the extensionProvider name) is spelled identically in Task 3 Step 2 (`istiod-values.yaml`) and Step 3 (`pr-lanes-telemetry.yaml`'s `providers[].name`) — a mismatch here is called out explicitly in Task 3 Step 6 as the most likely failure mode. NodePort numbers (`30110`-`30114`) are consistent across Global Constraints, Task 4's two Services, Task 2/3's Loki/Jaeger Services, and Task 6's Prometheus/Grafana config. Service/selector names (`istiod-metrics`, `ztunnel-metrics`, `waypoint-metrics`, `loki`, `jaeger`, `jaeger-query`) match between each Task 2-4 creation step and Task 6/7's consuming steps. `mesh-observability-quota`'s hard limits in Task 1 Step 2 match the combined Loki/Jaeger/Promtail resource requests/limits written in Task 2/3.
