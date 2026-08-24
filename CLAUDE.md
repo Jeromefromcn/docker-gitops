@@ -15,3 +15,4 @@ Central GitOps repo for this VPS's infrastructure — not limited to docker-comp
 - Every time a new service is added to this repo, also add it as a card in the homepage dashboard — follow README.md's "给新服务加 homepage 卡片" section.
 - Host dotfiles/config (global CLAUDE.md, shell rc files, VS Code machine settings, etc.) live under `<host>/dotfiles/` and are symlinked into place — see `vps_oracle/dotfiles/README.md` before adding a new one.
 - Diagrams in any markdown file: use Mermaid, not ASCII art.
+- New apps consuming shared resources (minio/postgres/redis) get two isolated pools — prod and dev, dev suffixed `<name>_dev`: two buckets for minio, two DBs for postgres, two ACL users for redis. Existing apps (notes/todo) are not retrofitted.
