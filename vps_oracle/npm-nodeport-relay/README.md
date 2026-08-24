@@ -39,29 +39,42 @@ Both parts are needed; neither alone is sufficient.
 
 ## Port inventory
 
-One systemd instance per NodePort that an NPM proxy_host currently targets
-(`docker exec npm grep -r 'set \$port' /data/nginx/proxy_host/*.conf` to
-regenerate this list):
+One systemd instance per NodePort that a Docker-bridge container on this
+host currently targets. Originally that meant only NPM's proxy_host confs;
+as of Phase K (mesh observability, 2026-08-24) it also covers compose's
+`prometheus`/`grafana` containers (`vps_oracle/compose/monitoring/`), which
+hit the exact same black hole the 2026-08-19 incident describes — Docker
+bridge containers, not NPM specifically, are what this relay actually
+serves. For the NPM rows, regenerate with
+`docker exec npm grep -r 'set \$port' /data/nginx/proxy_host/*.conf`; the
+compose rows come from that project's `prometheus.yml` scrape jobs and
+Grafana datasource files instead.
 
-| Port | Service | NPM proxy_host |
+| Port | Service | Consumer |
 |---|---|---|
-| 30090 | argocd-server | argocd.jerome.cloudns.asia |
-| 30092 | consul (lab-environment) | consul.lab.jerome.cloudns.asia |
-| 30094 | grafana (lab-environment) | grafana.lab.jerome.cloudns.asia |
-| 30095 | jaeger (lab-environment) | jaeger.lab.jerome.cloudns.asia |
-| 30097 | api-gateway (lab-environment) | api.lab.jerome.cloudns.asia |
-| 30098 | headlamp | headlamp.jerome.cloudns.asia |
+| 30090 | argocd-server | NPM proxy_host: argocd.jerome.cloudns.asia |
+| 30092 | consul (lab-environment) | NPM proxy_host: consul.lab.jerome.cloudns.asia |
+| 30094 | grafana (lab-environment) | NPM proxy_host: grafana.lab.jerome.cloudns.asia |
+| 30095 | jaeger (lab-environment) | NPM proxy_host: jaeger.lab.jerome.cloudns.asia |
+| 30097 | api-gateway (lab-environment) | NPM proxy_host: api.lab.jerome.cloudns.asia |
+| 30098 | headlamp | NPM proxy_host: headlamp.jerome.cloudns.asia |
+| 30110 | istiod-metrics (istio-system) | compose Prometheus scrape job `istiod` (`vps_oracle/compose/monitoring/prometheus/prometheus.yml`) |
+| 30111 | ztunnel-metrics (istio-system) | compose Prometheus scrape job `ztunnel` (same file) |
+| 30112 | waypoint-metrics (pr-lanes) | compose Prometheus scrape job `waypoint` (same file) |
+| 30113 | loki (mesh-observability) | compose Grafana datasource `Loki` (`vps_oracle/compose/monitoring/grafana/provisioning/datasources/loki.yml`) |
+| 30114 | jaeger-query (mesh-observability) | compose Grafana datasource `Jaeger` (`vps_oracle/compose/monitoring/grafana/provisioning/datasources/jaeger.yml`) |
 
-**When adding a new NPM proxy_host that targets a k3s NodePort**, enable a
-new instance for that port (see Install below) — otherwise it'll hit the
-same black hole this incident was about.
+**When adding a new NPM proxy_host, compose Prometheus scrape job, or
+Grafana datasource that targets a k3s NodePort**, enable a new instance for
+that port (see Install below) — otherwise it'll hit the same black hole
+this incident was about.
 
 ## Install
 
 ```bash
 sudo cp nodeport-relay@.service /etc/systemd/system/
 sudo systemctl daemon-reload
-for p in 30090 30092 30094 30095 30097 30098; do
+for p in 30090 30092 30094 30095 30097 30098 30110 30111 30112 30113 30114; do
   sudo systemctl enable --now nodeport-relay@$p.service
 done
 ```
