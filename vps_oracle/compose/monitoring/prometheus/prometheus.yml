@@ -89,3 +89,15 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: blackbox-exporter:9115
+
+  - job_name: istiod
+    static_configs:
+      - targets: ['10.0.0.95:30110']
+
+  - job_name: ztunnel
+    static_configs:
+      - targets: ['10.0.0.95:30111']
+
+  - job_name: waypoint
+    static_configs:
+      - targets: ['10.0.0.95:30112']
