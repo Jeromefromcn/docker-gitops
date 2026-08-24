@@ -75,10 +75,13 @@ data:
     # must be enabled or no data is ever deleted. Same fix applied to
     # mesh-observability's copy (2026-08-24 final-review finding); kept here
     # so this config is correct the day lab-environment is ever scaled up.
+    # NOTE: `retention_enabled: true` REQUIRES `delete_request_store` in
+    # Loki 3.x — omitting it makes the config fail validation and crash-loop.
     compactor:
       retention_enabled: true
       retention_delete_delay: 2h
       working_directory: /loki/compactor
+      delete_request_store: filesystem
 ---
 apiVersion: v1
 kind: ConfigMap

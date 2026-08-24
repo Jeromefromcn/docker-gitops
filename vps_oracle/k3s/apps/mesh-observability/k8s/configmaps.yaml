@@ -41,10 +41,14 @@ data:
     # setting (final-review finding, 2026-08-24). This is the first always-on
     # instance of this config pattern (lab-environment's copy is replicas: 0),
     # so the latent bug became operational here.
+    # NOTE: `retention_enabled: true` REQUIRES `delete_request_store` in
+    # Loki 3.x — omitting it makes the config fail validation and the pod
+    # crash-loops (hit live 2026-08-24, see git history).
     compactor:
       retention_enabled: true
       retention_delete_delay: 2h
       working_directory: /loki/compactor
+      delete_request_store: filesystem
 ---
 apiVersion: v1
 kind: ConfigMap
