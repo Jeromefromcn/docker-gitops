@@ -49,6 +49,11 @@
         href: https://pgadmin.jerome.cloudns.asia
         description: PostgreSQL admin (unified instance)
 
+    - RedisInsight:
+        icon: si-redis
+        href: https://redisinsight.jerome.cloudns.asia
+        description: Redis admin (unified instance)
+
 - Apps:
     - Trilium:
         icon: trilium.png

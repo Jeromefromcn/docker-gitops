@@ -1,0 +1,80 @@
+# Unified Redis instance for the user's own apps — one shared instance, isolated
+# per app via Redis ACL users with key-prefix namespaces (~<app>:*).
+#
+# Isolation model (mirrors the unified Postgres stack, see ../postgres/README.md):
+#   - Each app gets its own ACL user: `user <app> on ><password> ~<app>:* +@all`
+#     The app can only touch keys under its own prefix. Key pattern isolation,
+#     NOT multi-instance — one instance, one data dir, one admin panel.
+#   - Third-party services that bundle their own Redis (e.g. dify's dify-redis)
+#     keep their own instance and are deliberately NOT migrated here.
+#
+# Network layout:
+#   redis        -> default network only (pure backend, no published port, no proxy)
+#   redisinsight -> default (reach redis) + proxy (reachable via NPM). No host port.
+#
+# Redis ACL users are loaded from ./redis/users.acl (mounted read-only) at boot.
+# The bootstrap superuser password comes from ${REDIS_PASSWORD} via --requirepass.
+# To add a new app: append one `user` line to users.acl, restart redis, and put
+# that app on the default network (it connects to hostname `redis`, port 6379).
+services:
+  redis:
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    container_name: redis
+    hostname: redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    command:
+      - redis-server
+      - /etc/redis/redis.conf
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --aclfile
+      - /etc/redis/users.acl
+    volumes:
+      - /etc/redis/data:/data
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+      - ./redis/users.acl:/etc/redis/users.acl:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    # Intentionally NOT on the proxy network and no ports published — pure backend.
+
+  redisinsight:
+    image: redis/redisinsight:latest@sha256:b5e19ee240abef6edb435871b90ff8a210995422e8e018ab61c0339d318a1f84
+    container_name: redisinsight
+    hostname: redisinsight
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /etc/redisinsight:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - default
+      - proxy
+    # NPM 反代配置: Forward Hostname/IP = redisinsight, Forward Port = 5540（容器名直连，走 proxy 网络）
+    # 未发布宿主端口 — 管理面板只走 NPM，见仓库 README 约定。
+    # 管理面板无内建鉴权 → 挂 self-only-and-auth（Basic Auth），见 npm/README.md
+
+networks:
+  proxy:
+    external: true   # 手动创建一次：docker network create proxy --subnet 172.19.0.0/16 --gateway 172.19.0.1 --ip-range 172.19.1.0/24
