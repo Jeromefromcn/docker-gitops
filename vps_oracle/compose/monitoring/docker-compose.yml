@@ -24,8 +24,9 @@ services:
       proxy:
         ipv4_address: 172.19.0.4
     # 不对外暴露、没有登录认证、不发布宿主机端口 (README「端口最少暴露」)。挂 proxy
-    # 网络只是为了拿一个按 README「网络隔离」章节登记的固定 IP，不接 NPM、没有
-    # proxy host 记录，proxy 网络里其他容器能直连但公网连不到。k3s 里的 headlamp
+    # 网络有两个用途：拿一个按 README「网络隔离」章节登记的固定 IP，以及当这个容器
+    # 唯一的对外出口 (默认路由，原因见文件末尾 networks.default 的注释)。不接 NPM、
+    # 没有 proxy host 记录，proxy 网络里其他容器能直连但公网连不到。k3s 里的 headlamp
     # 通过 k3s apiserver 自带的 service proxy 访问这个 IP (apiserver 是宿主机进程，
     # 本来就能直连 docker 网桥，见 vps_oracle/k3s/apps/headlamp/k8s/
     # external-prometheus.yaml) —— 那边是一个 hostNetwork 的 socat relay pod 把
@@ -71,6 +72,14 @@ services:
       TZ: "Asia/Hong_Kong"
     volumes:
       - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - default
+      - egress
+    # 本 project 里唯一需要出公网的容器 (探测 prometheus.yml 里那批
+    # https://*.jerome.cloudns.asia)。default 网络设了 internal 拿不到默认路由，
+    # 所以单独给它挂一张 egress 网桥当出口 —— 不用共用的 proxy 网络：那是对外反代
+    # 平面，把一个能被 prometheus 指使去打任意 URL 的 exporter 放进去等于白送一个
+    # SSRF 跳板
 
   grafana:
     image: grafana/grafana@sha256:96b9eabbe113fffa7ce6efc6267ebe7e6e33bdc65a94d85d73b2b46cbd14e43d  # 13.1.1
@@ -97,5 +106,27 @@ services:
     # NPM 反代配置: Forward Hostname/IP = grafana, Forward Port = 3000
 
 networks:
+  default:
+    internal: true
+    # 为什么要 internal：prometheus/grafana 同时挂 default 和 proxy 两张网络，两边
+    # GwPriority 都是默认的 0，docker 把 default 选成实际的默认路由，于是它们对外发
+    # 起的连线源 IP 落在本网段而不是 172.19.0.0/16 —— 正好躲开 host-firewall.sh 那条
+    # `-s 172.19.0.0/16 --dport 30000:32767 ACCEPT`，连 k3s NodePort 一律撞上 INPUT
+    # 链末尾的 REJECT，表现成 No route to host。完整诊断见
+    # docs/incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md
+    #
+    # Compose Spec 的 networks.<name>.priority 才是这个问题的正规解法，但在这台机器上
+    # 实测无效：docker-compose-plugin 从 5.1.1 一路升到 5.5.0，`docker compose config`
+    # 都能正确解析该字段，却都不会把它传给 engine 的 NetworkConnect，容器建出来
+    # GwPriority 仍是 0 (engine 侧的 `docker network connect --gw-priority` 是好的，
+    # 是 compose 没转发)。别再把这个字段加回来，加了也没用。
+    #
+    # 所以改从 default 这一侧解决：internal 网络没有网关、不参与默认路由选举，proxy
+    # 就自动成为 prometheus/grafana 唯一的出口，源 IP 落回 172.19.0.0/16，防火墙那条
+    # 既有规则直接生效。副作用是挂在这张网络上的容器失去出公网能力 —— prometheus/
+    # grafana 有 proxy 当出口不受影响，node-exporter 本来就不需要出网 (顺手收敛攻击
+    # 面)，只有 blackbox-exporter 真的要，单独给它挂了 egress
+  egress:
+    # 只给 blackbox-exporter 用的出公网网桥，见上面那个 service 的注释
   proxy:
     external: true   # 手动创建一次：docker network create proxy
