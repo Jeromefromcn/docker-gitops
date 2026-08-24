@@ -88,14 +88,30 @@ SQL
 
 ## 备份
 
-按库 `pg_dump`（逻辑备份）。脚本 `scripts/backup-databases.sh` 在**宿主**用 cron 调度（与 `monitoring/scripts/check-sync.sh` 同款模式；cron 条目只放宿主，不提交）：
+逻辑备份。脚本 `scripts/backup-databases.sh` 在**宿主**用 cron 调度（与 `monitoring/scripts/check-sync.sh` 同款模式；cron 条目只放宿主，不提交）：
 
 ```cron
 30 2 * * * /home/ubuntu/jerome/docker-gitops/vps_oracle/compose/postgres/scripts/backup-databases.sh
 ```
 
-- 输出：`/etc/postgres/backups/<db>/<db>-YYYYMMDD.sql`，每库保留最近 14 份
-- `pg_dump` 不含 role 等集群级对象 —— roles 由 `init/init-databases.sh` 声明式管理；需要时用 `pg_dumpall -g` 单独导出
+每次运行输出两部分，均保留最近 14 份：
+
+- **集群级对象**：`/etc/postgres/backups/global-objects/global-objects-YYYYMMDD.sql`（`pg_dumpall -g` —— roles、权限、表空间等）
+- **每库**：`/etc/postgres/backups/<db>/<db>-YYYYMMDD.sql`（`pg_dump` —— 库的结构+数据）
+
+**为什么含 global dump**：`pg_dump` 是单库级，不含角色等集群级对象。把 `pg_dumpall -g` 一并纳入备份后，备份是自包含的 —— 重建实例时可还原出**一模一样的角色集**，不依赖 `init/init-databases.sh` 是否被同步（新增角色不一定走 init 脚本，可能用 pgAdmin 直接建）。
+
+**还原子**（重建实例后）：
+
+```bash
+# 1. 先还原子集群级对象（角色/权限），再还原子各库
+docker exec -i postgres psql -U postgres -d postgres < /etc/postgres/backups/global-objects/global-objects-YYYYMMDD.sql
+docker exec -i postgres psql -U postgres -d app_notes < /etc/postgres/backups/app_notes/app_notes-YYYYMMDD.sql
+# 2. 若库不存在需先建库（见上文「怎么加一个新应用」）
+```
+
+> 注意：`pg_dumpall -g` 导出的是**密码 hash**（SCRAM），可还原出可用的登录密码，但不是明文。明文密码在 `.env`（gitignored）里单独保管，用于新建应用时授权。
+
 - 三方 PG（dify / love-bird-boss / lab-env）的备份**不在此栈范围**，另行处理
 
 ## 坑
