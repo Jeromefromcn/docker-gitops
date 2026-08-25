@@ -9,6 +9,12 @@
 # hello-backend Service) flows through this waypoint and IS rate-limited;
 # direct waypoint-bypassing calls to hello-backend-pr-N.svc are NOT (accepted
 # boundary, see spec "已知限制").
+#
+# Scope is narrower than "the whole waypoint": targetRefs attaches only to
+# hello-backend's own inbound filter chain. Traffic through the existing
+# 90/10 canary split (via the hello-backend VIP) IS covered; direct calls to
+# hello-backend-canary.pr-lanes.svc.cluster.local, and the waypoint's
+# direct-http chain, are NOT (confirmed via live config_dump).
 apiVersion: extensions.istio.io/v1alpha1
 kind: TrafficExtension
 metadata:
