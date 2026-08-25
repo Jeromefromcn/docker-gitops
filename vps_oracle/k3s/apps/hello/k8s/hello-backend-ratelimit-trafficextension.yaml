@@ -1,0 +1,53 @@
+# vps_oracle/k3s/apps/hello/k8s/hello-backend-ratelimit-trafficextension.yaml
+# Phase L: fixed-window token bucket rate limit on hello-backend's waypoint.
+#
+# Attaches to the `waypoint` (via `targetRefs: Service hello-backend`, which
+# carries istio.io/use-waypoint=waypoint) and injects a Lua filter at phase
+# STATS. Limit is per-worker (Envoy Lua global state is per worker thread);
+# with the waypoint's 200m CPU limit this is almost certainly 1 worker, so the
+# counter is effectively global. PR-lane traffic (HTTPRoute parentRefs ->
+# hello-backend Service) flows through this waypoint and IS rate-limited;
+# direct waypoint-bypassing calls to hello-backend-pr-N.svc are NOT (accepted
+# boundary, see spec "已知限制").
+apiVersion: extensions.istio.io/v1alpha1
+kind: TrafficExtension
+metadata:
+  name: hello-backend-ratelimit
+  namespace: pr-lanes
+spec:
+  targetRefs:
+    - kind: Service
+      name: hello-backend
+  match:
+    - mode: SERVER
+  phase: STATS
+  lua:
+    inlineCode: |
+      -- Fixed-window token bucket: 60 req per 60s window, per worker.
+      -- request_handle:timestamp() returns ms since epoch (Envoy Lua API).
+      local WINDOW_MS = 60000
+      local LIMIT = 60
+
+      -- Per-worker state (file-level globals shared across requests on this
+      -- worker thread; each worker keeps its own copy).
+      local window_start_ms = 0
+      local count = 0
+
+      function envoy_on_request(request_handle)
+        local now_ms = request_handle:timestamp()
+        if now_ms - window_start_ms >= WINDOW_MS then
+          -- New window (also covers first request: window_start_ms=0, now_ms
+          -- is ~1.7e12 ms since epoch, so this always fires on first call)
+          window_start_ms = now_ms
+          count = 0
+        end
+        count = count + 1
+        if count > LIMIT then
+          request_handle:respond(
+            {[":status"] = "429", ["x-envoy-ratelimited"] = "true"},
+            "rate limit exceeded"
+          )
+          -- respond() ends the request flow; return explicitly to make that clear
+          return
+        end
+      end
