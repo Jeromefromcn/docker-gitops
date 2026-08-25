@@ -25,7 +25,7 @@
 
 - **資源比 F+G 當時更緊**：現場 `free -h` 實測（2026-08-19）—— 23Gi 總量，僅剩 813Mi 真正空閒，`available` 6.2Gi（含可回收快取），swap 4Gi 已用掉 3.4Gi（85%）。這比 [2026-08-05 路線圖](2026-08-05-k3s-cloud-native-platform-roadmap.md)當初記錄的「可用約 6.4Gi」更緊張，且 swap 使用率本身就是需要留意的信號——本路線圖任何一階段若觀察到 OOMKilled 或 swap 繼續攀升，應優先暫停評估，不是硬著頭皮往下裝
 - **`pr-lanes-quota` 本來就卡得很緊**：`requests.cpu: 400m / requests.memory: 768Mi`，`limits.cpu: 1200m / limits.memory: 1536Mi`（[resourcequota.yaml](../../../vps_oracle/k3s/apps/hello/k8s/resourcequota.yaml)）。istiod-values.yaml 裡已經記錄過一次「waypoint 預設資源請求本身就撐爆這個 quota」的教訓，本路線圖新增的任何資源都要先確認不會撞到這個上限，尤其是熔斷/限流這類需要額外 sidecar 或 filter 開銷的能力
-- **Gateway API 裝的是 standard channel**（[standard-install.yaml](../../../vps_oracle/k3s/gateway-api/standard-install.yaml)），不含 experimental 功能通道——原生限流（GEP-2257）等實驗性 API 目前不存在，這直接影響 Phase L 的可行性評估，不是配置問題而是安裝範圍問題
+- **Gateway API 裝的是 standard channel**（[standard-install.yaml](../../../vps_oracle/k3s/gateway-api/standard-install.yaml)），不含 experimental 功能通道——**原標記「原生限流（GEP-2257）」有誤**：GEP-2257 實為 Duration 字符串格式標準，與限流無關；Gateway API 官方 GEP 列表至今沒有 rate limiting API，experimental channel 亦無。這使「升級 experimental 拿原生限流」這條路徑不成立，Phase L 最終改採 `TrafficExtension` + Lua（見 L 階段設計文檔）
 - **`lab-environment` 未入網格**：Prometheus/Loki/Jaeger 都在 `lab-environment`，`pr-lanes` 要接上它們，流量得跨命名空間——這正是這兩天兩次踩過的坑（NPM→NodePort 黑洞事故、Cilium socket-LB 收窄的連鎖反應）的同類風險：网络层配置看似独立，实际互相耦合。Phase K 動工前必須先確認 Cilium NetworkPolicy 允不允許這條跨命名空間路徑，不能假設「同集群就默認互通」
 
 ## 階段路線圖
@@ -35,7 +35,7 @@
 | ~~I. 流量彈性與路由治理~~（✅ 已完成） | 金絲雀權重路由、超時重試、熔斷（outlier detection）、故障注入——全部靠新增 Istio/Gateway API 資源達成，零新元件（除了一個 content-variant 的 `hello-backend-canary` Deployment） | `pr-lanes` 具備完整的流量治理能力，可用於後續的漸進式發布與 chaos 測試 | F+G |
 | ~~J. 細粒度存取控制~~（✅ 已完成） | AuthorizationPolicy，限定 `hello-frontend`→waypoint→`hello-backend`（及各 PR 泳道 backend）之間的合法呼叫關係 | 網格內東西向流量有身份層級的准入控制，非法呼叫在 ztunnel/waypoint 層被拒絕 | F+G，獨立於 I |
 | K. 可觀測性接入 | ~~指標（istiod/ztunnel/waypoint 的 Prometheus 端點）、日誌（waypoint access log）、追蹤（Envoy trace）全部指向 `lab-environment` 既有的 Prometheus/Loki/Jaeger，不在 `pr-lanes` 新裝~~ 設計階段推翻，見下方「K 階段」備註與[設計文檔](2026-08-24-k3s-phase-k-observability-design.md)：指標走 pull（compose 既有 Prometheus 拉 k3s NodePort），日誌/追蹤新開一個獨立的 `mesh-observability` namespace（Loki+Jaeger+範圍限定的 Promtail），查詢面統一併入 compose 既有的 Grafana | PR 泳道流量的指標/日誌/追蹤能在既有的（compose）Grafana/Jaeger UI 查到 | F+G，需先確認跨命名空間網路路徑（見現狀約束） |
-| L. 限流（評估性） | 評估 Gateway API experimental channel 升級 vs. Istio EnvoyFilter 兩條路徑的成本，**不預設一定要交付** | 一份取捨紀錄；若評估結果是「不值得」，路線圖到此為止，不強行實作 | I |
+| ~~L. 限流~~（✅ 已完成） | 評估後未走原定兩條路徑（experimental channel 無限流 API、EnvoyFilter 在 ambient 不背書），改採 Istio 1.30 `TrafficExtension` + Lua 固定窗口令牌桶，附加在 waypoint 上，`hello-backend` 限流 60 req/min，超限回 429 | `pr-lanes` 的 `hello-backend` 流量有限流保護，驗證 429 + `x-envoy-ratelimited`；完整查證與取捨見 [L 階段設計文檔](2026-08-25-k3s-phase-l-ratelimit-design.md) | I |
 
 ## 各階段設計備註
 
@@ -81,6 +81,17 @@ K 階段的新設計改採兩個決定：`lab-environment` 保留原封不動（
 
 而 `pr-lanes` 目前只是驗證 PR 預覽泳道機制的 demo 命名空間，沒有真實使用者流量，也還沒有濫用或過載的實際風險——限流要解決的問題目前不存在。[README](../../../vps_oracle/k3s/README.md) 也提到未來計劃是「等 `pr-lanes` 穩定後把 `workloads` 形態的服務批量接入」，屆時才會有值得限流保護的真實流量。此階段的產出是一份取捨紀錄，供那個時間點決策參考，不在本路線圖承諾實作。
 
+#### L 階段實作結果（2026-08-25 完成）
+
+評估階段結束後，原定的兩條路徑都被查證推翻，最終改走第三條路徑落地。完整取捨與查證過程見 [L 階段設計文檔](2026-08-25-k3s-phase-l-ratelimit-design.md)，這裡摘要結論：
+
+- **原定兩條路徑都是死路**：升級 Gateway API 到 experimental channel——查證後官方 GEP 列表至今沒有 rate limiting API，experimental channel 也沒有，升級拿不到原生限流；Istio `EnvoyFilter`——功能上可行，但在 ambient 模式下不受官方背書（waypoint 是 Istio 1.30 才引入的資料面，`EnvoyFilter` 對 ambient 的相容性沒有官方保證）。
+- **改採 `TrafficExtension` + Lua 固定窗口令牌桶**：Istio 1.30 的 `TrafficExtension` CRD 把 inline Lua filter 掛在 `pr-lanes` waypoint 上，`hello-backend` 限流 60 req/min，超限回 429，不新增元件。
+- **線上驗證（2026-08-25）**：100 次請求 burst 量得 59×200 / 41×429，貼近 60 req/60s 的設計目標（差異來自固定窗口邊界配合序列請求的抖動）；429 回應帶 `x-envoy-ratelimited: true` header 與 body "rate limit exceeded"；等待 65+ 秒後請求恢復 200，確認窗口重置正常。
+- **filter chain 順序有一個次要但真實的副作用**：查證 waypoint 的 Envoy config_dump 發現 `envoy.filters.http.lua`（限流）排在 `envoy.filters.http.rbac`（J 階段的 AuthorizationPolicy）之前——未授權呼叫者的請求會先消耗限流額度才被 RBAC 拒絕，限流不區分授權與未授權流量。這在 `pr-lanes` 這個 demo 命名空間可接受，維持現狀不處理。
+- **設計文檔「已知限制」提到的 per-worker Lua state 風險未發生**：waypoint 的 Envoy 是 `concurrency: 1`（單 worker），令牌桶狀態確認是真正全域的，不是設計文檔當初擔心的「≈2 倍近似值」風險。
+- **J 階段 RBAC 與 K 階段追蹤/quota 均確認未受影響**：未授權呼叫仍回 403、Telemetry 追蹤正常、`pr-lanes-quota` 維持 `requests 125m/320Mi`、`limits 500m/640Mi` 不變。
+
 ## 待細化的設計取捨
 
 - ~~I 階段的金絲雀權重路由要不要跟熔斷共用同一份 `DestinationRule`，還是分開管理~~（✅ 已定案：不共用）——`DestinationRule.host` 是單值欄位，`hello-backend` 與 `hello-backend-canary` 是兩個獨立 Service host，機制上就是兩份（一份 per host），不是風格選擇。且權重分流最終由 `VirtualService` 承載（見 I 實作結果），`DestinationRule` 沒有 subset 可切，共用沒有意義
@@ -94,4 +105,4 @@ K 階段的新設計改採兩個決定：`lab-environment` 保留原封不動（
 - I：✅ 已完成 — [設計文檔](2026-08-22-k3s-phase-i-traffic-resilience-design.md)（含實作結果與已知限制）、[實作計畫](2026-08-22-k3s-phase-i-traffic-resilience.md)（已打勾）
 - J：✅ 已完成 — [設計文檔](2026-08-23-k3s-phase-j-authorization-design.md)（含實作結果與已知限制）、[實作計畫](../plans/2026-08-23-k3s-phase-j-authorization.md)（已打勾）
 - K：設計與實作計畫完成，待執行 — [設計文檔](2026-08-24-k3s-phase-k-observability-design.md)、[實作計畫](../plans/2026-08-24-k3s-phase-k-observability.md)
-- L：待建立
+- L：✅ 已完成 — [設計文檔](2026-08-25-k3s-phase-l-ratelimit-design.md)（含評估筆記 [2026-08-25-k3s-phase-l-ratelimit-evaluation.md](2026-08-25-k3s-phase-l-ratelimit-evaluation.md)）、[實作計畫](../plans/2026-08-25-k3s-phase-l-ratelimit.md)（已打勾）
