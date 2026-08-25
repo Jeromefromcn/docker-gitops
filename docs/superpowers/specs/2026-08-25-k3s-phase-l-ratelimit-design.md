@@ -20,7 +20,7 @@
 ## 範圍
 
 **這階段要做的：**
-- 在 `pr-lanes` 新增一個 `TrafficExtension` CRD，用 Lua 在 waypoint 上實作**固定窗口令牌桶限流**，限定 `hello-backend`（含 `hello-backend-canary`）的入站流量。PR 泳道 backend（`hello-backend-pr-N`）的 HTTPRoute 以 `parentRefs: Service/hello-backend` 為父——流量同樣經 `hello-backend` Service 的 waypoint 導流，因此**同一個 waypoint 的 Lua filter 也會處理它們**（與 J 階段 Policy 1 掛在 waypoint 涵蓋所有下游的機制相同），但覆蓋是「經由 waypoint 的流量」層級，不是「PR 泳道 Service 本身有 waypoint label」——PR 泳道 Service 沒有 `use-waypoint` label（見「已知限制」）
+- 在 `pr-lanes` 新增一個 `TrafficExtension` CRD，用 Lua 在 waypoint 上實作**固定窗口令牌桶限流**。`targetRefs: kind: Service, name: hello-backend` 只掛在 `hello-backend` 這個 Service 自己的入站 filter chain 上，不是整個 waypoint（見「已知限制」）。這條 chain 涵蓋所有解析到 `hello-backend` VIP 之後才路由的流量——含既有 90/10 `VirtualService` 權重內部轉發到 `hello-backend-canary` 的那一部分，以及 PR 泳道 backend（`hello-backend-pr-N`）的 HTTPRoute（`parentRefs: Service/hello-backend`）——後者流量同樣經這條 chain 導流，因此**同一個 Lua filter 也會處理它們**（與 J 階段 Policy 1 掛在 waypoint 涵蓋所有下游的機制相同）。但**不涵蓋**直接呼叫 `hello-backend-canary.pr-lanes.svc.cluster.local`（該 Service 有自己獨立的入站 chain，不經 `hello-backend` VIP）的流量，也不是「PR 泳道 Service 本身有 waypoint label」——PR 泳道 Service 沒有 `use-waypoint` label（見「已知限制」）
 - 超限請求返回 HTTP 429 + `x-envoy-ratelimited: true` header
 - 限流參數可調：初始以寬鬆閾值（如 60 req/min/worker）落地並驗證 429 行為，確認無誤攔後再視需要調整
 
@@ -44,7 +44,7 @@
 ```mermaid
 flowchart LR
     fe["hello-frontend"] -->|"經 waypoint 的 hello-backend Service"| waypoint["waypoint\n(Envoy, 200m/256Mi)"]
-    waypoint --> filters{"TrafficExtension Lua (STATS)\nJ: AuthorizationPolicy (AUTHZ)\nK: Telemetry tracing\n——三疊層共存，實際順序需 config_dump 實測"}
+    waypoint --> filters{"TrafficExtension Lua (STATS)\nJ: AuthorizationPolicy (AUTHZ)\nK: Telemetry tracing\n——已查證確認：RBAC 在 Lua 之前（詳見下方說明）"}
     filters -->|"Lua 未超限"| route["依 I 路由\n→ backend / canary / pr-N"]
     filters -->|"Lua 超限 → 429 + x-envoy-ratelimited"| resp["直接回應，不轉發"]
 
@@ -58,7 +58,7 @@ flowchart LR
 | 項目 | 決定 | 理由 |
 |---|---|---|
 | API | `TrafficExtension`（`extensions.istio.io/v1alpha1`） | Istio 1.30 正式 API（替代 WasmPlugin 的新 API 家族），CRD 已隨 istio-base 裝在集群（`kubectl get crd trafficextensions.extensions.istio.io` 確認）。官方文檔列為 waypoint 的支援擴展機制之一，比 EnvoyFilter 這個「逃生艙口」有官方設計意圖 |
-| 附加目標 | `targetRefs: [{kind: Service, name: hello-backend}]` + `match: [{mode: SERVER}]` | `kind: Service` 附加到 `hello-backend` Service（該 Service 有 `istio.io/use-waypoint: waypoint` label，流量經 waypoint）。`mode: SERVER` 限定只處理入站（service 收到）的請求，不影響出站。由於 waypoint 承接所有經 `hello-backend` 的路由（baseline/canary/PR 泳道，後者 HTTPRoute 以 `parentRefs: Service/hello-backend` 為父），`targetRefs: Service/hello-backend` 附加的是這個 waypoint，涵蓋它承接的全部流量——與 J 階段 Policy 1 掛 `targetRefs: Gateway/waypoint` 的機制同源，只是一個用 Service 一個用 Gateway。**注意：不涵蓋「繞過 waypoint 直連 Pod」的流量**（見「已知限制」） |
+| 附加目標 | `targetRefs: [{kind: Service, name: hello-backend}]` + `match: [{mode: SERVER}]` | `kind: Service` 附加到 `hello-backend` Service（該 Service 有 `istio.io/use-waypoint: waypoint` label，流量經 waypoint）。`mode: SERVER` 限定只處理入站（service 收到）的請求，不影響出站。**已查證確認**：`targetRefs: Service/hello-backend` 實際掛的是 `hello-backend` 這個 Service 自己在 waypoint 上的入站 filter chain（`inbound-vip|80|http|hello-backend.pr-lanes.svc.cluster.local`），不是整個 waypoint——跟 J 階段 Policy 1 掛 `targetRefs: Gateway/waypoint`（附加到整個 waypoint Gateway 資源，涵蓋它承接的全部流量）不是同一個涵蓋範圍，只是兩者都用 `targetRefs` 這個機制。baseline/canary 的 90/10 權重、PR 泳道（HTTPRoute `parentRefs: Service/hello-backend`）都是解析到 `hello-backend` 這個 VIP 之後才路由，所以這條 chain 涵蓋它們；但 `hello-backend-canary` 自己的 Service 有獨立的入站 chain，直接呼叫它不經過本 filter（見「已知限制」）。**注意：也不涵蓋「繞過 waypoint 直連 Pod」的流量**（見「已知限制」） |
 | 注入位置 | `phase: STATS` | 在 Envoy filter chain 的 STATS 階段注入，位於 router 之前，可用 `respond()` 直接返回 429 |
 | 限流演算法 | 固定窗口令牌桶，Lua 實作 | 每 worker 每窗口（初始 60 秒）允許 N 個請求（初始 60）。簡單、可讀、無依賴。固定窗口 vs. 滑動窗口：demo 場景固定窗口足夠 |
 | 超限回應 | HTTP 429 + `x-envoy-ratelimited: true` | 標準限流回應，語意明確，方便後續接入可觀測性 |
