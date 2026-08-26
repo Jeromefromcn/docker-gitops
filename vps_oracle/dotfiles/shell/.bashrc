@@ -141,5 +141,3 @@ eval "$(direnv hook bash)"
 export SDKMAN_DIR="$HOME/.sdkman"
 [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
 export KUBECONFIG=$HOME/.kube/config
-# go 工具鏈(go/go/bin 放 go 自身, go/bin 放 go install 產物), 全局通用, 不放各項目 .envrc
-export PATH="$HOME/go/go/bin:$HOME/go/bin:$PATH"
