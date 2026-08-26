@@ -16,7 +16,7 @@
 
 ## 1. 一句話總結
 
-延續 [F+G 階段](2026-08-19-k3s-phase-fg-pr-lanes-summary.md)搭好的 Istio Ambient 骨架,依序補齊了服務網格四大標準能力裡原本缺的部分:**I** 給 `pr-lanes` 加上金絲雀權重路由、超時、重試、熔斷、故障注入;**J** 加上東西向流量的身份級存取控制(AuthorizationPolicy);**K** 把指標/日誌/追蹤接進 compose 既有的 Prometheus/Grafana,外加一個新開的 `mesh-observability` namespace 跑 Loki/Jaeger;**L** 用 `TrafficExtension` + Lua 幫 `hello-backend` 加上固定窗口限流。四階段全部零新增常駐服務對外能力(除了 I 階段一個必要的 `hello-backend-canary` Deployment),優先複用既有元件與既有 Grafana/Prometheus。
+延續 [F+G 階段](2026-08-19-k3s-phase-fg-pr-lanes-summary.md)搭好的 Istio Ambient 骨架,依序補齊了服務網格四大標準能力裡原本缺的部分:**I** 給 `pr-lanes` 加上金絲雀權重路由、超時、重試、熔斷、故障注入;**J** 加上東西向流量的身份級存取控制(AuthorizationPolicy);**K** 把指標/日誌/追蹤接進 compose 既有的 Prometheus/Grafana,外加一個新開的 `mesh-observability` namespace 跑 Loki/Jaeger;**L** 用 `TrafficExtension` + Lua 幫 `hello-backend` 加上固定窗口限流。四階段交付內容零新增常駐服務對外能力(除了 I 階段一個必要的 `hello-backend-canary` Deployment),優先複用既有元件與既有 Grafana/Prometheus;I 階段超時/重試/熔斷的行為級驗證需臨時改動 backend 鏡像製造真實上游故障,驗完恢復(見 5.3),不屬於常駐能力。
 
 ## 2. 為什麼要做這個
 
@@ -27,9 +27,9 @@
 ### I 階段:流量彈性與路由治理(2026-08-22 完成)
 
 - **金絲雀權重路由**:`VirtualService`(不是最初設計的 Gateway API `HTTPRoute`——兩者在同一 host 共存時互相覆蓋,已刪除 `HTTPRoute`)把 90% 流量導向 `hello-backend`、10% 導向新增的 `hello-backend-canary` Deployment,與既有的 PR 泳道 header 路由互不干擾。
-- **超時**:`timeout: 10s`。**已知限制**:與同規則的故障注入 delay 疊加時不生效(15s 延遲仍跑完整個請求才回 200),是 Envoy 本身行為限制,非配置錯誤。
-- **重試**:`attempts: 2, perTryTimeout: 2s, retryOn: 5xx,reset,connect-failure`。
-- **熔斷(outlier detection)**:`consecutive5xxErrors: 3, interval: 30s, baseEjectionTime: 30s, maxEjectionPercent: 100`(因兩個 backend 都只有 1 個副本,50% 會捨去成 0)。已下發到 Envoy dataplane,但**行為級 ejection 無法用故障注入觸發**(abort 是 local reply,不會派送到 upstream,outlier detection 永遠看不到)——只驗證了配置生效,沒驗證真實 5xx 觸發後的踢除行為。
+- **超時**:`timeout: 10s`。行為級驗證需**真實上游慢**(見 5.3):fault injection 的 delay 是代理轉發前的本地等待,疊加同規則 timeout 時不被截斷(15s 延遲仍跑完整個請求才回 200)——這是 Envoy 對「故障注入 delay」的行為限制,非配置錯誤,也不代表 timeout 本身不可驗證。
+- **重試**:`attempts: 2, perTryTimeout: 2s, retryOn: 5xx,reset,connect-failure`。行為級驗證需**真實上游 5xx**(見 5.3):fault injection 的 abort 是 local reply,不會派送到上游,觸發不了重試。
+- **熔斷(outlier detection)**:`consecutive5xxErrors: 3, interval: 30s, baseEjectionTime: 30s, maxEjectionPercent: 100`(因兩個 backend 都只有 1 個副本,50% 會捨去成 0)。已下發到 Envoy dataplane。行為級 ejection 需**真實連續 5xx** 觸發(見 5.3):fault injection 的 abort 是 local reply 不派送到上游,outlier detection 看不到——要驗證得讓上游真的回 5xx,不是代理偽造。
 - **故障注入**:`x-fault-test: delay`/`abort` header 觸發,固定打中 `hello-backend`(不含金絲雀)。
 
 ### J 階段:細粒度存取控制(2026-08-23 完成)
@@ -93,6 +93,27 @@ promtail-6b45497c96-b5fvc   1/1     Running   0
 
 四階段的資源都存在且 `Running`/`ALLOW`。以下第 5 節提供逐項的手動驗證步驟。
 
+---
+
+## 4.5 驗證點總覽(10 項,逐項勾選)
+
+10 個驗證點對應四大類能力。**「打勾」欄**:驗證通過就改成 `[x]`,全部打勾表示這份手冊完整跑完。⚠️ 標記表示該驗證點有副作用(建臨時 pod、灌流量、或需臨時改 backend 鏡像),執行前先看 5.0 記 quota 基準值。
+
+| ✓ | 能力 | 驗證點 | 驗證方式 | 預期結果 | 對應章節 |
+|---|---|---|---|---|---|
+| [ ] | I | 金絲雀權重路由 | 連打 20 次統計 canary 命中 | ~10%(約 2 次) | 5.1 |
+| [ ] | I | 超時 | `/slow` 真實慢 | ~10s 後被截斷回 504 | 5.3 |
+| [ ] | I | 重試 | `/fail-503` 真實 5xx | 重試發生,上游持續失敗最終 503 | 5.3 |
+| [ ] | I | 熔斷 | 連打 `/fail-503` 3+ 次 | 觸發 ejection,之後 503,30s 後恢復 200 | 5.3 |
+| [ ] | I | 故障注入 | `x-fault-test: delay`/`abort` | delay ~15s、abort 立即錯誤碼 | 5.2 |
+| [ ] | J | 身份級授權 | 合法/非法兩路徑 | 合法 200、非法非 200 | 5.4 |
+| [ ] | K | 指標 | compose Prometheus targets | `istiod/ztunnel/waypoint up` | 5.5 |
+| [ ] | K | 日誌 | Loki 查 `pr-lanes` | 非空日誌條目 | 5.6 |
+| [ ] | K | 追蹤 | Jaeger 查 service | 含 waypoint 相關 service | 5.7 |
+| [ ] | L | 限流 | 灌 70 次請求 | 出現 429 + `x-envoy-ratelimited`,窗口重置後恢復 200 | 5.8 |
+
+⚠️ 注意:**超時/重試/熔斷**三項的行為級驗證需先按 5.3 臨時改 backend 鏡像製造真實上游故障,驗完務必恢復原樣。
+
 ## 5. 手動驗證步驟
 
 以下所有指令假設在 `docker-gitops` 倉庫任意目錄執行,已有 `kubectl` 存取此 k3s 叢集的權限。凡標「⚠️ 有副作用」的步驟會建立臨時 debug pod 或短暫調整流量,執行前留意。
@@ -137,13 +158,58 @@ kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H 'x-fault-test: abort' http://hello-backend.pr-lanes.svc.cluster.local/
 ```
 
-### 5.3 I 階段:熔斷配置(結構驗證,行為級 ejection 已知無法用 fault injection 觸發)
+### 5.3 I 階段:超時、重試、熔斷的行為級驗證(需臨時製造真實上游故障)
 
-```bash
-kubectl -n pr-lanes get destinationrule -o yaml | grep -A5 outlierDetection
+**背景**:**不要**用 `x-fault-test: delay/abort` 來驗證這三項——那是代理本地的 local reply/轉發前等待,請求不會真正派送/慢到上游,重試與 outlier detection 都看不到,超時也不會被截斷。要驗證行為,必須讓**上游(hello-backend)真的變慢或真的回 5xx**。
+
+**做法**:臨時把 backend 的 `index.html` 換成一個帶故障行為的 nginx 配置(見下方「故障配置」),驗完再恢復原樣。`index.html` 只有約 100 字節,限速到 1KB/s 也要 10 多秒才傳完,足以超過 `timeout: 10s`。
+
+```nginx
+server {
+    listen 8080;
+    root /usr/share/nginx/html;
+
+    # 超時驗證:真實慢。限速讓單一請求超過 10s
+    location = /slow {
+        limit_rate 1k;
+        try_files /index.html =404;
+    }
+
+    # 重試/熔斷驗證:真實 5xx
+    location = /fail-503 {
+        return 503;
+    }
+    location = /fail-500 {
+        return 500;
+    }
+}
 ```
 
-預期:`hello-backend`、`hello-backend-canary` 各一份 `DestinationRule`,`outlierDetection.consecutive5xxErrors: 3`、`maxEjectionPercent: 100`。**不要**用 `x-fault-test: abort` 嘗試驗證行為級 ejection——已證實 abort 是 local reply 不會派送到 upstream,outlier detection 永遠看不到。
+**驗證步驟**(先記下第 5.0 節的 quota 基準值):
+
+```bash
+FRONTEND_POD=$(kubectl -n pr-lanes get pod -l app=hello-frontend -o jsonpath='{.items[0].metadata.name}')
+SVC=http://hello-backend.pr-lanes.svc.cluster.local
+
+# 2 超時:預期 ~10s 後被截斷回 504(非 200)
+kubectl -n pr-lanes exec "$FRONTEND_POD" -- \
+  curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' "$SVC/slow"
+
+# 3 重試:上游固定 503,retryOn: 5xx 觸發,attempts: 2 重試兩次後最終仍 503
+kubectl -n pr-lanes exec "$FRONTEND_POD" -- \
+  curl -s -o /dev/null -w '%{http_code}\n' "$SVC/fail-503"
+
+# 4 熔斷:連續 3 次 5xx 觸發 ejection,之後請求回 503/No Healthy Upstream,
+#   等 baseEjectionTime: 30s 過去後恢復 200
+for i in $(seq 1 4); do
+  kubectl -n pr-lanes exec "$FRONTEND_POD" -- \
+    curl -s -o /dev/null -w '%{http_code}\n' "$SVC/fail-503"
+done
+```
+
+預期:超時 → 約 10s 後 504;重試 → 503(重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。**驗完務必把 backend 鏡像恢復原樣**,並確認 CI 重建的鏡像 digest 與 `backend-deployment.yaml` 一致、quota 未變。
+
+> 說明:此驗證需改動 backend 鏡像(重啟 baseline + 觸發 CI 重建/Trivy/Cosign,PR 泳道短暫受影響),屬「動 live 資源」,動手前先與倉庫維護者確認。純 nginx 只能驗證「重試發生但最終失敗」;要驗證「重試後成功」需要應用層「先失敗後恢復」的邏輯(如加 Lua 或臨時縮放副本),超出本文檔驗證範圍。
 
 ### 5.4 J 階段:身份級授權(合法路徑放行 / 非法路徑拒絕)
 
@@ -228,7 +294,7 @@ kubectl -n lab-environment get deployments -o custom-columns=NAME:.metadata.name
 
 ## 6. 已知限制總覽(不要重複踩坑)
 
-- I:`fault.delay` 疊加同規則 `timeout` 不會被截斷;`x-fault-test: abort` 無法觸發熔斷 ejection(local reply 不到 upstream);金絲雀權重把 PR 泳道並發容量從 8 降到 7。
+- I:`fault.delay` 疊加同規則 `timeout` 不會被截斷——這是 Envoy 對「故障注入 delay」的行為限制,不代表 timeout 本身不可驗證(真實上游慢時 timeout 會正常截斷,見 5.3);`x-fault-test: abort` 無法觸發熔斷/重試(local reply 不到 upstream)——要行為級驗證得讓上游真的回 5xx(見 5.3);金絲雀權重把 PR 泳道並發容量從 8 降到 7。
 - J:授權 dry-run 觀察期實際上從未觀察到合法請求被 shadow-allow,真正驗證合法路徑是切 Enforce 之後才做的;PR 泳道 backend(`hello-backend-pr-N`)的保護目前只有架構分析佐證,沒有真正 PR 泳道實地測過。
 - K:Envoy trace 有取樣率設定(目前 100%,故意調高,因為沒有真實流量不擔心成本);Jaeger/Loki 都是非持久化儲存,pod 重建會清空;任何要幫 compose 新接一個 k3s NodePort 的人都要記得**兩層前置條件**——docker network 閘道(已修)+ `nodeport-relay@<port>.service`(要逐埠註冊),漏了第二層會出現看起來像閘道又壞了的 `connection refused`。
 - L:限流覆蓋邊界只到 `hello-backend` VIP,不含直連 canary Service 或繞過 waypoint 的流量;waypoint 是單 worker(`concurrency: 1`)所以令牌桶狀態是真全域,不是近似值。
