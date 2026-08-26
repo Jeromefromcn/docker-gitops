@@ -26,7 +26,21 @@ PAIRS=(
   "$HOME/.profile|shell/.profile"
   "$HOME/.bash_secrets|shell/.bash_secrets"
   "$HOME/.gitconfig|git/.gitconfig"
+  "$HOME/.gitconfig-jerome|git/.gitconfig-jerome"
+  "$HOME/.gitconfig-bridget|git/.gitconfig-bridget"
+  "$HOME/.gitconfig-evidence|git/.gitconfig-evidence"
   "$HOME/.vscode-server/data/Machine/settings.json|vscode/machine-settings.json"
+  "$HOME/bridget/.envrc|shell-env/bridget.envrc"
+  "$HOME/jerome/.envrc|shell-env/jerome.envrc"
+  "$HOME/evidence/.envrc|shell-env/evidence.envrc"
+  "$HOME/claude/jerome/CLAUDE.md|claude-jerome/CLAUDE.md"
+  "$HOME/claude/jerome/start-claude.sh|claude-jerome/start-claude.sh"
+  "$HOME/claude/jerome/.claude/settings.local.json|claude-jerome/.claude/settings.local.json"
+  "$HOME/.config/git/ignore|config/git-ignore"
+  "$HOME/.config/rclone/rclone.conf|config/rclone.conf"
+  "$HOME/.config/gh/config.yml|config/gh-config.yml"
+  "$HOME/.config/gh/hosts.yml|config/gh-hosts.yml"
+  "$HOME/.config/helm/repositories.yaml|config/helm-repositories.yaml"
 )
 
 for pair in "${PAIRS[@]}"; do

@@ -18,6 +18,12 @@ secrets/
 *.key
 *credentials*.json
 
+# dotfiles: 含 OAuth token 的真身只留 example 進 git
+vps_oracle/dotfiles/config/rclone.conf
+vps_oracle/dotfiles/config/gh-hosts.yml
+# claude/jerome 的許可權設定是納管的真身, 例外於全局 settings.local.json 規則
+!vps_oracle/dotfiles/claude-jerome/.claude/settings.local.json
+
 # local overrides (host-specific, not shared)
 docker-compose.override.yml
 docker-compose.*.local.yml

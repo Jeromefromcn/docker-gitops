@@ -1,12 +1,12 @@
-[user]
-    name = Jerome Jiang
-    email = jeromefromcn@gmail.com
+# 全局 .gitconfig 故意不设 user / credential:
+# 只有 ~/jerome/、~/bridget/、~/evidence/ 三个 account 目录能提交（各自 includeIf 提供身份）
+# 非 account 目录提交会 fatal: 无 user.name —— 这是有意的安全约束, 需要时再加 includeIf 规则
 
-[credential "https://github.com"]
-    helper = store --file=/home/ubuntu/.git-credentials-personal
-
-[includeIf "gitdir:~/evidence/"]
-    path = ~/.gitconfig-evidence
+[includeIf "gitdir:~/jerome/"]
+    path = ~/.gitconfig-jerome
 
 [includeIf "gitdir:~/bridget/"]
     path = ~/.gitconfig-bridget
+
+[includeIf "gitdir:~/evidence/"]
+    path = ~/.gitconfig-evidence

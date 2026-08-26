@@ -1,0 +1,7 @@
+[user]
+	name = Jerome Jiang
+	email = jeromefromcn@gmail.com
+
+[credential "https://github.com"]
+	helper =
+	helper = !/home/ubuntu/jerome/docker-gitops/vps_oracle/dotfiles/git/git-credential-gh-token evidence Jeromefromcn
