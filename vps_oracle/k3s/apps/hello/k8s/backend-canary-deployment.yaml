@@ -34,7 +34,7 @@ spec:
         - name: hello-backend
           # Same pinned digest as baseline (backend-deployment.yaml) — canary is
           # a content variant for testing weight routing, not a different build.
-          image: ghcr.io/jeromefromcn/hello-backend@sha256:2099b54b518ce8d9f7b7c5e3e4344e564125f43b69e630d7db9dccf9855a92de
+          image: ghcr.io/jeromefromcn/hello-backend@sha256:8f19439e8028429b95add3187d4ba7967e0293935730fcad0150082230e504ac
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
