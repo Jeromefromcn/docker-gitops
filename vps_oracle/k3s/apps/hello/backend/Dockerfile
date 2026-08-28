@@ -11,8 +11,11 @@ COPY app.py index.html ./
 COPY index.html /usr/share/nginx/html/index.html
 
 # runAsNonRoot: true in the deployment requires a non-root image user.
-# Port 8080 is >1024 so no privileged bind is needed.
-USER nobody
+# Use the numeric UID (65534 = nobody) rather than the "nobody" name:
+# kubelet cannot verify a symbolic user is non-root and refuses to start
+# the container under runAsNonRoot. Port 8080 is >1024 so no privileged
+# bind is needed.
+USER 65534
 
 EXPOSE 8080
 
