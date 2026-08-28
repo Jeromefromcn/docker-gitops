@@ -1,10 +1,10 @@
-# K3s 服務網格能力補完路線圖:完成總結與手動驗證手冊
+# K3s 服務網格能力補完路線圖:落成演練與驗證手冊
 
-日期:2026-08-26
+日期:2026-08-26(2026-08-29 修訂:對齊 rpc 化後的 backend)
 狀態:I / J / K / L 四階段全部已上線並在集群內驗證通過(**路線圖原文表格未同步更新 K 階段狀態,見下方「勘誤」**)
 環境:Oracle VPS 單節點 k3s(Cilium CNI),ArgoCD GitOps,`pr-lanes` 命名空間(Istio Ambient)
 關聯文檔:[路線圖原文](../superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md)、各階段設計文檔見文末「關聯文檔」一節
-本文檔:面向「這四個階段到底做出了什麼、怎麼手動確認它們還活著」的總結與驗證手冊,不重複設計文檔的決策過程。
+本文檔:面向「這四個階段到底做出了什麼、**怎麼完整演練操作**、怎麼驗證」的落成演練與驗證手冊,涵蓋從零落成與操作演練,不重複設計文檔的決策過程。**2026-08-29 起,`hello-backend` 已 rpc 化**(見 [rpc 規格](2026-08-28-hello-backend-rpc-spec.md)),超時/重試/熔斷改用其內建 `/slow`、`/fail-503`、`/fail-500` 端點驗證,不再需要臨時改鏡像。
 
 ---
 
@@ -16,7 +16,7 @@
 
 ## 1. 一句話總結
 
-延續 [F+G 階段](2026-08-19-k3s-phase-fg-pr-lanes-summary.md)搭好的 Istio Ambient 骨架,依序補齊了服務網格四大標準能力裡原本缺的部分:**I** 給 `pr-lanes` 加上金絲雀權重路由、超時、重試、熔斷、故障注入;**J** 加上東西向流量的身份級存取控制(AuthorizationPolicy);**K** 把指標/日誌/追蹤接進 compose 既有的 Prometheus/Grafana,外加一個新開的 `mesh-observability` namespace 跑 Loki/Jaeger;**L** 用 `TrafficExtension` + Lua 幫 `hello-backend` 加上固定窗口限流。四階段交付內容零新增常駐服務對外能力(除了 I 階段一個必要的 `hello-backend-canary` Deployment),優先複用既有元件與既有 Grafana/Prometheus;I 階段超時/重試/熔斷的行為級驗證需臨時改動 backend 鏡像製造真實上游故障,驗完恢復(見 5.3),不屬於常駐能力。
+延續 [F+G 階段](2026-08-19-k3s-phase-fg-pr-lanes-summary.md)搭好的 Istio Ambient 骨架,依序補齊了服務網格四大標準能力裡原本缺的部分:**I** 給 `pr-lanes` 加上金絲雀權重路由、超時、重試、熔斷、故障注入;**J** 加上東西向流量的身份級存取控制(AuthorizationPolicy);**K** 把指標/日誌/追蹤接進 compose 既有的 Prometheus/Grafana,外加一個新開的 `mesh-observability` namespace 跑 Loki/Jaeger;**L** 用 `TrafficExtension` + Lua 幫 `hello-backend` 加上固定窗口限流。四階段交付內容零新增常駐服務對外能力(除了 I 階段一個必要的 `hello-backend-canary` Deployment),優先複用既有元件與既有 Grafana/Prometheus;I 階段超時/重試/熔斷的行為級驗證原本需臨時改動 backend 鏡像製造真實上游故障(2026-08-29 前),現已 rpc 化,改用 backend 內建的 `/slow`、`/fail-503`、`/fail-500` 端點直接打即可(見 5.3),無需臨時改鏡像。
 
 ## 2. 為什麼要做這個
 
@@ -91,19 +91,19 @@ loki-6c4dd9fb95-ls5xs       1/1     Running   10 (34h ago)
 promtail-6b45497c96-b5fvc   1/1     Running   0
 ```
 
-四階段的資源都存在且 `Running`/`ALLOW`。以下第 5 節提供逐項的手動驗證步驟。
+四階段的資源都存在且 `Running`/`ALLOW`。以下第 5 節提供逐項的**演練與驗證**步驟(涵蓋「改動→同步→驗證→還原」的落成操作)。
 
 ---
 
 ## 4.5 驗證點總覽(10 項,逐項勾選)
 
-10 個驗證點對應四大類能力。**「打勾」欄**:驗證通過就改成 `[x]`,全部打勾表示這份手冊完整跑完。⚠️ 標記表示該驗證點有副作用(建臨時 pod、灌流量、或需臨時改 backend 鏡像),執行前先看 5.0 記 quota 基準值。
+10 個驗證點對應四大類能力。**「打勾」欄**:驗證通過就改成 `[x]`,全部打勾表示這份手冊完整跑完。⚠️ 標記表示該驗證點有副作用(建臨時 pod、灌流量、或短暫調整流量),執行前先看 5.0 記 quota 基準值。
 
 | ✓ | 能力 | 驗證點 | 驗證方式 | 預期結果 | 對應章節 |
 |---|---|---|---|---|---|
 | [ ] | I | 金絲雀權重路由 | 連打 20 次統計 canary 命中 | ~10%(約 2 次) | 5.1 |
-| [ ] | I | 超時 | `/slow` 真實慢 | ~10s 後被截斷回 504 | 5.3 |
-| [ ] | I | 重試 | `/fail-503` 真實 5xx | 重試發生,上游持續失敗最終 503 | 5.3 |
+| [ ] | I | 超時 | `/slow`(15s)內建端點 | 約 10s 後被截斷回 503(非 200) | 5.3 |
+| [ ] | I | 重試 | `/fail-503` 內建端點 | 重試發生,上游持續失敗最終 503 | 5.3 |
 | [ ] | I | 熔斷 | 連打 `/fail-503` 3+ 次 | 觸發 ejection,之後 503,30s 後恢復 200 | 5.3 |
 | [ ] | I | 故障注入 | `x-fault-test: delay`/`abort` | delay ~15s、abort 立即錯誤碼 | 5.2 |
 | [ ] | J | 身份級授權 | 合法/非法兩路徑 | 合法 200、非法非 200 | 5.4 |
@@ -112,9 +112,9 @@ promtail-6b45497c96-b5fvc   1/1     Running   0
 | [ ] | K | 追蹤 | Jaeger 查 service | 含 waypoint 相關 service | 5.7 |
 | [ ] | L | 限流 | 灌 70 次請求 | 出現 429 + `x-envoy-ratelimited`,窗口重置後恢復 200 | 5.8 |
 
-⚠️ 注意:**超時/重試/熔斷**三項的行為級驗證需先按 5.3 臨時改 backend 鏡像製造真實上游故障,驗完務必恢復原樣。
+⚠️ 注意:**超時/重試/熔斷**三項的行為級驗證用 rpc 化 backend 的內建端點(`/slow`、`/fail-503`、`/fail-500`)直接打,見 5.3,**不需要**臨時改 backend 鏡像。其中**熔斷**會短暫讓 backend 進入 ejected 狀態,驗完等 `baseEjectionTime: 30s` 過去自然恢復。
 
-## 5. 手動驗證步驟
+## 5. 演練與驗證步驟
 
 以下所有指令假設在 `docker-gitops` 倉庫任意目錄執行,已有 `kubectl` 存取此 k3s 叢集的權限。凡標「⚠️ 有副作用」的步驟會建立臨時 debug pod 或短暫調整流量,執行前留意。
 
@@ -134,6 +134,10 @@ kubectl -n pr-lanes describe resourcequota pr-lanes-quota
 
 ### 5.1 I 階段:金絲雀權重路由
 
+**權重路由的規則是 `backend-virtualservice.yaml` 的第三條 http 規則**(無 header 匹配那條):`weight: 90 → hello-backend`(stable)、`weight: 10 → hello-backend-canary`。改這個 weight 就能驗證權重變化,這是 GitOps 落成循環(Git first → ArgoCD sync)。
+
+**A. 驗證現有權重(無改動)**
+
 ```bash
 FRONTEND_POD=$(kubectl -n pr-lanes get pod -l app=hello-frontend -o jsonpath='{.items[0].metadata.name}')
 
@@ -145,7 +149,22 @@ done | sort | uniq -c
 
 預期:約 2 次 `canary`,其餘無輸出(打中 stable 版本無 canary 字樣)。
 
-### 5.2 I 階段:超時 + 故障注入(delay/abort)
+**B. 演練落成:改 weight 驗證權重變化(改動→同步→驗證→還原)**
+
+1. 編輯 `vps_oracle/k3s/apps/hello/k8s/backend-virtualservice.yaml`,把第三條規則的 `weight: 90`/`weight: 10` 改成 `weight: 70`/`weight: 30`。
+2. Commit + push(觸發 ArgoCD sync):
+   ```bash
+   git add vps_oracle/k3s/apps/hello/k8s/backend-virtualservice.yaml
+   git commit -m "chore: temporarily shift canary weight to 70/30 for drill"
+   git push origin main
+   ```
+3. 等 ArgoCD sync(`kubectl get application hello -n argocd` 變 `Synced`)。
+4. 重跑上方 A 的 20 次統計——預期 canary 命中率明顯上升(約 6 次,而非 2 次)。
+5. **還原**:把 weight 改回 90/10,再 commit + push。
+
+**副作用**:無(不重建 pod,僅改 Envoy 路由權重)。
+
+### 5.2 I 階段:故障注入(delay/abort)
 
 ```bash
 # 不帶 header:正常回應,無延遲
@@ -158,32 +177,21 @@ kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H 'x-fault-test: abort' http://hello-backend.pr-lanes.svc.cluster.local/
 ```
 
-### 5.3 I 階段:超時、重試、熔斷的行為級驗證(需臨時製造真實上游故障)
+### 5.3 I 階段:超時、重試、熔斷的行為級驗證(rpc 化 backend 內建故障端點)
 
 **背景**:**不要**用 `x-fault-test: delay/abort` 來驗證這三項——那是代理本地的 local reply/轉發前等待,請求不會真正派送/慢到上游,重試與 outlier detection 都看不到,超時也不會被截斷。要驗證行為,必須讓**上游(hello-backend)真的變慢或真的回 5xx**。
 
-**做法**:臨時把 backend 的 `index.html` 換成一個帶故障行為的 nginx 配置(見下方「故障配置」),驗完再恢復原樣。`index.html` 只有約 100 字節,限速到 1KB/s 也要 10 多秒才傳完,足以超過 `timeout: 10s`。
+**做法(2026-08-29 起)**:`hello-backend` 已 rpc 化(見 [rpc 規格](2026-08-28-hello-backend-rpc-spec.md)),**內建**真實上游端點,直接打即可,不需要臨時改鏡像:
 
-```nginx
-server {
-    listen 8080;
-    root /usr/share/nginx/html;
+- `GET /slow`:延遲 `SLOW_DELAY_SECONDS`(預設 **15s**)後回 200 → 超過 VirtualService `timeout: 10s`,觸發超時
+- `GET /fail-503`:立即回 503 → 觸發重試(`retryOn: 5xx`)與熔斷(`outlierDetection`)
+- `GET /fail-500`:立即回 500 → 觸發重試(`retryOn: 5xx`),重試後仍 500,最終回 **503**
+- `GET /healthz`:回 200(供 probe)
 
-    # 超時驗證:真實慢。限速讓單一請求超過 10s
-    location = /slow {
-        limit_rate 1k;
-        try_files /index.html =404;
-    }
-
-    # 重試/熔斷驗證:真實 5xx
-    location = /fail-503 {
-        return 503;
-    }
-    location = /fail-500 {
-        return 500;
-    }
-}
-```
+**實測行為(2026-08-29 驗證)**:
+- `/slow`(15s)會被 Envoy `timeout: 10s` 截斷,但因為同一規則有 retry,最終回 **503**(不是 504)。
+- `/fail-500` 觸發 retry(2 次),上游持續 500,最終回 **503**。
+- 所以超時/重試的「最終可見狀態碼」都是 **503**——要區分是哪個機制,看 `%{time_total}`:超時約 10s、重試立即(<1s)。
 
 **驗證步驟**(先記下第 5.0 節的 quota 基準值):
 
@@ -191,13 +199,13 @@ server {
 FRONTEND_POD=$(kubectl -n pr-lanes get pod -l app=hello-frontend -o jsonpath='{.items[0].metadata.name}')
 SVC=http://hello-backend.pr-lanes.svc.cluster.local
 
-# 2 超時:預期 ~10s 後被截斷回 504(非 200)
+# 2 超時:預期約 10s 後被截斷回 503(非 200;time_total ≈ 10s,因為 timeout 10s + retry 2 次試完)
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- \
   curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' "$SVC/slow"
 
-# 3 重試:上游固定 503,retryOn: 5xx 觸發,attempts: 2 重試兩次後最終仍 503
+# 3 重試:上游固定 503,retryOn: 5xx 觸發,attempts: 2 重試兩次後最終仍 503(立即回,time_total < 1s)
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- \
-  curl -s -o /dev/null -w '%{http_code}\n' "$SVC/fail-503"
+  curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' "$SVC/fail-503"
 
 # 4 熔斷:連續 3 次 5xx 觸發 ejection,之後請求回 503/No Healthy Upstream,
 #   等 baseEjectionTime: 30s 過去後恢復 200
@@ -207,9 +215,11 @@ for i in $(seq 1 4); do
 done
 ```
 
-預期:超時 → 約 10s 後 504;重試 → 503(重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。**驗完務必把 backend 鏡像恢復原樣**,並確認 CI 重建的鏡像 digest 與 `backend-deployment.yaml` 一致、quota 未變。
+**預期**:超時 → 約 10s 後 503(`time_total≈10s`);重試 → 立即 503(`time_total<1s`,重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。
 
-> 說明:此驗證需改動 backend 鏡像(重啟 baseline + 觸發 CI 重建/Trivy/Cosign,PR 泳道短暫受影響),屬「動 live 資源」,動手前先與倉庫維護者確認。純 nginx 只能驗證「重試發生但最終失敗」;要驗證「重試後成功」需要應用層「先失敗後恢復」的邏輯(如加 Lua 或臨時縮放副本),超出本文檔驗證範圍。
+預期:超時 → 約 10s 後 503(`time_total≈10s`);重試 → 立即 503(`time_total<1s`,重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。**無需恢復任何東西**——端點是 backend 內建的常駐能力,不打就等於沒影響;熔斷的 ejected 狀態會隨 `baseEjectionTime` 自動恢復。**唯一要注意**:熔斷驗證期間 backend 會短暫被 ejected,`/` 也會受影響(所有上游都在 ejected 清單裡),等 30s+ 即恢復。
+
+> 說明:`/fail-500` 也適合驗證重試(500 → retry → 仍 500 → 最終 503);要驗證「重試後成功」需要上游「先失敗後恢復」的邏輯,超出本文檔驗證範圍(可臨時改 `SLOW_DELAY_SECONDS`/自訂端點或縮放副本)。
 
 ### 5.4 J 階段:身份級授權(合法路徑放行 / 非法路徑拒絕)
 
