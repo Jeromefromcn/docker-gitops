@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: hello-backend
-          image: ghcr.io/jeromefromcn/hello-backend@sha256:8b3dc653ce946c66d60844cc168cf2a155f3384ed4b6fd9f602b87f1f88b374f
+          image: ghcr.io/jeromefromcn/hello-backend@sha256:2099b54b518ce8d9f7b7c5e3e4344e564125f43b69e630d7db9dccf9855a92de
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
