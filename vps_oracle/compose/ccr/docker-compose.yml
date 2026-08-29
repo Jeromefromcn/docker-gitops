@@ -26,7 +26,11 @@ services:
       # 供 switchboard 只读挂载消费，实现 opus/sonnet/haiku 分档路由。见
       # export-model-routing.cjs 头注 和
       # docs/misc/2026-08-20-ccr-third-party-model-compat-lessons.md。
-      NODE_OPTIONS: "--require /data/.claude-code-router/sse-coalesce.cjs --require /data/.claude-code-router/export-model-routing.cjs"
+      # 再挂 patch-subagent-routing.cjs：在 gateway 加载前修掉 server.js 里
+      # subagent 请求被强制路由到 profile 默认 model(flash) 的 bug。它是运行时
+      # 自愈补丁——镜像重建后第一个 node 进程会重新打上，不依赖镜像内状态。见
+      # docs/incidents/2026-08-30-ccr-subagent-flash-routing.md。
+      NODE_OPTIONS: "--require /data/.claude-code-router/sse-coalesce.cjs --require /data/.claude-code-router/export-model-routing.cjs --require /data/.claude-code-router/patch-subagent-routing.cjs"
       # 合併窗口（毫秒）。Zhipu 每 25-50ms 吐一个 delta，40ms 窗口常只抓到 1-2 个，
       # 實測合併率僅 3-5x；加大窗口 + thinking 專用大窗口（thinking 佔事件 ~99%
       # 且顯示平滑度無關緊要）可把合併率提到 15-30x，擴展提問延遲 3min → <1min。
@@ -52,6 +56,7 @@ services:
       # 而是经上面 NODE_OPTIONS --require 直挂（模块加载时自调用 install()）。
       - ./sse-coalesce.cjs:/data/.claude-code-router/sse-coalesce.cjs:ro
       - ./export-model-routing.cjs:/data/.claude-code-router/export-model-routing.cjs:ro
+      - ./patch-subagent-routing.cjs:/data/.claude-code-router/patch-subagent-routing.cjs:ro
       # 导出文件的落地目录——刻意不放在上面 ccr-data 卷里：那个卷（含
       # config.sqlite）目录权限是 700 root:root，其他容器挂了也读不到；这里
       # 单独开一个非敏感的 bind mount，只装模型路由字符串，不含任何 key。
