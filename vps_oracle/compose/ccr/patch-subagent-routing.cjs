@@ -66,9 +66,10 @@ function patchOnce() {
   if (globalThis.__ccrSubagentPatchApplied) return;
   globalThis.__ccrSubagentPatchApplied = true;
 
-  let src;
+  let src, mode;
   try {
     src = fs.readFileSync(SERVER_JS, "utf8");
+    mode = fs.statSync(SERVER_JS).mode;
   } catch (err) {
     console.error(
       "[patch-subagent-routing] cannot read server.js:",
@@ -83,7 +84,22 @@ function patchOnce() {
       console.error("[patch-subagent-routing] replace produced no change");
       return;
     }
-    fs.writeFileSync(SERVER_JS, patched);
+    try {
+      // Every node process ccr starts runs this same script (loaded via
+      // NODE_OPTIONS), so writes race across processes; a per-PID tmp name
+      // + rename keeps this atomic instead of letting a concurrently
+      // starting process's require(server.js) observe a truncated file
+      // mid-write. Same hazard and fix as export-model-routing.cjs.
+      const tmp = `${SERVER_JS}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, patched, { mode });
+      fs.renameSync(tmp, SERVER_JS);
+    } catch (err) {
+      console.error(
+        "[patch-subagent-routing] failed to write patched server.js:",
+        err.message,
+      );
+      return;
+    }
     console.error(
       "[patch-subagent-routing] applied ZPe fix to",
       SERVER_JS,

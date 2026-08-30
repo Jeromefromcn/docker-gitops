@@ -24,6 +24,7 @@
     ],
     "defaultMode": "auto"
   },
+  "model": "sonnet",
   "hooks": {
     "Stop": [
       {
@@ -75,6 +76,7 @@
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
   "switchModelsOnFlag": true,
+  "remoteControlAtStartup": false,
   "agentPushNotifEnabled": true,
   "autoMode": {
     "environment": [
