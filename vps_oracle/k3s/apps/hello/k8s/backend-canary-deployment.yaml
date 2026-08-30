@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-backend-canary
+  namespace: pr-lanes
+  labels:
+    app: hello-backend
+    lane: canary
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hello-backend
+      lane: canary
+  template:
+    metadata:
+      labels:
+        app: hello-backend
+        lane: canary
+    spec:
+      serviceAccountName: hello-backend-sa
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hello-backend
+          image: ghcr.io/jeromefromcn/hello-backend@sha256:8f19439e8028429b95add3187d4ba7967e0293935730fcad0150082230e504ac
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: index-html
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+      volumes:
+        - name: index-html
+          configMap:
+            name: hello-backend-canary-conf
