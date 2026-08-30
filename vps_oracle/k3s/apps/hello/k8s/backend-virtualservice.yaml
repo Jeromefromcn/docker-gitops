@@ -41,13 +41,14 @@ spec:
     # unconditional Envoy route that shadowed this VirtualService entirely (its
     # rules were never reached). Deleted rather than kept in sync — see Task 3
     # verification for the Envoy config-dump evidence.
+    #
+    # Weight is 100/0 during the drill teardown phase (canary manifests removed);
+    # the canary leg (weight 10 -> hello-backend-canary) is re-added when the
+    # canary is rebuilt from scratch during the drill.
     - route:
         - destination:
             host: hello-backend.pr-lanes.svc.cluster.local
-          weight: 90
-        - destination:
-            host: hello-backend-canary.pr-lanes.svc.cluster.local
-          weight: 10
+          weight: 100
       retries:
         attempts: 2
         perTryTimeout: 2s
