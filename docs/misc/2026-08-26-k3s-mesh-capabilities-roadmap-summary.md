@@ -102,7 +102,7 @@ promtail-6b45497c96-b5fvc   1/1     Running   0
 | ✓ | 能力 | 驗證點 | 驗證方式 | 預期結果 | 對應章節 |
 |---|---|---|---|---|---|
 | [x] | I | 金絲雀權重路由 | 連打 20 次統計 canary 命中 | ~10%(約 2 次) | 5.1 |
-| [ ] | I | 超時 | `/slow`(15s)內建端點 | 約 10s 後被截斷回 503(非 200) | 5.3 |
+| [x] | I | 超時 | `/slow`(15s)內建端點 | 約 6s 後被截斷回 504(非 200;perTryTimeout 2s×3 次嘗試) | 5.3 |
 | [ ] | I | 重試 | `/fail-503` 內建端點 | 重試發生,上游持續失敗最終 503 | 5.3 |
 | [ ] | I | 熔斷 | 連打 `/fail-503` 3+ 次 | 觸發 ejection,之後 503,30s 後恢復 200 | 5.3 |
 | [ ] | I | 故障注入 | `x-fault-test: delay`/`abort` | delay ~15s、abort 立即錯誤碼 | 5.2 |
@@ -183,15 +183,15 @@ kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code
 
 **做法(2026-08-29 起)**:`hello-backend` 已 rpc 化(見 [rpc 規格](2026-08-28-hello-backend-rpc-spec.md)),**內建**真實上游端點,直接打即可,不需要臨時改鏡像:
 
-- `GET /slow`:延遲 `SLOW_DELAY_SECONDS`(預設 **15s**)後回 200 → 超過 VirtualService `timeout: 10s`,觸發超時
+- `GET /slow`:延遲 `SLOW_DELAY_SECONDS`(預設 **15s**)後回 200 → 慢於 `perTryTimeout: 2s` × 3 次嘗試(實際 ~6s 截斷,見下),觸發超時
 - `GET /fail-503`:立即回 503 → 觸發重試(`retryOn: 5xx`)與熔斷(`outlierDetection`)
 - `GET /fail-500`:立即回 500 → 觸發重試(`retryOn: 5xx`),重試後仍 500,最終回 **503**
 - `GET /healthz`:回 200(供 probe)
 
-**實測行為(2026-08-29 驗證)**:
-- `/slow`(15s)會被 Envoy `timeout: 10s` 截斷,但因為同一規則有 retry,最終回 **503**(不是 504)。
+**實測行為(2026-08-29 初測 / 2026-09-01 修正)**:
+- `/slow`(15s)會被 Envoy 截斷,但**不是** `timeout: 10s` 觸發,而是 `retries.perTryTimeout: 2s` 先到點:每次嘗試 2s 超時,`attempts: 2` = 原始 1 次 + 重試 2 次 = 共 **3 次嘗試**,總耗時 **≈ 6s**(2s × 3),重試配額耗盡後回 **504**(不是 503、不是 10s)。`timeout: 10s` 是總預算上限,但 6s 就先耗盡重試配額,所以它實際從未觸發。
 - `/fail-500` 觸發 retry(2 次),上游持續 500,最終回 **503**。
-- 所以超時/重試的「最終可見狀態碼」都是 **503**——要區分是哪個機制,看 `%{time_total}`:超時約 10s、重試立即(<1s)。
+- 所以**超時**的最終可見狀態碼是 **504**(每次嘗試都是 timeout 類錯誤);**重試**(上游持續 5xx)的最終可見狀態碼是 **503**。區分機制看 `%{time_total}`:超時約 6s、重試立即(<1s)。
 
 **驗證步驟**(先記下第 5.0 節的 quota 基準值):
 
@@ -199,7 +199,8 @@ kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code
 FRONTEND_POD=$(kubectl -n pr-lanes get pod -l app=hello-frontend -o jsonpath='{.items[0].metadata.name}')
 SVC=http://hello-backend.pr-lanes.svc.cluster.local
 
-# 2 超時:預期約 10s 後被截斷回 503(非 200;time_total ≈ 10s,因為 timeout 10s + retry 2 次試完)
+# 2 超時:預期約 6s 後被截斷回 504(非 200;time_total ≈ 6s = perTryTimeout 2s × 3 次嘗試)
+#   ⚠️ 觸發 outlier ejection:連續 504/5xx 會把 backend 踢出(見 #4),重跑前先等 baseEjectionTime 30s
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- \
   curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' "$SVC/slow"
 
@@ -215,9 +216,9 @@ for i in $(seq 1 4); do
 done
 ```
 
-**預期**:超時 → 約 10s 後 503(`time_total≈10s`);重試 → 立即 503(`time_total<1s`,重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。
+**預期**:超時 → 約 6s 後 504(`time_total≈6s`,perTryTimeout 2s × 3 次嘗試;非 200、非 10s);重試 → 立即 503(`time_total<1s`,重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。
 
-預期:超時 → 約 10s 後 503(`time_total≈10s`);重試 → 立即 503(`time_total<1s`,重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。**無需恢復任何東西**——端點是 backend 內建的常駐能力,不打就等於沒影響;熔斷的 ejected 狀態會隨 `baseEjectionTime` 自動恢復。**唯一要注意**:熔斷驗證期間 backend 會短暫被 ejected,`/` 也會受影響(所有上游都在 ejected 清單裡),等 30s+ 即恢復。
+預期:超時 → 約 6s 後 504(`time_total≈6s`,perTryTimeout 2s × 3 次嘗試;非 200、非 10s);重試 → 立即 503(`time_total<1s`,重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。**無需恢復任何東西**——端點是 backend 內建的常駐能力,不打就等於沒影響;熔斷的 ejected 狀態會隨 `baseEjectionTime` 自動恢復。**唯一要注意**:熔斷驗證期間 backend 會短暫被 ejected,`/` 也會受影響(所有上游都在 ejected 清單裡),等 30s+ 即恢復。
 
 > 說明:`/fail-500` 也適合驗證重試(500 → retry → 仍 500 → 最終 503);要驗證「重試後成功」需要上游「先失敗後恢復」的邏輯,超出本文檔驗證範圍(可臨時改 `SLOW_DELAY_SECONDS`/自訂端點或縮放副本)。
 
