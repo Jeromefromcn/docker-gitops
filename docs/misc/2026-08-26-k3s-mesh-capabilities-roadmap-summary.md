@@ -109,7 +109,7 @@ promtail-6b45497c96-b5fvc   1/1     Running   0
 | [ ] | J | 身份級授權 | 合法/非法兩路徑 | 合法 200、非法非 200 | 5.4 |
 | [ ] | K | 指標 | compose Prometheus targets | `istiod/ztunnel/waypoint up` | 5.5 |
 | [ ] | K | 日誌 | Loki 查 `pr-lanes` | 非空日誌條目 | 5.6 |
-| [ ] | K | 追蹤 | Jaeger 查 service | 含 waypoint 相關 service | 5.7 |
+scm-history-item:/home/ubuntu/jerome/docker-gitops?%7B%22repositoryId%22%3A%22scm0%22%2C%22historyItemId%22%3A%22c3d47724f94221efc9577929b139345fd01a98f9%22%2C%22historyItemParentId%22%3A%22682be36b4e71c002279803d4fb8a3f039814fbb0%22%2C%22historyItemDisplayId%22%3A%22c3d4772%22%7D| [ ] | K | 追蹤 | Jaeger 查 service | 含 waypoint 相關 service | 5.7 |
 | [ ] | L | 限流 | 灌 70 次請求 | 出現 429 + `x-envoy-ratelimited`,窗口重置後恢復 200 | 5.8 |
 
 ⚠️ 注意:**超時/重試/熔斷**三項的行為級驗證用 rpc 化 backend 的內建端點(`/slow`、`/fail-503`、`/fail-500`)直接打,見 5.3,**不需要**臨時改 backend 鏡像。其中**熔斷**會短暫讓 backend 進入 ejected 狀態,驗完等 `baseEjectionTime: 30s` 過去自然恢復。
