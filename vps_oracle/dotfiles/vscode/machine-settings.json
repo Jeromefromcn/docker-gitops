@@ -4,7 +4,9 @@
     "files.dialog.defaultPath": "/home/ubuntu/jerome",
     "claudeCode.claudeProcessWrapper": "/home/ubuntu/.claude/claude-direnv-wrapper.sh",
     "claudeCode.useTerminal": true,
-    "claudeCode.environmentVariables": [
-        
-    ]
+    "claudeCode.environmentVariables": [],
+    "workbench.editorAssociations": {
+        "*.copilotmd": "vscode.markdown.preview.editor"
+    },
+    "markdown-preview-enhanced.enableScriptExecution": true
 }
