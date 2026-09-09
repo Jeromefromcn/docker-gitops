@@ -78,7 +78,7 @@ Vikunja 的任务事件（指派/提醒到期/逾期/完成）通过 webhook 转
 
 编写 compose 文件的约定——时区（含 tzdata 静默回退 UTC 的坑）、日志大小限制、端口最少暴露、最小权限、重启策略、网络隔离与静态 IP 登记、对外内容用英文——统一维护在 [`.claude/rules/compose-conventions.md`](.claude/rules/compose-conventions.md)。那里是唯一权威，人和 Claude 读的是同一份。
 
-另外两份规则：k3s/ArgoCD 的改动纪律见 [`.claude/rules/k3s-gitops.md`](.claude/rules/k3s-gitops.md)，文档该写进哪一层见 [`.claude/rules/docs-layout.md`](.claude/rules/docs-layout.md)。
+另外三份规则：k3s/ArgoCD 的改动纪律见 [`.claude/rules/k3s-gitops.md`](.claude/rules/k3s-gitops.md)，OpenTofu 的收编/免费层/版本红线见 [`.claude/rules/tofu-conventions.md`](.claude/rules/tofu-conventions.md)，文档该写进哪一层见 [`.claude/rules/docs-layout.md`](.claude/rules/docs-layout.md)。
 
 ## Host 列表
 

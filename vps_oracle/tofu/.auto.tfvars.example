@@ -1,0 +1,8 @@
+region                = ""
+tenancy_ocid          = ""
+compartment_id        = ""
+vcn_ocid              = ""
+subnet_ocid           = ""
+internet_gateway_ocid = ""
+route_table_ocid      = ""
+security_list_ocid    = ""
