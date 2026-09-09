@@ -34,3 +34,15 @@ OCID 填在 gitignored 的 `.auto.tfvars`（见 `.auto.tfvars.example`），不�
 - ⚠️ **踩坑**：这两个 default 资源的 `manage_default_resource_id` 填的是**该默认资源自己的 OCID**，**不是 VCN 的 id**。填 `oci_core_vcn.main.id` 会触发 force replacement（`destroy + recreate`），可能破坏线上路由/安全规则。正确引用：`oci_core_vcn.main.default_route_table_id` / `oci_core_vcn.main.default_security_list_id`（VCN 资源暴露的属性，正好等于这两个默认资源的 id）。
 - 当前配置与线上完全对齐，**没有用 `ignore_changes`**——factsheet 里的字段（含 vless 端口的 `description = "vless 端口"`）都写进了 `network.tf`。
 - 五类资源全部 `import` 成功，`tofu plan` = `No changes.`。
+
+## IAM 硬墙验证（2026-09-10，Task 11）
+
+负验证：`data.oci_core_instance` 指向本机实例，预期 OCI 对未授权 compute 报错。**实测 OCI provider 9.0.0 对未授权实例是「静默空壳」——`Read complete` 但所有字段为 `null`，不硬报错**（计划文档预期 NotAuthorizedOrNotFound，实际行为不同）。
+
+硬墙生效的证据链（三处对照）：
+
+1. `oci_core_vcns` 读到完整 VCN（network-family 授权生效）。
+2. 同一身份 `oci_core_instances` 返回空列表（compute 读不到）。
+3. `oci_core_instance.self` 返回全 null 空壳（未授权静默降级）。
+
+结论：Instance Principal **能管网络、管不了 compute**——符合 `manage virtual-network-family` 单条 policy 的设计。看到 `Read complete` 的实例 data source 时不要误判为「读到了」，检查字段是否全 null。
