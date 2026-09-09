@@ -6,12 +6,14 @@ on:
     paths:
       - '*/compose/**/docker-compose.yml'
       - 'vps_oracle/host-native/inspector/**'
+      - '*/tofu/**'
       - '.github/scripts/**'
       - '.github/workflows/repo-conventions.yml'
   pull_request:
     paths:
       - '*/compose/**/docker-compose.yml'
       - 'vps_oracle/host-native/inspector/**'
+      - '*/tofu/**'
       - '.github/scripts/**'
   workflow_dispatch: {}
 
@@ -78,5 +80,31 @@ jobs:
             case "$t" in test-common.sh|test-inspect.sh) continue ;; esac
             echo "--- $t"
             ./"$t" || { echo "::error::$t failed"; failed=1; }
+          done
+          exit $failed
+
+  # Static checks only — tofu fmt + validate never touch live cloud resources.
+  # `tofu init -backend=false` only downloads provider plugins from the
+  # registry; it needs no cloud credentials (OCI's InstancePrincipal /
+  # GCP's key are never exercised by `validate`).
+  tofu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.12.6
+
+      - name: tofu fmt -check + init + validate
+        run: |
+          failed=0
+          for d in $(find . -type d -name tofu -not -path './.worktrees/*'); do
+            echo "--- $d"
+            (cd "$d" && tofu fmt -recursive -check) || failed=1
+            (cd "$d" && tofu init -backend=false -input=false >/dev/null) || failed=1
+            (cd "$d" && tofu validate) || failed=1
           done
           exit $failed
