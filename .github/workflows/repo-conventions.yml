@@ -69,7 +69,13 @@ jobs:
         run: |
           failed=0
           for t in test-*.sh; do
-            [ "$t" = "test-common.sh" ] && continue
+            # test-common.sh is a helper, not a test.
+            # test-inspect.sh is deliberately NOT hermetic: it runs the real
+            # inspect.sh end to end and posts to the real apprise instance,
+            # which lives behind NPM's self-only access list on the VPS. It
+            # can only pass when run on that host:
+            #   cd vps_oracle/host-native/inspector/tests && ./test-inspect.sh
+            case "$t" in test-common.sh|test-inspect.sh) continue ;; esac
             echo "--- $t"
             ./"$t" || { echo "::error::$t failed"; failed=1; }
           done
