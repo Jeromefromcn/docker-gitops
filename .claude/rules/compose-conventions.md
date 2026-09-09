@@ -19,7 +19,7 @@ paths:
       - /usr/share/zoneinfo/Asia/Hong_Kong:/usr/share/zoneinfo/Asia/Hong_Kong:ro
     ```
     **不要用 `/etc/localtime:/etc/localtime:ro`**（网上最常见的写法，在这里是白挂）：Go 只在 `TZ` 未设置时才读 `/etc/localtime`，一旦 `TZ` 设成 zone 名就只查 `/usr/share/zoneinfo`。portainer 就是这么修的。
-  - **k3s 侧**同理，但先看命名空间：`headlamp`、`pr-lanes` 带 `pod-security.kubernetes.io/enforce: baseline`，而 baseline profile **禁止 hostPath volume**，这类命名空间改用 ConfigMap 装 zone 文件再 `subPath` 挂载，见 [`vps_oracle/k3s/apps/headlamp/k8s/tzdata-configmap.yaml`](vps_oracle/k3s/apps/headlamp/k8s/tzdata-configmap.yaml)。
+  - **k3s 侧**同理，但先看命名空间：`headlamp`、`pr-lanes` 带 `pod-security.kubernetes.io/enforce: baseline`，而 baseline profile **禁止 hostPath volume**，这类命名空间改用 ConfigMap 装 zone 文件再 `subPath` 挂载，见 [`vps_oracle/k3s/apps/headlamp/k8s/tzdata-configmap.yaml`](../../vps_oracle/k3s/apps/headlamp/k8s/tzdata-configmap.yaml)。
   - **`docker exec <容器> date` 不是可靠的检查手段**：prom 系列镜像里的 busybox `date` 完全不认 IANA zone 名（只认 POSIX 写法 `TZ=HKT-8`），显示 UTC，但 Prometheus 主进程日志其实是 `+08:00`；portainer 则根本没有 shell。判断真实时区看**应用自己的日志时间戳**，或拿 `docker inspect -f '{{.State.StartedAt}}'` 跟第一条日志比对。
   - **故意保持现状的**：prometheus / node-exporter / blackbox-exporter（应用日志已经是 `+08:00`；唯一能修好 busybox `date` 的 `TZ=HKT-8` 反而会把应用日志打回 UTC，两个消费者要求的格式互斥）；cilium（为一个日志时区滚动重启全集群 CNI DaemonSet 不划算，且它输出 UTC 跟 kubectl 和其他 k8s 组件一致）。
 - **日志大小限制**：每个 service 都要显式声明 `logging`，避免日志把磁盘写满：

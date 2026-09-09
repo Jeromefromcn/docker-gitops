@@ -1,0 +1,76 @@
+name: repo-conventions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*/compose/**/docker-compose.yml'
+      - 'vps_oracle/host-native/inspector/**'
+      - '.github/scripts/**'
+      - '.github/workflows/repo-conventions.yml'
+  pull_request:
+    paths:
+      - '*/compose/**/docker-compose.yml'
+      - 'vps_oracle/host-native/inspector/**'
+      - '.github/scripts/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Turns the conventions in .claude/rules/compose-conventions.md into a check
+# that fails a merge, rather than guidance that only applies when someone (or
+# Claude) remembers to read it. The compose check runs at the YAML level on
+# purpose — `docker compose config` would need each stack's gitignored .env.
+jobs:
+  compose-conventions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
+      - name: Check compose conventions
+        run: python3 .github/scripts/check-compose-conventions.py
+
+  inspector-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
+
+      # Every checks/<name>.sh must have a tests/test-<name>.sh. The pairing is
+      # the convention; without this, a new check can land untested (two did).
+      - name: Every check has a paired test
+        working-directory: vps_oracle/host-native/inspector
+        run: |
+          missing=0
+          for c in checks/*.sh; do
+            b="$(basename "$c" .sh)"
+            if [ ! -f "tests/test-$b.sh" ]; then
+              echo "::error::checks/$b.sh has no tests/test-$b.sh"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Run inspector test suite
+        working-directory: vps_oracle/host-native/inspector/tests
+        run: |
+          failed=0
+          for t in test-*.sh; do
+            [ "$t" = "test-common.sh" ] && continue
+            echo "--- $t"
+            ./"$t" || { echo "::error::$t failed"; failed=1; }
+          done
+          exit $failed

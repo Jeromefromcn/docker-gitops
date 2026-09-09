@@ -26,7 +26,9 @@
       "Bash(git -C /home/ubuntu/jerome/docker-gitops status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(docker exec npm nginx -t)",
+      "Bash(docker exec npm nginx -T)"
     ],
     "ask": [
       "Bash(kubectl apply:*)",
@@ -41,7 +43,21 @@
       "Bash(docker compose down:*)",
       "Bash(docker compose restart:*)",
       "Bash(docker compose stop:*)",
-      "Bash(docker compose rm:*)"
+      "Bash(docker compose rm:*)",
+      "Bash(docker exec:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/validate-compose.sh"
+          }
+        ]
+      }
     ]
   }
 }
