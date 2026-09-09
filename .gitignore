@@ -50,3 +50,9 @@ vps_oracle/host-native/inspector/state/
 # superpowers subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/sdd/
 .worktrees/
+
+# OpenTofu (vps_oracle/tofu, vps_gcp/tofu)
+*.tfstate
+*.tfstate.*
+.terraform/
+*.auto.tfvars
