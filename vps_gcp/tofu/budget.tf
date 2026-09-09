@@ -1,9 +1,15 @@
 # The budget's permission lives on the BILLING ACCOUNT, not the project —
 # `roles/billing.costsManager` must be granted at the billing-account level in
 # the console. A project-level role cannot see budgets regardless of scope.
+#
+# budget_filter.projects expects `projects/{project_NUMBER}` — the digits-only
+# numeric id, NOT `projects/{project_id}` (the alphanumeric name). These are
+# different GCP identifiers; the budget silently won't match its scope if the
+# wrong one is used.
 resource "google_billing_budget" "free_tier" {
   billing_account = var.billing_account
   display_name    = "free-tier-guard"
+  depends_on      = [google_project_service.billingbudgets, google_project_service.cloudbilling]
 
   amount {
     specified_amount {
@@ -22,6 +28,6 @@ resource "google_billing_budget" "free_tier" {
   }
 
   budget_filter {
-    projects = ["projects/${var.project_id}"]
+    projects = ["projects/${var.project_number}"]
   }
 }

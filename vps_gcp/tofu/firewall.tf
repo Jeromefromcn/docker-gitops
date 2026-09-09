@@ -1,7 +1,8 @@
 # Only SSH ingress. The instance itself carries the free-tier egress boundary.
 resource "google_compute_firewall" "ssh" {
-  name    = "allow-ssh"
-  network = google_compute_network.main.name
+  name       = "allow-ssh"
+  network    = google_compute_network.main.name
+  depends_on = [google_project_service.compute]
 
   allow {
     protocol = "tcp"

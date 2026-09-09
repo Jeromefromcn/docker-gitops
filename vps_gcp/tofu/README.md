@@ -16,7 +16,7 @@
 专设 service account + key JSON。角色收窄到 `roles/compute.networkAdmin`、`roles/compute.instanceAdmin.v1`、`roles/serviceusage.serviceUsageAdmin`。
 
 - key 放仓库之外，经环境变量引用：`export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json`
-- `.auto.tfvars`（gitignored）填 `project_id` 与 `billing_account` 两个必填项，见 `.auto.tfvars.example`。
+- `.auto.tfvars`（gitignored）填 `project_id`、`project_number` 与 `billing_account` 三个必填项，见 `.auto.tfvars.example`。`project_number` 是纯数字的项目编号，跟字母数字的 `project_id` 是两个不同的标识——budget 的 `budget_filter.projects` 只认 `projects/{project_number}`。
 
 `google_billing_budget` 的权限挂在**账单账户**上、不是项目上——需在账单账户层级授 `roles/billing.costsManager`。
 
@@ -29,7 +29,7 @@
 ```bash
 cd vps_gcp/tofu
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
-cp .auto.tfvars.example .auto.tfvars   # 填 project_id / billing_account
+cp .auto.tfvars.example .auto.tfvars   # 填 project_id / project_number / billing_account
 tofu init
 tofu plan    # 验收：终态 No changes.
 tofu apply

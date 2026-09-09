@@ -5,6 +5,7 @@ resource "google_compute_instance" "vps" {
   name         = "vps-gcp"
   machine_type = "e2-micro" # free only in us-west1/us-central1/us-east1
   zone         = "us-west1-a"
+  depends_on   = [google_project_service.compute]
 
   boot_disk {
     initialize_params {
