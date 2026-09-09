@@ -6,7 +6,7 @@
 
 | 项 | 值 | 为什么 |
 |---|---|---|
-| region / zone | `us-west1` / `us-west1-a` | e2-micro 仅 us-west1/us-central1/us-east1 免费 |
+| region / zone | `us-central1` / `us-central1-a` | e2-micro 仅 us-west1/us-central1/us-east1 免费；对齐前线上实例所在的免费机房 |
 | machine_type | `e2-micro` | 写死字面值，不用变量，防手滑改成 e2-medium |
 | boot disk | 30 GB `pd-standard` | 免费层 30 GB 标准永久磁盘总额 |
 | egress | 1 GB/月（不含中国/澳洲） | 见 instance.tf 注释 |

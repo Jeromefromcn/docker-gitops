@@ -70,7 +70,7 @@
       }
     }
   },
-  "effortLevel": "medium",
+  "effortLevel": "high",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
@@ -104,6 +104,5 @@
       "**Org-specific CLIs**: None configured",
       "routine under /home/ubuntu/claude/jerome/projects/ prefix: querying project data per repo-local CLAUDE.md instructions"
     ]
-  },
-  "model": "sonnet"
+  }
 }
