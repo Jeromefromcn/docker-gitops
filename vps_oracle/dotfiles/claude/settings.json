@@ -105,5 +105,5 @@
       "routine under /home/ubuntu/claude/jerome/projects/ prefix: querying project data per repo-local CLAUDE.md instructions"
     ]
   },
-  "model": "sonnet"
+  "model": "opus"
 }
