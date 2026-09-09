@@ -7,7 +7,7 @@ resource "google_compute_network" "main" {
 resource "google_compute_subnetwork" "main" {
   name          = "vps-gcp-subnet"
   network       = google_compute_network.main.id
-  region        = "us-west1"
+  region        = "us-central1" # must match the instance zone (us-central1-a)
   ip_cidr_range = "10.0.0.0/24"
   depends_on    = [google_project_service.compute]
 }

@@ -15,7 +15,7 @@ resource "google_compute_instance" "vps" {
 
   boot_disk {
     initialize_params {
-      image = "ubuntu-os-cloud/ubuntu-2404-noble-amd64"
+      image = "ubuntu-os-cloud/ubuntu-2404-lts-amd64" # family; resolves to the current noble image
       size  = 30 # 30 GB is the free-tier standard-PD total
       type  = "pd-standard"
     }

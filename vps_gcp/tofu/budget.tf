@@ -13,7 +13,11 @@ resource "google_billing_budget" "free_tier" {
 
   amount {
     specified_amount {
-      currency_code = "USD"
+      # This billing account (BOCHK) is denominated in HKD — the API rejects a
+      # currency that doesn't match the account. 1 HKD ≈ $0.13 USD, so the
+      # threshold sits well inside the free tier. The pre-existing "gcp budget"
+      # uses the same HKD 1 cap.
+      currency_code = "HKD"
       units         = "1"
     }
   }
