@@ -85,5 +85,6 @@ Vikunja 的任务事件（指派/提醒到期/逾期/完成）通过 webhook 转
 | Host | 说明 | 详情 |
 |---|---|---|
 | vps_oracle | Oracle Cloud VPS | [vps_oracle/README.md](vps_oracle/README.md) |
+| vps_gcp | GCP free-tier e2-micro（只纳管 `tofu/` 一层） | [vps_gcp/README.md](vps_gcp/README.md) |
 
 其他背景/历史资料（故障记录、设计存档等，非日常操作必读）见 [`docs/README.md`](docs/README.md)。
