@@ -4,15 +4,17 @@
 
 关联：计划 [docs/superpowers/plans/2026-09-09-opentofu-integration.md](../superpowers/plans/2026-09-09-opentofu-integration.md)、设计 [docs/superpowers/specs/2026-09-09-opentofu-integration-design.md](../superpowers/specs/2026-09-09-opentofu-integration-design.md)。
 
-## 状态快照（2026-09-09）
+## 状态快照（2026-09-10）
 
 | 事项 | 状态 |
 |---|---|
 | OpenTofu 1.12.6 | ✅ 已装到 `/usr/local/bin/tofu`（linux_arm64） |
-| 静态阶段 Task 1–6、8 | ✅ 完成，8 commit，合并 `main`（FF merge，尚未 push） |
-| Task 7（GCP live 验收） | ⏳ 待前置 |
-| Task 9–11（OCI 探查/收编/硬墙验证） | ⏳ 待前置 |
-| 四个 console 前置 | ❌ 未做（只能用户手动） |
+| 静态阶段 Task 1–6、8 | ✅ 完成，8 commit，合并 `main` |
+| Task 7（GCP live 验收） | ✅ 完成（用户手动做完 console 前置 + apply，`tofu plan` = `No changes.`） |
+| Task 9（OCI 探查） | ✅ 完成，factsheet 已提取（VCN `Claude code`，本机在 public subnet 10.0.0.0/24） |
+| Task 10（OCI 收编） | ✅ 完成，5 资源 import，`tofu plan` = `No changes.`（commit `524e313`） |
+| Task 11（OCI 硬墙验证） | ✅ 完成（负验证：实例 data source 返回全 null 空壳；commit `c3cd47c`） |
+| 四个 console 前置 | ✅ 全部完成 |
 
 ## 执行顺序
 
@@ -61,9 +63,9 @@ cd vps_gcp/tofu && cp .auto.tfvars.example .auto.tfvars
 ```
 
 ```hcl
-project_id      = "pro-century-270314"
-project_number  = "1072540592283"
-billing_account = "010BE7-1329E9-4D635F"
+project_id      = "my-project-123456"
+project_number  = "123456789012"
+billing_account = "A1B2C3-D4E5F6-G7H8I9"
 ```
 
 ```bash
@@ -128,8 +130,10 @@ OCI 用 Instance Principal，**无 key、磁盘零凭据**。填好三项 + 建�
 
 ## 四、收尾自检（合并前，live 阶段跑完再核对）
 
-- [ ] `git status` 干净，无 `.tfstate`、无 `.auto.tfvars`（含实值）、无 `probe.tf` / `wall-check.tf` 残留。
-- [ ] `.terraform.lock.hcl` 已提交（两个 module 各一份）。
-- [ ] CI `tofu` job 能在干净 checkout 上通过（`fmt -check` + `init` + `validate`）。
-- [ ] `vps_oracle/tofu/` 禁 `destroy` 红线已在 `tofu-conventions.md` 与 `vps_oracle/tofu/README.md` 两处。
-- [ ] spec 未承诺的 Phase 3 未误放进本计划。
+- [x] `git status` 干净，无 `.tfstate`、无 `.auto.tfvars`（含实值）、无 `probe.tf` / `wall-check.tf` 残留。
+- [x] `.terraform.lock.hcl` 已提交（两个 module 各一份）。
+- [x] CI `tofu` job 能在干净 checkout 上通过（`fmt -check` + `init` + `validate`）——本地跑过全绿，另修了一个 pre-existing 的 `instance.tf` fmt 问题。
+- [x] `vps_oracle/tofu/` 禁 `destroy` 红线已在 `tofu-conventions.md` 与 `vps_oracle/tofu/README.md` 两处。
+- [x] spec 未承诺的 Phase 3 未误放进本计划。
+
+> 本文件使命完成（live 阶段全部跑完），可删除。OCI 侧的操作知识已沉淀进 `vps_oracle/tofu/README.md`（`manage_default_resource_id` 踩坑 + 硬墙静默行为）。
