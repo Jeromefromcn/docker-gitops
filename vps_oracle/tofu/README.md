@@ -26,4 +26,11 @@ IAM 硬墙已让 `destroy` 打不到运算实例与 boot volume（policy 只授 
 
 OCID 填在 gitignored 的 `.auto.tfvars`（见 `.auto.tfvars.example`），不进 git。
 
-若探查发现这台用的是**默认**路由表/安全列表（display name 为 "Default Route Table/Security List for <vcn>"），resource 型别要用 `oci_core_default_route_table` / `oci_core_default_security_list`（见 Task 10 的分支说明）。
+## 收编现状（2026-09-10，Task 10）
+
+这台机器的 public subnet 用的是 VCN 的**默认** route table / security list，所以：
+
+- `network.tf` 用 `oci_core_default_route_table` / `oci_core_default_security_list`（**不是**普通 `oci_core_route_table` / `oci_core_security_list`）。
+- ⚠️ **踩坑**：这两个 default 资源的 `manage_default_resource_id` 填的是**该默认资源自己的 OCID**，**不是 VCN 的 id**。填 `oci_core_vcn.main.id` 会触发 force replacement（`destroy + recreate`），可能破坏线上路由/安全规则。正确引用：`oci_core_vcn.main.default_route_table_id` / `oci_core_vcn.main.default_security_list_id`（VCN 资源暴露的属性，正好等于这两个默认资源的 id）。
+- 当前配置与线上完全对齐，**没有用 `ignore_changes`**——factsheet 里的字段（含 vless 端口的 `description = "vless 端口"`）都写进了 `network.tf`。
+- 五类资源全部 `import` 成功，`tofu plan` = `No changes.`。
