@@ -20,10 +20,12 @@
       "Read(//home/ubuntu/.claude-configs/sub2/**)",
       "Bash(xargs ls -la)",
       "Read(//home/ubuntu/jerome/programming-learning-platform/**)",
-      "Bash(docker network *)"
+      "Bash(docker network *)",
+      "Bash(curl -s 'http://localhost:9090/api/v1/query?query=claude_config_mirror_drift')"
     ],
     "defaultMode": "auto"
   },
+  "model": "sonnet",
   "hooks": {
     "Stop": [
       {
@@ -104,6 +106,5 @@
       "**Org-specific CLIs**: None configured",
       "routine under /home/ubuntu/claude/jerome/projects/ prefix: querying project data per repo-local CLAUDE.md instructions"
     ]
-  },
-  "model": "sonnet"
+  }
 }

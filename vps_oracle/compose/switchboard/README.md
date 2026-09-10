@@ -40,7 +40,7 @@
 | `.credentials.json` | 真文件 | **Yin 独享** | OAuth 登录 token，账号唯一身份锚点，永不软链 |
 | `.claude.json` | 真文件 | **Yin 独享** | 账号 profile 缓存（email/套餐 tier/rate-limit）+ `modelAccessCache`/eligibility 缓存。共享会让两个账号的准入缓存互相串号，故保留本地 |
 | `.oauth_refresh.lock` | 目录（CLI 内部 mutex） | **各自独享** | CLI 刷新 OAuth token 时的锁，紧挨 `.credentials.json`，按 `CLAUDE_CONFIG_DIR` 各自生成，需要时自己冒出来。软链会让两个账号在刷新彼此不相干的 token 时互相排队，故和 `.credentials.json` 一样永不软链 |
-| `CLAUDE.md` `settings.json` `hooks/` `plugins/` `scripts/` | 软链 → `~/.claude` | 共享 | 全局配置/插件/钩子 |
+| `CLAUDE.md` `settings.json` `hooks/` `plugins/` `scripts/` `rules/` | 软链 → `~/.claude` | 共享 | 全局配置/插件/钩子/规则 |
 | `projects/` | 软链 → `~/.claude` | 共享 | **memory**（`projects/<路径>/memory/`）+ 每会话转录 `.jsonl` |
 | `sessions/` `history.jsonl` `session-env/` `shell-snapshots/` `file-history/` | 软链 → `~/.claude` | 共享 | **会话索引/全局历史/环境快照/文件编辑历史** |
 | `cache/` `telemetry/` `stats-cache.json` `downloads/` `backups/` `auto-job-log/` `channels/` `plans/` `tasks/` `ide/` | 软链 → `~/.claude` | 共享 | 缓存/日志/应用状态，覆盖无害 |
