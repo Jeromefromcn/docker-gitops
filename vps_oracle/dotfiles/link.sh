@@ -15,6 +15,7 @@ FORCE=0
 # "<系统里的真实路径>|<本目录下的相对路径>"
 PAIRS=(
   "$HOME/.claude/CLAUDE.md|claude/CLAUDE.md"
+  "$HOME/.claude/rules|claude/rules"
   "$HOME/.claude/claude-direnv-wrapper.sh|claude/claude-direnv-wrapper.sh"
   "$HOME/.claude/direnv-load.sh|claude/direnv-load.sh"
   "$HOME/.claude/direnv-bash-env.sh|claude/direnv-bash-env.sh"

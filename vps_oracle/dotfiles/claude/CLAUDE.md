@@ -5,6 +5,7 @@
 - Concise and direct. No filler ("Certainly!", "Great question!").
 - Lead with the answer or action; explain after if needed.
 - Say when uncertain instead of guessing.
+- Chinese output: Traditional, Hong Kong written standard. See `~/.claude/rules/chinese-traditional-hk.md`.
 
 ## Task Approach
 - Outline the approach before non-trivial work.
