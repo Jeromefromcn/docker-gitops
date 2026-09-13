@@ -78,4 +78,4 @@ If this incident was "the kind that would've been far less severe if caught earl
 
 ## 6. Language
 
-Write the body in Chinese per repo convention; commit messages in English.
+Write the body in English per repo convention; commit messages in English.
