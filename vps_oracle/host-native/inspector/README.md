@@ -30,6 +30,7 @@ Implemented (phase 2, k3s layer):
 - `checks/k3s-oom-killed-containers.sh` (alert) — `lastState.terminated.reason=OOMKilled` within the last 24 hours; `k3s-evicted-pods.sh` can't catch this case (the pod stays `Running` the whole time, only the container is killed and restarted), added after the 2026-08-17 io_pressure_critical incident (jaeger/trivy were both OOM-killed because their limits were too tight)
 
 Implemented (NPM reverse proxy layer):
+- `checks/direnv-envrc-trust.sh` (alert) — runs `direnv export bash` from each group dir (`~/jerome`, `~/bridget`, `~/evidence`) and flags any whose `.envrc` reports "is blocked", i.e. whose direnv trust was revoked because the file's content changed since it was last `direnv allow`ed. It is alert-only and never auto-allows: `direnv allow` is itself the trust mechanism, and a revoked `.envrc` must be human-reviewed before re-trusting (the file is arbitrary shell, and the symlinked `shell-env/*.envrc` changes take effect on the live system immediately). Added after the 2026-09-13 incident where a comment-only translation sweep revoked trust and silently froze group provider/account switching (full story in [`docs/incidents/2026-09-13-switchboard-direnv-envrc-trust-revoked.md`](../../../docs/incidents/2026-09-13-switchboard-direnv-envrc-trust-revoked.md)).
 - `checks/npm-nginx-config.sh` (alert) — runs `nginx -t` inside the npm container. It catches the invisible "config works now, but the next cold start won't come up" state: NPM's Custom Location bakes the upstream hostname into `proxy_pass` (normal forwarding uses variables + Docker DNS, resolved per request), so once that backend container disappears, nginx refuses to start with an `emerg` on its next config load — and **all** reverse-proxy sites go down together, not just that one. The running nginx keeps going on the previously resolved address, so you can't see it from monitoring, the panel, or logs until restart. `nginx -t` uses the same resolution but runs in a separate process, so it doesn't affect the serving nginx. Added after the 2026-08-21 incident where the dify container was stopped for 45 hours and only blew up during an npm upgrade (full story in [`vps_oracle/compose/npm/README.md`](../../compose/npm/README.md)).
 
 Thresholds are env vars at the top of each script, overridable from the systemd unit's `Environment=` or when running manually.
@@ -66,6 +67,7 @@ cd vps_oracle/host-native/inspector
 ./tests/test-k3s-alerts.sh
 ./tests/test-k3s-oom-killed-containers.sh
 ./tests/test-npm-nginx-config.sh
+./tests/test-direnv-envrc-trust.sh
 ```
 
 `tests/test-common.sh` is the most important test in the whole project — it verifies the "never mistakenly kill yourself" rule itself, which can't be left to eyeballing the code; see the spec's "self-protection rules" section.

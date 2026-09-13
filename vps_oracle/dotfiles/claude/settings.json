@@ -29,11 +29,14 @@
       "Bash(python3 -c ' *)",
       "Bash(docker run *)",
       "Bash(python3 -m json.tool)",
-      "Bash(curl -sS -m 5 -u \"admin:claudecode\" \"http://172.20.0.3:3000/api/dashboards/uid/rYdddlPWk\")"
+      "Bash(curl -sS -m 5 -u \"admin:claudecode\" \"http://172.20.0.3:3000/api/dashboards/uid/rYdddlPWk\")",
+      "Bash(docker stop *)",
+      "Bash(docker cp *)",
+      "Bash(wait)"
     ],
     "defaultMode": "auto"
   },
-  "model": "sonnet",
+  "model": "opus",
   "hooks": {
     "Stop": [
       {

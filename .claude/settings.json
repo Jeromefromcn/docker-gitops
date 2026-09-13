@@ -28,7 +28,8 @@
       "Bash(git log:*)",
       "Bash(git show:*)",
       "Bash(docker exec npm nginx -t)",
-      "Bash(docker exec npm nginx -T)"
+      "Bash(docker exec npm nginx -T)",
+      "Bash(python3 -c ' *)"
     ],
     "ask": [
       "Bash(kubectl apply:*)",
@@ -43,8 +44,7 @@
       "Bash(docker compose down:*)",
       "Bash(docker compose restart:*)",
       "Bash(docker compose stop:*)",
-      "Bash(docker compose rm:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker compose rm:*)"
     ]
   },
   "hooks": {
