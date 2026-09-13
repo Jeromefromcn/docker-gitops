@@ -15454,23 +15454,19 @@
           "text": "node_oracle",
           "value": "node_oracle"
         },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "definition": "",
-        "includeAll": false,
+        "hide": 2,
         "label": "Job",
         "name": "job",
-        "options": [],
-        "query": {
-          "query": "label_values(node_uname_info, job)",
-          "refId": "Prometheus-job-Variable-Query"
-        },
-        "refresh": 1,
-        "regex": "",
-        "sort": 1,
-        "type": "query"
+        "options": [
+          {
+            "selected": true,
+            "text": "node_oracle",
+            "value": "node_oracle"
+          }
+        ],
+        "query": "node_oracle",
+        "skipUrlSync": true,
+        "type": "constant"
       },
       {
         "current": {},
