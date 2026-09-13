@@ -6,15 +6,42 @@ Central management of the Docker Compose configurations running on all servers, 
 
 ```
 docker-gitops/
-└── <host>/                # grouped by server, e.g. vps_oracle
-    ├── compose/            # all docker compose stacks on that server
-    │   └── <compose>/      # one directory per compose stack (may contain multiple services)
-    │       └── docker-compose.yml
-    └── host-native/        # systemd services running directly on the host (not containers)
-        └── <service>/      # one directory per service: README + systemd unit
+├── vps_oracle/                    # Oracle Cloud VPS — where this repo actually runs
+│   ├── compose/                   # docker compose stacks; each subdirectory is that stack's working dir
+│   │   ├── npm/                   #   Nginx Proxy Manager — the only host 80/443 entry point
+│   │   ├── monitoring/            #   Prometheus + Grafana + node-exporter + blackbox-exporter
+│   │   ├── homepage/              #   dashboard
+│   │   ├── portainer/             #   docker container management
+│   │   ├── 3x-ui/                 #   VLESS+Reality node (raw TCP 39876)
+│   │   ├── ccr/                   #   Claude Code Router
+│   │   ├── switchboard/           #   config-driven provider/account switch framework
+│   │   ├── dify/                  #   LLM app platform
+│   │   ├── llm/                   #   llama-cpp + open-webui
+│   │   ├── trilium/               #   notes
+│   │   ├── vikunja/               #   to-do (vikunja + notify-relay)
+│   │   ├── apprise/               #   notification routing
+│   │   ├── evidence-os-website/   #   static website
+│   │   ├── plans/                 #   web app, image built locally from ~/jerome/plans
+│   │   ├── minio/                 #   shared object storage
+│   │   ├── postgres/              #   shared postgres
+│   │   └── redis/                 #   shared redis (ACL users)
+│   ├── k3s/                       # cloud-native experiment platform (always via ArgoCD GitOps)
+│   ├── host-native/               # systemd services on the host itself (not containers)
+│   │   ├── inspector/             #   read-only host checks, systemd timer
+│   │   ├── host-firewall/         #   hand-written iptables rules
+│   │   ├── npm-nodeport-relay/    #   TCP relay so NPM reaches the k3s NodePort
+│   │   └── cc-window/             #   Claude Code multi-session console
+│   ├── dotfiles/                  # host-local config, symlinked into the repo
+│   └── tofu/                      # OpenTofu brownfield adoption of the OCI network
+├── vps_gcp/                       # GCP free-tier e2-micro (practice instance)
+│   ├── compose/                   #   node-exporter + verify (run via `docker --context gcp`)
+│   └── tofu/                      # OpenTofu greenfield lifecycle practice
+├── docs/                          # history & design archives: incidents/, misc/, container-topology/, superpowers/
+├── .claude/                       # rules/ + skills/ (loaded automatically), agents/, hooks/
+└── .github/                       # CI: repo-conventions check + image build/sign workflows
 ```
 
-Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `k3s/` (a cluster managed by ArgoCD GitOps — changes go through git push + ArgoCD sync, not manual commands; see `vps_oracle/k3s/README.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), and `host-native/` (explained below). Each follows its own conventions; see the corresponding subdirectory's README.
+Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `k3s/` (a cluster managed by ArgoCD GitOps — changes go through git push + ArgoCD sync, not manual commands; see `vps_oracle/k3s/README.md`), `tofu/` (OpenTofu IaC — `vps_oracle/tofu/` brownfield adoption of the OCI network, `vps_gcp/tofu/` greenfield lifecycle practice; governed by `.claude/rules/tofu-conventions.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), and `host-native/` (explained below). Each follows its own conventions; see the corresponding subdirectory's README.
 
 ## host-native (systemd services running directly on the host)
 
@@ -29,9 +56,9 @@ Each subdirectory under `vps_oracle/host-native/` corresponds to a service that 
 
 ## k3s (cloud-native experiment platform, in progress)
 
-`vps_oracle/k3s/` is a multi-phase project that replicates a cloud-native dev/ops experiment platform on the same machine using K3s — the goal is to migrate compose stacks to k8s **service by service**, keeping the public domain/port unchanged and deciding per-service whether the compose deployment stays or goes, not to replace the whole existing architecture. See the [K3s cloud-native platform roadmap](docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md) for the full background and the phase breakdown (A cluster foundation → B GitOps bootstrap → C migration template → D remaining services migration → E supply chain security → F multi-environment lanes → G service mesh → H compose decommission assessment), and [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md) for each phase's install/ops details.
+`vps_oracle/k3s/` is a multi-phase project that replicates a cloud-native dev/ops experiment platform on the same machine using K3s — the goal is to migrate compose stacks to k8s **service by service**, keeping the public domain/port unchanged and deciding per-service whether the compose deployment stays or goes, not to replace the whole existing architecture. See the [K3s cloud-native platform roadmap](docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md) for the full background and the phase breakdown (A cluster foundation → B GitOps bootstrap → C migration template → D remaining services migration → E supply chain security → F multi-environment lanes → G service mesh → H compose decommission assessment), the [service-mesh capability roadmap](docs/superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md) for the follow-on phases (I traffic resilience → J authorization → K observability → L rate limiting), and [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md) for each phase's install/ops details.
 
-As of now (phase F+G complete, H not started): the cluster foundation (K3s + Cilium + local-path storage) and the ArgoCD app-of-apps GitOps loop remain on k3s; `homepage`/`trilium`/`dify`/`vikunja`/`apprise`/`llm` (llama-cpp/open-webui) — i.e. every service migrated in phase C+D — were assessed on 2026-08-18 and migrated back to compose (see [migration plan one](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md) and [migration plan two](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration-part2.md)); `evidence-os-website` (originally k3s-native, with no compose predecessor) moved into compose the same day. Only two k3s-native services stay on k3s: `lab-environment` and `headlamp` (see their sections below), plus the `pr-lanes` namespace added in phase F+G and driven by the Istio Ambient service mesh (`hello-frontend`/`hello-backend`, a PR-preview-lane practice environment that replaces the retired `placeholder-hello`; see the "Istio Ambient / PR Lanes" section of [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md) for the mechanism). Every other service still runs under `<host>/compose/`; see "Services that will not migrate to k3s" below.
+As of now (phases A–E and F+G complete, H not started; the follow-on service-mesh phases I–L complete): the cluster foundation (K3s + Cilium + local-path storage) and the ArgoCD app-of-apps GitOps loop remain on k3s; `homepage`/`trilium`/`dify`/`vikunja`/`apprise`/`llm` (llama-cpp/open-webui) — i.e. every service migrated in phase C+D — were assessed on 2026-08-18 and migrated back to compose (see [migration plan one](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md) and [migration plan two](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration-part2.md)); `evidence-os-website` (originally k3s-native, with no compose predecessor) moved into compose the same day. Four k3s-native namespaces stay on k3s: `lab-environment` and `headlamp` (see their sections below), `pr-lanes` (added in phase F+G and driven by the Istio Ambient service mesh — `hello-frontend`/`hello-backend`, a PR-preview-lane practice environment that replaces the retired `placeholder-hello`; see the "Istio Ambient / PR Lanes" section of [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md) for the mechanism), and `mesh-observability` (added in phase K — Loki + Jaeger + Promtail for PR-lane metrics/logs/tracing, queried through compose's own Grafana/Jaeger). Every other service still runs under `<host>/compose/`; see "Services that will not migrate to k3s" below.
 
 ### Services that will not migrate to k3s
 
@@ -55,7 +82,7 @@ cd ~/jerome/docker-gitops/<host>/compose/<compose> && docker compose up -d
 
 Mounted volumes in the compose files uniformly use absolute paths (e.g. `/etc/x-ui/...`), so moving the working directory into the repo doesn't affect where the container data lives.
 
-Some compose stacks have their own README (recording stack-specific steps/gotchas) — check for one before entering a directory: [`ccr/README.md`](vps_oracle/compose/ccr/README.md), [`dify/README.md`](vps_oracle/compose/dify/README.md), [`npm/README.md`](vps_oracle/compose/npm/README.md), [`switchboard/README.md`](vps_oracle/compose/switchboard/README.md).
+Some compose stacks have their own README (recording stack-specific steps/gotchas) — check for one before entering a directory: [`ccr/README.md`](vps_oracle/compose/ccr/README.md), [`dify/README.md`](vps_oracle/compose/dify/README.md), [`npm/README.md`](vps_oracle/compose/npm/README.md), [`postgres/README.md`](vps_oracle/compose/postgres/README.md), [`redis/README.md`](vps_oracle/compose/redis/README.md), [`switchboard/README.md`](vps_oracle/compose/switchboard/README.md).
 
 ## Adding a service
 
@@ -86,6 +113,6 @@ Three other rule files: k3s/ArgoCD change discipline is in [`.claude/rules/k3s-g
 | Host | Description | Details |
 |---|---|---|
 | vps_oracle | Oracle Cloud VPS | [vps_oracle/README.md](vps_oracle/README.md) |
-| vps_gcp | GCP free-tier e2-micro (only the `tofu/` layer is managed) | [vps_gcp/README.md](vps_gcp/README.md) |
+| vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + a two-stack `compose/` — a node-exporter scrape target and a `verify/` smoke test, both reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
 
 Other background/history material (incident records, design archives, etc., not required daily reading) is in [`docs/README.md`](docs/README.md).

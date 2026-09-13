@@ -14,11 +14,9 @@ This machine runs more than just docker compose; each subdirectory under `vps_or
 | Directory | What it manages | Conventions in |
 |---|---|---|
 | `compose/` | docker compose stacks; each subdirectory is that stack's working directory | root [README.md](../README.md) |
-| `k3s/` | the K3s cloud-native experiment platform (Cilium / ArgoCD / Istio Ambient / Kyverno / Trivy / Sealed Secrets + the `lab-environment`, `headlamp`, `pr-lanes` workloads), always via GitOps, never manual `kubectl apply` | [k3s/README.md](k3s/README.md) |
-| `inspector/` | host inspection scripts + systemd timer, doing read-only checks across both docker and k3s | [inspector/README.md](inspector/README.md) |
-| `host-firewall/` | host iptables rule script (`INPUT` defaults to REJECT, whitelisted one rule at a time) | [host-firewall/README.md](host-firewall/README.md) |
+| `k3s/` | the K3s cloud-native experiment platform (Cilium / ArgoCD / Istio Ambient / Kyverno / Trivy / Sealed Secrets + the `lab-environment`, `headlamp`, `pr-lanes`, `mesh-observability` workloads), always via GitOps, never manual `kubectl apply` | [k3s/README.md](k3s/README.md) |
+| `host-native/` | systemd services running directly on the host (not containers): `inspector` (read-only host checks across docker + k3s), `host-firewall` (iptables rules, `INPUT` defaults to REJECT), `npm-nodeport-relay` (TCP relay from NPM to the k3s NodePort), `cc-window` (Claude Code multi-session console) | each service's `host-native/<service>/README.md` (indexed in the root [README.md](../README.md) table) |
 | `tofu/` | OpenTofu brownfield adoption: VCN / subnet / IGW / route table / security list (recursively bringing the upstream OCI network resources under management) | [tofu/README.md](tofu/README.md) |
-| `npm-nodeport-relay/` | a TCP relay in the host netns, filling in reachability from the NPM container to the k3s NodePort | [npm-nodeport-relay/README.md](npm-nodeport-relay/README.md) |
 | `dotfiles/` | part of this machine's local config (Claude Code global settings, shell/git config, VS Code Server machine-level settings, etc.), symlinked into the repo for management | [dotfiles/README.md](dotfiles/README.md) |
 
 The network conventions below apply only to `compose/`; the k3s-side network (Cilium pod network, NodePort, the NPM-to-NodePort gotcha) is in `k3s/README.md` and the root README.

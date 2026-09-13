@@ -1,6 +1,6 @@
 # vps_oracle/k3s
 
-Cluster foundation (phase A) and GitOps bootstrap (phase B) for the [K3s roadmap](../../docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md). See the [phase A design doc](../../docs/superpowers/specs/2026-08-05-k3s-phase-a-cluster-foundation-design.md) and [phase B design doc](../../docs/superpowers/specs/2026-08-07-k3s-phase-b-gitops-design.md) for the full rationale.
+Cluster foundation (phase A) and GitOps bootstrap (phase B) for the [K3s roadmap](../../docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md). See the [phase A design doc](../../docs/superpowers/specs/2026-08-05-k3s-phase-a-cluster-foundation-design.md) and [phase B design doc](../../docs/superpowers/specs/2026-08-07-k3s-phase-b-gitops-design.md) for the full rationale. The follow-on service-mesh phases I–L (traffic resilience / authorization / observability / rate limiting) are documented in the [service-mesh capabilities roadmap](../../docs/superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md) and their individual design docs.
 
 **As of phase B, don't `kubectl apply` anything under `manifests/` (except the one-time `argocd/apps/root.yaml` bootstrap) or `apps/*/k8s/` by hand** — those are GitOps-managed and ArgoCD's `selfHeal` will fight you. Edit the file, commit, push instead.
 
@@ -125,9 +125,13 @@ Re-applying `argocd/values.yaml` after an edit: prefer editing the file and lett
 - `argocd` — self-manages this Helm release (multi-source: the `argo-cd` chart + `argocd/values.yaml` from this repo as an external values source) plus `argocd/manifests/argocd-server-nodeport.yaml` (a third plain-directory source in the same Application, since it's infrastructure for exposing ArgoCD itself)
 - `phase-a-foundation` — the namespace/quota/limitrange from phase A (now GitOps-managed, no longer hand-applied)
 - `hello` — the two-tier `hello-frontend`/`hello-backend` practice app proving the CI → GitOps loop (see `vps_oracle/k3s/apps/hello/k8s`), successor to the retired `placeholder-hello`
+- `headlamp` (phase D+) — read-only cluster panel; see the roadmap's "D+ Selection Notes" and the "lab-environment" section below
+- `lab-environment` — k3s-native lab namespace; see its section below
+- `sealed-secrets`, `kyverno`, `trivy-operator` (phase E) — the supply-chain-security controller/pieces; see "Sealed Secrets" and "Kyverno / Trivy Operator / PSA baseline" below
 - `gateway-api` (phase F+G) — the Gateway API standard-channel CRDs, `sync-wave: -4` so the waypoint `Gateway` and every `HTTPRoute` have the CRDs they need before Istio itself comes up
 - `istio-base`, `istio-istiod`, `istio-cni`, `istio-ztunnel` (phase F+G) — the four Helm-chart Applications making up Istio Ambient mode, one Application per Helm release, `sync-wave`d `-3` → `-2` → `-1`/`-1` (`base` → `istiod` → `cni`/`ztunnel`) — see the "Istio Ambient / PR Lanes" section below
 - `pr-lanes` (phase F+G) — **an `ApplicationSet`, not a plain Application** (`argocd/apps/pr-lanes-appset.yaml`): its GitHub `pullRequest` generator creates one `hello-pr-<number>` Application per open PR labeled `pr-lane`, each an isolated header-routed lane of `hello-backend`
+- `mesh-observability` (phase K) — Loki + Jaeger + a `pr-lanes`-scoped Promtail in their own `mesh-observability` namespace, plus the istiod/ztunnel metrics `Service`s under `istio-system`; query surface merges into compose's Grafana (Loki datasource) and Jaeger (Jaeger datasource) — see the [phase K design doc](../../docs/superpowers/specs/2026-08-24-k3s-phase-k-observability-design.md)
 
 All Applications run `prune: true` / `selfHeal: true` — manual `kubectl` changes to anything they manage get reverted automatically, usually within seconds. **Editing `argocd.yaml` (or any other file directly under `argocd/apps/`) requires syncing `root`, not the Application the edit is about** — `root` is what applies changes to the Application *objects themselves*; syncing `argocd` only re-applies whatever `sources` are already live, silently ignoring an uncommitted-to-cluster edit to its own spec. To add a brand new Application, write its manifest into `argocd/apps/`, commit, push, and either wait for the next poll or force it: `argocd app sync root`.
 
@@ -254,7 +258,7 @@ The root README's convention (`TZ: "Asia/Hong_Kong"`) applies here too, but **wh
 
 **This isn't just cosmetic — it's a log-correlation risk.** Once more than one component prints timestamps in different zones, manually cross-referencing raw log text across services (e.g. "did the NPM cutover happen before or after this ArgoCD sync") gets error-prone: the same wall-clock moment prints as two different clock times depending on which service logged it. Two mitigations, deliberately not more:
 - `kubectl logs --timestamps` / `docker logs --timestamps` prepend the container runtime's own capture timestamp (RFC3339 with an explicit UTC offset) ahead of whatever the app itself printed — that prefix is always unambiguous and safe to cross-reference regardless of the app's own TZ handling. Use it, don't trust the app's printed text alone, when correlating across services.
-- No aggregated log/report system exists for the cluster yet (no Loki/ELK — only `vps_oracle/compose/monitoring` covers metrics, not logs), so this risk is latent, not active, today. If one gets added later, ingest and normalize to UTC at the collector — that's the standard fix for exactly this problem, not chasing tzdata into every image. Don't spend more effort forcing every k8s component to display HKT than this table already has.
+- A cluster-side Loki + Promtail now exists, but scoped to `pr-lanes` only (the phase K `mesh-observability` namespace), not a cluster-wide aggregated log/report system — so for cross-service correlation beyond `pr-lanes`, this risk is still latent today. If/when ingest gets widened, normalize to UTC at the collector — that's the standard fix for exactly this problem, not chasing tzdata into every image. Don't spend more effort forcing every k8s component to display HKT than this table already has.
 
 ## Kyverno / Trivy Operator / PSA baseline
 
