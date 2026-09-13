@@ -1,0 +1,25 @@
+services:
+  verify:
+    image: nginx:1.27-alpine
+    container_name: gcp-verify
+    environment:
+      TZ: "Asia/Hong_Kong"
+    # Inline content instead of a bind mount: with `docker --context gcp`, bind-mount
+    # paths resolve on the remote (gcp) daemon's filesystem, not this repo checkout.
+    command: >
+      sh -c "echo 'gcp-verify: reachable via docker context' > /usr/share/nginx/html/index.html &&
+             nginx -g 'daemon off;'"
+    # Bound to this host's tailscale IP only (not 0.0.0.0) — the mesh-VPN equivalent of
+    # putting a service on oracle's `proxy` network: only NPM (over tailscale) can reach
+    # it, nothing on the public interface. Tailscale ACL grants restrict this further to
+    # tag:oracle-hub. Update this IP if the gcp node ever re-registers with tailscale.
+    ports:
+      - "100.96.184.44:8080:80"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

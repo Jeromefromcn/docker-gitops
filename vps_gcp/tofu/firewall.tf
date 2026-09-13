@@ -1,7 +1,11 @@
-# Only SSH ingress by default. The instance carries http-server/https-server
-# tags (matched to the previous live instance), so the custom VPC also opens
-# 80/443 to those tags — mirroring the default-VPC allow-http/allow-https rules
-# the old instance relied on.
+# Only SSH ingress from the public internet. Services on this instance are reached
+# over the oracle<->gcp Tailscale mesh instead (see vps_gcp/compose/verify/), which
+# needs no inbound firewall rule of its own — it connects out (direct, or via DERP
+# relay when direct fails) rather than listening for inbound connections. The
+# previous allow-http/allow-https rules were removed 2026-09-13 once the verify
+# service moved to a tailscale-only bind; the instance still carries the
+# http-server/https-server tags from the old default-VPC setup, they're just
+# unmatched by any rule now.
 resource "google_compute_firewall" "ssh" {
   name       = "allow-ssh"
   network    = google_compute_network.main.name
@@ -12,33 +16,5 @@ resource "google_compute_firewall" "ssh" {
     ports    = ["22"]
   }
 
-  source_ranges = ["0.0.0.0/0"]
-}
-
-resource "google_compute_firewall" "http" {
-  name       = "allow-http"
-  network    = google_compute_network.main.name
-  depends_on = [google_project_service.compute]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["80"]
-  }
-
-  source_tags   = ["http-server"]
-  source_ranges = ["0.0.0.0/0"]
-}
-
-resource "google_compute_firewall" "https" {
-  name       = "allow-https"
-  network    = google_compute_network.main.name
-  depends_on = [google_project_service.compute]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["443"]
-  }
-
-  source_tags   = ["https-server"]
   source_ranges = ["0.0.0.0/0"]
 }

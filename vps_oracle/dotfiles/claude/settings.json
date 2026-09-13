@@ -28,11 +28,12 @@
       "Bash(curl -sS -m 5 http://localhost:9091/api/v1/targets)",
       "Bash(python3 -c ' *)",
       "Bash(docker run *)",
-      "Bash(python3 -m json.tool)"
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -sS -m 5 -u \"admin:claudecode\" \"http://172.20.0.3:3000/api/dashboards/uid/rYdddlPWk\")"
     ],
     "defaultMode": "auto"
   },
-  "model": "opus",
+  "model": "sonnet",
   "hooks": {
     "Stop": [
       {
