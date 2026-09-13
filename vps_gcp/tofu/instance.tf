@@ -4,14 +4,19 @@
 #
 # Aligned to the previous live instance (instance-20260317-150306, us-central1-a)
 # after the delete-and-recreate exercise: same free-tier region, same Ubuntu 24.04
-# image, same http-server/https-server tags. No ssh-keys metadata — the old one
-# was a Console-generated ephemeral key (expired); access via Console browser SSH.
+# image, same http-server/https-server tags. ssh-keys metadata is OPTIONAL — when
+# `ssh_public_key` is set it installs a key that survives destroy→apply; empty
+# (default) falls back to Console browser SSH like the old instance.
 resource "google_compute_instance" "vps" {
   name         = "vps-gcp"
   machine_type = "e2-micro" # free only in us-west1/us-central1/us-east1
   zone         = "us-central1-a"
   tags         = ["http-server", "https-server"]
   depends_on   = [google_project_service.compute]
+
+  metadata = var.ssh_public_key == "" ? {} : {
+    ssh-keys = "ubuntu:${var.ssh_public_key}"
+  }
 
   boot_disk {
     initialize_params {

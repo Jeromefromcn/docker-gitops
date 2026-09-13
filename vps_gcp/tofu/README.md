@@ -20,6 +20,26 @@
 
 `google_billing_budget` 的权限挂在**账单账户**上、不是项目上——需在账单账户层级授 `roles/billing.costsManager`。
 
+## SSH 登入（兩層，分開看）
+
+**Key 持久** —— 可選填 `ssh_public_key`（公鑰，非 secret）。GCP 的 `ssh-keys` metadata 由 guest-agent 裝進 `ubuntu` 的 `authorized_keys`，且掛在 instance resource 上，所以 **destroy→apply 重建後會自動重裝**。
+
+- 值格式 `ssh-ed25519 AAAA... comment`。經 `TF_VAR_ssh_public_key="$(cat ~/.ssh/id_gcp.pub)"` 注入（`.auto.tfvars` 只放 identity-type 值，不放 key）。
+- 留空（default）＝回退到 Console browser SSH。
+
+**IP 不持久** —— 當前 `nat_ip` 是 ephemeral（見 instance.tf），每次重建外網 IP 都會變。不建議給這台練習機加 `google_compute_address`（reserved IP 在未掛載的 destroy→apply 空窗會計費，違反免費層紅線）。做法：apply 後讀新 IP：
+
+```bash
+# 有 gcloud：即時查
+gcloud compute instances describe vps-gcp --zone us-central1-a \
+  --format='value(networkInterfaces[0].accessConfigs[0].natIP)'
+
+# 沒 gcloud：直接讀 state（本機可跑，無需 GCP 認證）
+tofu state show google_compute_instance.vps | grep '"nat_ip"'
+```
+
+每次重建後把新 IP 寫進 `~/.ssh/config` 的 `Host vps-gcp` entry（`HostName` 欄）即可。無需「自動發現」的常駐背景任務——重建是手動命中的低頻事件，一個 grep 就解。
+
 ## 验收标准
 
 `tofu destroy` 之后 `tofu apply` 能完整重现，且重现后 `tofu plan` 输出 `No changes.`。
