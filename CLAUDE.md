@@ -1,3 +1,5 @@
+@CLAUDE.local.md
+
 # docker-gitops
 
 Central GitOps repo for this VPS's infrastructure — not limited to docker-compose. Each `<host>/compose/<compose>/` directory here is the actual working directory for a compose stack — no separate deploy path, no symlink. A compose stack may define more than one service. A `<host>/` also holds non-compose subdirectories for infra managed outside docker compose (e.g. `k3s/`, `host-firewall/`, `inspector/`, `dotfiles/`) — each follows its own convention, documented in its own README.

@@ -27,6 +27,7 @@ vps_oracle/dotfiles/config/gh-hosts.yml
 # local overrides (host-specific, not shared)
 docker-compose.override.yml
 docker-compose.*.local.yml
+CLAUDE.local.md
 
 # backups / temp
 *.bak
