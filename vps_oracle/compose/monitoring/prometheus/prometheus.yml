@@ -8,8 +8,12 @@ scrape_configs:
 
   # vps_gcp's node-exporter, reached over the oracle<->gcp tailscale mesh (confirmed
   # reachable directly from this container, no extra routing needed). See
-  # vps_gcp/compose/node-exporter/docker-compose.yml.
+  # vps_gcp/compose/node-exporter/docker-compose.yml. scrape_interval overridden to 15m
+  # (vs. the 60s global default) because this scrape's response body egresses from GCP's
+  # side of the tailscale link, counted against its 1GB/month free-tier network egress —
+  # at 60s this job alone would use ~500MB/month, at 15m it's ~33MB/month.
   - job_name: node_gcp
+    scrape_interval: 15m
     static_configs:
       - targets: ['100.96.184.44:9100']
 
