@@ -19,6 +19,14 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      # Default lookback-delta is 5m. node_gcp is scraped every 15m, so its latest
+      # sample is 0-15m old — beyond the default window, which made Grafana instant
+      # panels (gauges: RAM/disk/load/uptime) intermittently blank. 16m clears the
+      # 15m scrape interval plus jitter. This is global, so it also means an oracle
+      # metric stays "present" up to 16m after its exporter stops; acceptable here
+      # because liveness is watched separately via the up{} alerts and blackbox, not
+      # via metric staleness. See docs/incidents/2026-09-13-* postscript I.
+      - '--query.lookback-delta=16m'
     networks:
       default: {}
       proxy:
