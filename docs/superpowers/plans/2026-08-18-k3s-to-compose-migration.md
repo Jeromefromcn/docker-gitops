@@ -64,12 +64,12 @@ services:
         max-file: "5"
     environment:
       TZ: "Asia/Hong_Kong"
-      HOMEPAGE_ALLOWED_HOSTS: "homepage.jerome.cloudns.asia"  # 需与访问用的域名一致，不然 403
+      HOMEPAGE_ALLOWED_HOSTS: "homepage.jerome.cloudns.asia"  # must match the access domain, otherwise 403
     volumes:
       - ./config:/app/config
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = homepage, Forward Port = 3000（未发布到宿主机）
+    # NPM reverse-proxy config: Forward Hostname/IP = homepage, Forward Port = 3000 (not published to the host)
 
 networks:
   proxy:
@@ -181,7 +181,7 @@ services:
       TZ: "Asia/Hong_Kong"
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = evidence-os-website, Forward Port = 80（未发布到宿主机）
+    # NPM reverse-proxy config: Forward Hostname/IP = evidence-os-website, Forward Port = 80 (not published to the host)
 
 networks:
   proxy:
@@ -311,7 +311,7 @@ services:
       - /etc/trilium/data:/home/node/trilium-data
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = trilium, Forward Port = 8080（未发布到宿主机）
+    # NPM reverse-proxy config: Forward Hostname/IP = trilium, Forward Port = 8080 (not published to the host)
 
 networks:
   proxy:
@@ -698,37 +698,37 @@ git rm -r vps_oracle/k3s/apps/homepage vps_oracle/k3s/apps/trilium \
 Change this sentence (currently lists all migrated services together):
 
 ```
-截至目前（phase D 进行中）：叢集基礎（K3s + Cilium + local-path 存儲）、ArgoCD app-of-apps GitOps 迴路、以及 `homepage`/`trilium`/`vikunja`/`apprise`/`llm`（llama-cpp/open-webui）/`dify`（9 容器全家桶，独立 `dify` 命名空间）已经迁移完成并从 k3s 提供服务；其余服务仍在 `<host>/compose/` 下运行，见下方「不会迁移到 k3s 的服务」。
+As of now (phase D in progress): the cluster foundation (K3s + Cilium + local-path storage), the ArgoCD app-of-apps GitOps loop, and `homepage`/`trilium`/`vikunja`/`apprise`/`llm` (llama-cpp/open-webui)/`dify` (a 9-container full stack, in its own `dify` namespace) have completed migration and are served from k3s; the remaining services still run under `<host>/compose/`, see "Services that will not migrate to k3s" below.
 ```
 
 to:
 
 ```
-截至目前（phase D 进行中）：叢集基礎（K3s + Cilium + local-path 存儲）、ArgoCD app-of-apps GitOps 迴路、以及 `vikunja`/`apprise`/`llm`（llama-cpp/open-webui）已经迁移完成并从 k3s 提供服务；`homepage`/`trilium`/`dify` 曾短暂迁移到 k3s，2026-08-18 评估后迁回 compose（详见 `docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md`）；`evidence-os-website` 同样迁回 compose，不再在 k3s 原生托管；其余服务仍在 `<host>/compose/` 下运行，见下方「不会迁移到 k3s 的服务」。
+As of now (phase D in progress): the cluster foundation (K3s + Cilium + local-path storage), the ArgoCD app-of-apps GitOps loop, and `vikunja`/`apprise`/`llm` (llama-cpp/open-webui) have completed migration and are served from k3s; `homepage`/`trilium`/`dify` briefly migrated to k3s but were moved back to compose after a 2026-08-18 evaluation (see `docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md` for details); `evidence-os-website` was likewise moved back to compose and is no longer natively hosted on k3s; the remaining services still run under `<host>/compose/`, see "Services that will not migrate to k3s" below.
 ```
 
-- [ ] **Step 3: Rewrite the "给新服务加 homepage 卡片" section back to the plain-compose flow**
+- [ ] **Step 3: Rewrite the "Adding a homepage card for a new service" section back to the plain-compose flow**
 
 Replace the entire section (currently describes the k3s Kustomize/ConfigMap-hash flow, lines ~88-108 of the current file) with:
 
 ```markdown
-## 给新服务加 homepage 卡片
+## Adding a homepage card for a new service
 
-配置源文件是 **`vps_oracle/compose/homepage/config/services.yaml`**。每新增一个服务，在对应分类（`Infra Services` / `Apps`）下加一张卡片，跟现有条目保持同样格式：
+The config source file is **`vps_oracle/compose/homepage/config/services.yaml`**. For each new service, add a card under the matching category (`Infra Services` / `Apps`), keeping the same format as existing entries:
 
 \`\`\`yaml
-    - <服务名>:
+    - <service-name>:
         icon: <icon-name>.png
         href: https://<service>.jerome.cloudns.asia
-        description: <一句话描述，英文>
+        description: <one-line description, in English>
 \`\`\`
 
-- `icon`：优先用 [walkxcode/dashboard-icons](https://github.com/walkxcode/dashboard-icons) 里对应的文件名（homepage 会自动去 CDN 拉）；没有专门图标的用 `si-<name>`（simple-icons）顶替，如 `si-anthropic`
-- `description`：访客可见，按下面"暴露内容用英文"的约定用英文
-- 没有 `container`/`server` 字段——迁回 compose 后这个字段本可以恢复（挂 docker.sock），但 2026-08-18 决定继续不挂，保持跟迁移前 k3s 状态一致，只做卡片本身
-- **例外**：安全敏感的服务（如 3x-ui）不上卡片，加之前先问一句
+- `icon`: prefer the matching filename from [walkxcode/dashboard-icons](https://github.com/walkxcode/dashboard-icons) (homepage pulls it from the CDN automatically); for a service with no dedicated icon, substitute `si-<name>` (simple-icons), e.g. `si-anthropic`
+- `description`: visitor-visible, in English per the "expose content in English" convention below
+- No `container`/`server` fields — after moving back to compose this field could technically be restored (by mounting docker.sock), but the 2026-08-18 decision was to keep it unmounted, staying consistent with the pre-migration k3s state, cards only
+- **Exception**: security-sensitive services (e.g. 3x-ui) don't get a card — ask first before adding one
 
-改完后 `cd vps_oracle/compose/homepage && docker compose up -d` 直接生效，不用 push/ArgoCD。
+After editing, `cd vps_oracle/compose/homepage && docker compose up -d` takes effect immediately — no push/ArgoCD needed.
 ```
 
 - [ ] **Step 4: Check `vps_oracle/k3s/README.md` for the same 4 apps' phase status**

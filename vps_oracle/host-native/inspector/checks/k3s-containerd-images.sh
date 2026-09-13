@@ -3,7 +3,7 @@
 #
 # Reports and prunes containerd images not referenced by any container
 # (including exited ones) on the k3s node. Design spec's "k3s
-# containerd 未用 image" row (auto tier). crictl needs root (socket +
+# containerd unused image" row (auto tier). crictl needs root (socket +
 # config are root-only) — this and docker-oversized-logs.sh are the two
 # narrowly-scoped sudo uses the spec's deployment section sanctions.
 #

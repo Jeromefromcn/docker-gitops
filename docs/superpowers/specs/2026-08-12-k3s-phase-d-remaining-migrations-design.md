@@ -1,189 +1,189 @@
-# K3s Phase D — 剩餘服務遷移設計
+# K3s Phase D — Remaining Service Migrations Design
 
-日期：2026-08-12
+Date: 2026-08-12
 
-對應 [K3s 雲原生實驗平台路線圖](2026-08-05-k3s-cloud-native-platform-roadmap.md) 的 D 階段：把剩餘服務逐個遷進 k3s，輸出每服務的「遷移結果 + compose 去留決策」。本階段範圍：**vikunja 棧**、**dify 全家桶**、**llm 推理棧**遷入；**3x-ui 保留在 compose**（39876 客戶端直連太關鍵，見「3x-ui 去留決策」）。
+Corresponds to phase D of the [K3s cloud-native experiment platform roadmap](2026-08-05-k3s-cloud-native-platform-roadmap.md): migrate the remaining services into k3s one by one, producing a "migration result + compose decommission decision" for each service. Scope of this phase: migrate the **vikunja stack**, the **dify suite**, and the **llm inference stack**; **keep 3x-ui in compose** (the direct client connection on 39876 is too critical, see "3x-ui keep/decommission decision").
 
-前置：[Phase C 遷移範本設計](2026-08-09-k3s-phase-c-migration-template-design.md) 已完成並驗證通過。叢集現況（2026-08-12 實測）：7 個 Application 皆 `Synced`/`Healthy`（argocd、phase-a-foundation、placeholder-hello、homepage、trilium、evidence-os-website、root）；NodePort 佔用 `30081`(homepage)/`30082`(trilium)/`30083`(evidence)/`30090`(argocd)；`workloads` 配額 `2C/4Gi`，實際使用 `limits.cpu 1` / `limits.memory 1280Mi`，餘裕充足。
+Precondition: [Phase C migration template design](2026-08-09-k3s-phase-c-migration-template-design.md) is complete and verified. Cluster current state (measured 2026-08-12): 7 Applications all `Synced`/`Healthy` (argocd, phase-a-foundation, placeholder-hello, homepage, trilium, evidence-os-website, root); NodePorts in use `30081`(homepage)/`30082`(trilium)/`30083`(evidence)/`30090`(argocd); `workloads` quota `2C/4Gi`, actual usage `limits.cpu 1` / `limits.memory 1280Mi`, ample headroom.
 
-## 範圍
+## Scope
 
-**這階段要做的：**
-- 遷 **vikunja 棧** 進 `workloads`：vikunja（含 sqlite 資料搬遷）+ vikunja-notify-relay + apprise（relay 的唯一外部依賴，一起遷才不用跨 docker/k8s 邊界）
-- 遷 **dify 全家桶**（9 容器）進新 `dify` 命名空間：db-postgres、pgvector、redis、ssrf-proxy、plugin-daemon、api、worker、worker-beat、web
-- 遷 **llm 推理棧** 進新 `llm` 命名空間：llama-cpp、open-webui、sillytavern（目前整棧已停機，等於在 k8s 重建、無切流中斷）
-- **3x-ui**：不遷，compose 去留決策記為「保留」
-- 交付物：逐服務遷移結果 + 每服務 compose 去留決策
+**To be done in this phase:**
+- Migrate the **vikunja stack** into `workloads`: vikunja (including sqlite data migration) + vikunja-notify-relay + apprise (relay's only external dependency; migrating it too avoids crossing the docker/k8s boundary)
+- Migrate the **dify suite** (9 containers) into a new `dify` namespace: db-postgres, pgvector, redis, ssrf-proxy, plugin-daemon, api, worker, worker-beat, web
+- Migrate the **llm inference stack** into a new `llm` namespace: llama-cpp, open-webui, sillytavern (the whole stack is currently stopped, so this amounts to rebuilding in k8s with no cutover disruption)
+- **3x-ui**: not migrated; the compose decommission decision is recorded as "keep"
+- Deliverable: per-service migration result + per-service compose decommission decision
 
-**這階段不做的（留給後續階段）：**
-- 3x-ui 遷移——39876 是客戶端直連的原始 TCP（不走 HTTP 反代），有真實故障史（見路線圖現狀約束）；要遷的候選機制（Klipper LB 綁 39876）留在本設計文附錄，本階段不動它
-- Ingress / cert-manager 取代 NPM——phase H
-- Sealed Secrets / 供應鏈安全（Trivy 准入、Cosign 驗簽、Kyverno）——phase E；D 用「手動建 Secret」暫代（見「Secrets 策略」）
-- dify / llm 的 CI 流水線——全是第三方 image（digest 釘住），沒有 build 環節可掛；唯一本地 build 的是 vikunja-notify-relay（見「relay 映像」）
-- 資料備份機制——遷移前就存在的既有缺口，phase C 已記錄，不在本階段順手解
-- NPM 本身的遷移/退場——phase H 才評估
+**Not done in this phase (left to later phases):**
+- 3x-ui migration — 39876 is raw TCP that clients connect to directly (not via HTTP reverse proxy), with a real outage history (see roadmap current-state constraints); the candidate mechanism for migrating it (Klipper LB binding 39876) is kept in this design doc's appendix, untouched this phase
+- Ingress / cert-manager replacing NPM — phase H
+- Sealed Secrets / supply chain security (Trivy admission, Cosign signing verification, Kyverno) — phase E; D uses "manually created Secrets" as a stopgap (see "Secrets strategy")
+- dify / llm CI pipelines — all third-party images (digest-pinned), no build step to attach; the only locally-built one is vikunja-notify-relay (see "relay image")
+- Data backup mechanism — a pre-existing gap from before migration, already recorded in phase C, not solved opportunistically this phase
+- Migration/decommission of NPM itself — evaluated only in phase H
 
-## 現狀約束
+## Current-state constraints
 
-- **資源**：4C/24G（Oracle Ampere ARM），`free -h` 實測 23Gi 總、約 12Gi available。既有的 docker compose 側（monitoring、ccr、provider-switch、portainer、npm、programming-learning-platform、lab-environment 等）加上 k3s 側（argocd、cilium、homepage/trilium/evidence/placeholder）已吃掉約一半記憶體
-- **llm 棧目前是停機狀態**：`docker compose ps -a` 顯示 llama-cpp / open-webui / sillytavern 三個容器都不存在（曾被 `docker compose down`）。因此 llm 的遷移沒有「停寫 → 搬資料 → 切流」的節奏，資料（models 1.9G、openwebui 894M、sillytavern 21M）都是靜止的，直接複製進 PVC 即可
-- **dify 圖片體積**：7 個 image 未壓縮合計約 8.5GB（dify-api 4.09GB、dify-plugin-daemon 2.26GB 為大宗；dify-api 的主因是 2.42GB 的 Python venv + 420MB apt 層含 `fonts-noto-cjk`）。containerd 與 docker 是獨立的 image store，遷移時要重新拉一份。磁碟無虞（193G 總、89G 可用），成本只有一次性拉取時間；若在意可 `docker save` → `ctr images import` 預載
-- **apprise 是 relay 的唯一外部依賴**：relay 以 `APPRISE_BASE_URL=http://apprise:8000` 訪問 apprise（docker DNS）。relay 遷進 k8s 後解析不到 docker DNS，所以 apprise 必須跟著遷（k8s 內同名的 `apprise` Service 讓這個 URL 原樣可通），或把 apprise 的 8000 發布到宿主機讓 k8s 跨邊界訪問——後者把 k8s 工作負載耦合到 compose 宿主機端口，較醜，本設計採前者
-- **vikunja 現役是 sqlite，不是 postgres**：`VIKUNJA_DATABASE_TYPE: sqlite`。路線圖 D 的「vikunja+pg」是理想化描述，實際這棧沒跑 postgres。遷移期同時換資料庫引擎風險太高（Phase C 原則：只換執行平台、不同時換版本/架構），本階段 sqlite 原樣遷，`vikunja.db` 進 PVC
-- **dify 的 NPM host 有 8 條 custom locations**（實測 NPM DB）：`/console/api`、`/api`、`/v1`、`/files`、`/mcp`、`/triggers`、`/openapi` → api:5001，`/e/` → plugin-daemon:5002，預設 → web:3000。遷移後這 8 條 location 的 Forward Host/Port 要逐一改成對應的 NodePort
-- **dify api/worker/worker-beat 共享同一個 storage 目錄**：compose 裡三者都掛 `/etc/dify/storage:/app/api/storage`。k8s 裡這是一個 RWO PVC 同時被三個 pod 掛載——單節點叢集上合法（RWO 的語義是「單一 node」，同一節點的多個 pod 可共用），本階段依賴這點，見「已知限制」
-- **dify service 名不能有底線**：k8s Service 名受 RFC 1123 限制，`db_postgres`/`worker_beat`/`plugin_daemon`/`ssrf_proxy` 要改成 `db-postgres` 等連字號名，api/worker 等 env 裡的 `DB_HOST`/`PLUGIN_DAEMON_URL`/`SSRF_PROXY_HTTP_URL` 一併改
-- **NPM 的 Forward Hostname/IP 必須是字面 IP**（phase A 已知坑）：所有新 NodePort 都指向 `10.0.0.95`
+- **Resources**: 4C/24G (Oracle Ampere ARM), `free -h` shows 23Gi total, about 12Gi available. The existing docker compose side (monitoring, ccr, provider-switch, portainer, npm, programming-learning-platform, lab-environment, etc.) plus the k3s side (argocd, cilium, homepage/trilium/evidence/placeholder) have already consumed about half the memory
+- **The llm stack is currently stopped**: `docker compose ps -a` shows the llama-cpp / open-webui / sillytavern containers don't exist (previously removed via `docker compose down`). So the llm migration has no "stop writes → move data → cut over traffic" rhythm; the data (models 1.9G, openwebui 894M, sillytavern 21M) is all static and can be copied straight into PVCs
+- **dify image size**: 7 uncompressed images total about 8.5GB (dify-api 4.09GB, dify-plugin-daemon 2.26GB are the largest; dify-api's main cause is a 2.42GB Python venv + a 420MB apt layer including `fonts-noto-cjk`). containerd and docker are separate image stores, so the migration pulls a fresh copy. Disk is no concern (193G total, 89G available); the only cost is a one-time pull time. If it matters, `docker save` → `ctr images import` can preload
+- **apprise is relay's only external dependency**: relay reaches apprise via `APPRISE_BASE_URL=http://apprise:8000` (docker DNS). Once relay is in k8s it can't resolve docker DNS, so apprise must migrate along (a same-named `apprise` Service inside k8s keeps this URL working as-is), or apprise's 8000 must be published to the host so k8s can reach across the boundary — the latter couples k8s workloads to a compose host port, which is uglier; this design chooses the former
+- **vikunja currently uses sqlite, not postgres**: `VIKUNJA_DATABASE_TYPE: sqlite`. The roadmap D "vikunja+pg" is an idealized description; this stack never ran postgres. Switching database engines during migration is too risky (Phase C principle: change only the execution platform, not version/architecture at the same time), so this phase migrates sqlite as-is, with `vikunja.db` going into a PVC
+- **dify's NPM host has 8 custom locations** (measured from the NPM DB): `/console/api`, `/api`, `/v1`, `/files`, `/mcp`, `/triggers`, `/openapi` → api:5001, `/e/` → plugin-daemon:5002, default → web:3000. After migration these 8 locations' Forward Host/Port must be changed one by one to the corresponding NodePorts
+- **dify api/worker/worker-beat share the same storage directory**: in compose all three mount `/etc/dify/storage:/app/api/storage`. In k8s this is one RWO PVC mounted by three pods — legal on a single-node cluster (RWO's semantics are "single node"; multiple pods on the same node may share it), this phase relies on this, see "Known limitations"
+- **dify service names must not contain underscores**: k8s Service names are subject to RFC 1123, so `db_postgres`/`worker_beat`/`plugin_daemon`/`ssrf_proxy` must become hyphenated names like `db-postgres`, and env vars in api/worker etc. like `DB_HOST`/`PLUGIN_DAEMON_URL`/`SSRF_PROXY_HTTP_URL` change accordingly
+- **NPM's Forward Hostname/IP must be a literal IP** (known phase A gotcha): all new NodePorts point to `10.0.0.95`
 
-## 架構
+## Architecture
 
 ```
-Internet ──▶ NPM（宿主機 80/443，唯一入口，本階段不動）
+Internet ──▶ NPM(host 80/443, single entry, untouched this phase)
               │
               │ vikunja.jerome.cloudns.asia        ─▶ 10.0.0.95:30084
               │ apprise.jerome.cloudns.asia        ─▶ 10.0.0.95:30085
-              │ dify.jerome.cloudns.asia           ─▶ 30086(web 預設) / 30087(api: /api /v1 /files /mcp /triggers /openapi /console/api) / 30088(plugin-daemon: /e/)
+              │ dify.jerome.cloudns.asia           ─▶ 30086(web default) / 30087(api: /api /v1 /files /mcp /triggers /openapi /console/api) / 30088(plugin-daemon: /e/)
               │ ollama.jerome.cloudns.asia         ─▶ 10.0.0.95:30089  (open-webui)
               │ sillytavern.jerome.cloudns.asia    ─▶ 10.0.0.95:30091
-              │（panel/sub.3x、3xpanel ─▶ compose 3x-ui，不變）
+              │(panel/sub.3x, 3xpanel ─▶ compose 3x-ui, unchanged)
               ▼
         ┌─────────────────────────────────────────────────────────┐
         │ k3s                                                     │
         │                                                         │
-        │  workloads ns（既有）                                    │
+        │  workloads ns(existing)                                    │
         │    vikunja  Deployment+PVC(sqlite+files) ─ NodePort 30084
-        │    vikunja-relay Deployment（無狀態，ClusterIP）         │
+        │    vikunja-relay Deployment(stateless,ClusterIP)         │
         │    apprise   Deployment+PVC(config 40K) ─ NodePort 30085│
         │                                                         │
-        │  dify ns（本階段新增）                                    │
+        │  dify ns(new this phase)                                    │
         │    db-postgres / pgvector / redis   StatefulSet+PVC      │
         │    ssrf-proxy / plugin-daemon / api / worker /           │
         │    worker-beat / web                Deployment          │
-        │    （api/worker/beat 共用 storage PVC；                 │
-        │      egress NetworkPolicy 做 SSRF 隔離）                │
+        │    (api/worker/beat share storage PVC;                 │
+        │      egress NetworkPolicy does SSRF isolation)                │
         │                                                         │
-        │  llm ns（本階段新增）                                    │
+        │  llm ns(new this phase)                                    │
         │    llama-cpp   Deployment+PVC(models)  ClusterIP        │
         │    open-webui  Deployment+PVC(data)   ─ NodePort 30089  │
         │    sillytavern Deployment+PVC(config) ─ NodePort 30091  │
         └─────────────────────────────────────────────────────────┘
               ▲
               │ ArgoCD root Application
-              │   ├─ 既有（argocd / phase-a-foundation / placeholder-hello / homepage / trilium / evidence-os-website）
-              │   ├─ vikunja   ← 本階段新增（vikunja + relay）
-              │   ├─ apprise   ← 本階段新增
-              │   ├─ dify      ← 本階段新增（含 dify ns + quota + NetworkPolicy）
-              │   └─ llm       ← 本階段新增（含 llm ns + quota）
+              │   ├─ existing(argocd / phase-a-foundation / placeholder-hello / homepage / trilium / evidence-os-website)
+              │   ├─ vikunja   ← new this phase(vikunja + relay)
+              │   ├─ apprise   ← new this phase
+              │   ├─ dify      ← new this phase(incl. dify ns + quota + NetworkPolicy)
+              │   └─ llm       ← new this phase(incl. llm ns + quota)
 ```
 
-## 命名空間與配額
+## Namespaces and quotas
 
-依設計決定：**大棧獨立命名空間**，`workloads` 只留小服務。
+Per the design decision: **large stacks get their own namespace**, `workloads` keeps only small services.
 
-| 命名空間 | 內容 | 配額 | 理由 |
+| Namespace | Contents | Quota | Rationale |
 |---|---|---|---|
-| `workloads`（既有） | vikunja + relay + apprise | 不調（`2C/4Gi`） | 加進 vikunja 棧後 requests 約 `350m`/`384Mi`、limits 約 `700m`/`768Mi`，加上既有 `1C/1280Mi` 仍在 `2C/4Gi` 內 |
-| `dify`（新增） | 9 容器 | requests `2.5C/2Gi`，limits `3C/4Gi` | 以 `docker stats` 實測（~1.34Gi 總）為基準留 30% 餘裕、limit 翻倍；獨立 ns 才能用自己的配額、不被其他棧擠掉 |
-| `llm`（新增） | llama-cpp + open-webui + sillytavern | requests `2C/4Gi`，limits `5C/13Gi` | llama.cpp 的 9G limit 是「防 OOM 上限」不是常駐需求（3B 模型實際 ~2-3G）。**刻意打破 phase C「request==limit」慣例**：request 設低才不會替一個通常閒置的推理棧白白鎖住半台機器的記憶體，limit 設高是保護。節點本身 4C/24G，limits 超賣（5C/13Gi > 物理上限）是正常、且本來就只剩 ~12Gi 可給它 |
+| `workloads`(existing) | vikunja + relay + apprise | unchanged (`2C/4Gi`) | after adding the vikunja stack, requests about `350m`/`384Mi`, limits about `700m`/`768Mi`; plus existing `1C/1280Mi` still within `2C/4Gi` |
+| `dify`(new) | 9 containers | requests `2.5C/2Gi`, limits `3C/4Gi` | baseline measured via `docker stats` (~1.34Gi total) with 30% headroom, limits doubled; an independent ns gets its own quota and won't be squeezed out by other stacks |
+| `llm`(new) | llama-cpp + open-webui + sillytavern | requests `2C/4Gi`, limits `5C/13Gi` | llama.cpp's 9G limit is an "anti-OOM ceiling", not a steady-state need (a 3B model is actually ~2-3G). **Deliberately breaks the phase C "request==limit" convention**: a low request avoids locking up half the machine's memory for a usually-idle inference stack, while a high limit is protective. The node itself is 4C/24G; oversubscribing limits (5C/13Gi > physical ceiling) is normal, and only ~12Gi was available to it anyway |
 
-dify / llm 的 namespace + ResourceQuota 各自放在對應 app 的 `k8s/` 目錄裡，由各自的 ArgoCD Application 建立與管轄（對照 phase-a-foundation 管 `workloads` 的做法，但本階段把 ns/quota 收進 app 自己，隨 app 一起 prune）。
+dify / llm's namespace + ResourceQuota each live in the corresponding app's `k8s/` directory, created and governed by their respective ArgoCD Applications (mirroring how phase-a-foundation manages `workloads`, but this phase folds ns/quota into the app itself so they prune together with the app).
 
-## 元件與設定
+## Components and configuration
 
-### vikunja 棧（workloads）
+### vikunja stack(workloads)
 
-| 項目 | 決定 | 理由 |
+| Item | Decision | Rationale |
 |---|---|---|
-| vikunja image | `vikunja/vikunja:2.4.0`（沿用現行 tag） | Phase C 原則：只換平台不換版本 |
-| vikunja 資料庫 | sqlite 原樣遷 | 見「現狀約束」：現役就是 sqlite，遷移期不順便換 postgres |
-| vikunja 儲存 | 1 個 PVC（`local-path`，2Gi），子目錄分掛 `files` → `/app/vikunja/files`、`db` → `/db` | 沿用 trilium PVC 模式；`/etc/vikunja` 才 4.8M，2Gi 綽綽有餘。資料搬遷照 trilium 六步（seed pod） |
-| vikunja env | 保留全部：`TZ`、`VIKUNJA_SERVICE_SECRET`（secret）、`VIKUNJA_SERVICE_PUBLICURL`、`ENABLEREGISTRATION=false`、`ALLOWNONROUTABLEIPS=true` | `ALLOWNONROUTABLEIPS=true` 在 k8s 一樣要——relay 的 ClusterIP 是私網段，不開會被 vikunja 自己的 SSRF 防護擋掉 |
-| vikunja NodePort | `30084`（內網 3456） | NPM→NodePort 橋接 |
-| vikunja `enableServiceLinks` | **false** | Service 名 `vikunja` 會注入 `VIKUNJA_PORT=tcp://...`，撞 vikunja 自己讀的 `VIKUNJA_*` 環境變量——trilium 的 `TRILIUM_PORT` 教訓直接重演。**本階段所有遷移 pod 一律設 false** |
-| relay image | 推到 GHCR（`ghcr.io/jeromefromcn/vikunja-notify-relay:<tag>`） | 目前是 `docker compose build` 的本地 image，k8s 拉不到。見「relay 映像」 |
-| relay | Deployment 無狀態，ClusterIP `vikunja-notify-relay:8080`，`enableServiceLinks: false` | Service 名保持跟 compose 一致，vikunja DB 裡已註冊的 webhook URL `http://vikunja-notify-relay:8080/` 才能原樣解析 |
-| apprise image | `caronc/apprise:v1.5.1` | 沿用 |
-| apprise 儲存 | 1 個 PVC（40K config） | `/config` 是 apprise 自己的持久化（放 `vikunja-tg-{username}` 那些 target），不是版本化配置，必須 PVC。seed pod 搬 `/etc/apprise/config` |
-| apprise NodePort | `30085`（內網 8000） | relay 以 `http://apprise:8000` 訪問（k8s 內 DNS 同名），NPM 的 `apprise.jerome.cloudns.asia` 改指 NodePort |
-| 資源 requests/limits | vikunja `100m/128Mi → 300m/256Mi`；relay `50m/64Mi → 100m/128Mi`；apprise `200m/192Mi → 300m/384Mi` | 以 `docker stats` 實測（38Mi/13Mi/135Mi）為基準；合計仍在 `workloads` 配額內 |
-| NPM | `vikunja` → `10.0.0.95:30084`、`apprise` → `10.0.0.95:30085` | 域名/SSL/access list 不動 |
+| vikunja image | `vikunja/vikunja:2.4.0` (keep current tag) | Phase C principle: change platform, not version |
+| vikunja database | migrate sqlite as-is | see "Current-state constraints": it already runs sqlite, don't opportunistically switch to postgres during migration |
+| vikunja storage | 1 PVC (`local-path`, 2Gi), subpaths mounting `files` → `/app/vikunja/files`, `db` → `/db` | reuses the trilium PVC pattern; `/etc/vikunja` is only 4.8M, 2Gi is plenty. Data migration follows the trilium six steps (seed pod) |
+| vikunja env | keep all: `TZ`, `VIKUNJA_SERVICE_SECRET` (secret), `VIKUNJA_SERVICE_PUBLICURL`, `ENABLEREGISTRATION=false`, `ALLOWNONROUTABLEIPS=true` | `ALLOWNONROUTABLEIPS=true` is needed in k8s too — relay's ClusterIP is a private range, and without it vikunja's own SSRF protection blocks it |
+| vikunja NodePort | `30084` (internal 3456) | NPM→NodePort bridging |
+| vikunja `enableServiceLinks` | **false** | the Service name `vikunja` would inject `VIKUNJA_PORT=tcp://...`, colliding with the `VIKUNJA_*` env vars vikunja itself reads — the trilium `TRILIUM_PORT` lesson replaying directly. **All pods migrated this phase set it false** |
+| relay image | push to GHCR (`ghcr.io/jeromefromcn/vikunja-notify-relay:<tag>`) | currently a local `docker compose build` image that k8s can't pull. See "relay image" |
+| relay | stateless Deployment, ClusterIP `vikunja-notify-relay:8080`, `enableServiceLinks: false` | keep the Service name identical to compose so the already-registered webhook URL `http://vikunja-notify-relay:8080/` in vikunja's DB resolves unchanged |
+| apprise image | `caronc/apprise:v1.5.1` | keep |
+| apprise storage | 1 PVC (40K config) | `/config` is apprise's own persistence (holding the `vikunja-tg-{username}` targets), not versioned config, so a PVC is required. Seed pod copies `/etc/apprise/config` |
+| apprise NodePort | `30085` (internal 8000) | relay reaches `http://apprise:8000` (same-name DNS inside k8s), NPM's `apprise.jerome.cloudns.asia` repointed to the NodePort |
+| resource requests/limits | vikunja `100m/128Mi → 300m/256Mi`; relay `50m/64Mi → 100m/128Mi`; apprise `200m/192Mi → 300m/384Mi` | baseline measured via `docker stats` (38Mi/13Mi/135Mi); total still within `workloads` quota |
+| NPM | `vikunja` → `10.0.0.95:30084`, `apprise` → `10.0.0.95:30085` | domain/SSL/access list untouched |
 
-### dify（dify 命名空間）
+### dify(dify namespace)
 
-| 項目 | 決定 | 理由 |
+| Item | Decision | Rationale |
 |---|---|---|
-| image | 沿用 compose 現行 digest（api/worker/worker-beat 共用 `langgenius/dify-api:1.14.2@sha256:0628…`，web `1.14.2@sha256:db73…`，plugin-daemon `0.6.1-local@sha256:fa7a…`，pg 等照舊） | 只換平台不換版本；版本與 image 都釘死 |
-| StatefulSet vs Deployment | **db-postgres / pgvector / redis 用 StatefulSet**；其餘（ssrf-proxy、plugin-daemon、api、worker、worker-beat、web）用 Deployment | 單節點上 RWO PVC + Deployment rolling update 時新舊 pod 短暫並存，StatefulSet 的順序化更新讓 RWO 掛載不打架；StatefulSet 也給資料庫穩定的網路身份 |
-| Service 命名 | `db-postgres`、`pgvector`、`redis`、`ssrf-proxy`、`plugin-daemon`、`api`、`web`；env 的 `DB_HOST: db-postgres`、`SSRF_PROXY_HTTP_URL: http://ssrf-proxy:3128`、`PLUGIN_DAEMON_URL: http://plugin-daemon:5002` 等一併改 | k8s Service 名不允許底線 |
-| 哪些要 NodePort | **web(30086)、api(30087)、plugin-daemon(30088)**；其餘 ClusterIP 內網 | 對應 NPM 的三個後端（預設 → web、7 條 location → api、`/e/` → plugin-daemon）。worker/worker-beat/ssrf-proxy/db/redis/pgvector 無外部入口 |
-| SSRF 隔離 | **雙層**：(1) 應用層——沿用 compose 的 `SSRF_PROXY_HTTP_URL/HTTPS_URL=http://ssrf-proxy:3128`，api/worker 的外出 HTTP 走 squid，squid.conf 攔私網/metadata；(2) 網路層——dify ns 的 **egress NetworkPolicy**：api/worker/worker-beat 只准出到同 ns Service（含 ssrf-proxy）+ DNS，不准直連外網；plugin-daemon 准出外網（它的 model 提供方調用是直連、不走 squid，compose 沒給它設 proxy env）；ssrf-proxy 准出外網；web 准出同 ns + 外網（marketplace） | compose 的 `ssrf_proxy_network: internal` 是網絡層隔離但 api/plugin 同時也在 proxy 網絡上、實際上仍有直連外網的通道，屬於「應用層代理 + 殘缺的網絡隔離」。k8s 用 egress NetworkPolicy 把隔離補完整。**ingress 不做 default-deny**——NPM 進來的 `world` 流量要能到 web/api/plugin-daemon 的 NodePort（k8s README 記的坑：default-deny + NPM 需要額外 allow-world，這裡直接不設 default-deny 省掉） |
-| SSRF 驗證門檻 | 遷完必須**跑一個真實 workflow**（含 HTTP-request node 與 LLM 對話）確認：SSRF 隔離沒擋到正常模型調用、HTTP node 仍能出外網 | 若 egress 政策把 model 調用誤擋，fallback 是只留應用層隔離、撤掉網絡層（見「已知限制」） |
-| 儲存 | 5 個 PVC：`db-postgres`、`pgvector`、`redis`、`plugin-daemon`、`storage`（api/worker/beat 共享，RWO 單節點語義） | 對應 compose 5 個 `/etc/dify/*` 目錄。`storage` 共享依賴單節點（見「已知限制」）。db/pgvector/redis 走 StatefulSet 各自的 PVC |
-| `enableServiceLinks` | 全部 **false** | 統一避開 `<SVC>_PORT` 撞 env |
-| 秘密 | `dify-secrets`（DB_PASSWORD、PGVECTOR_PASSWORD、REDIS_PASSWORD、SECRET_KEY、INIT_PASSWORD）手動建立 | 見「Secrets 策略」；plugin-daemon 的 `SERVER_KEY`/`DIFY_INNER_API_KEY` 是上游內定值（compose 已提交、作者註明非敏感），留在 manifest 即可 |
-| 配置 | ssrf-proxy 的 `squid.conf.template` + `docker-entrypoint.sh` → ConfigMap | 這兩個檔在 repo 裡，走 ConfigMap 掛載 |
-| 首啟 | 保留 `MIGRATION_ENABLED: "true"`（api 啟動跑 DB migration）、`INIT_PASSWORD` | 沿用 compose 行為 |
+| image | keep current compose digests (api/worker/worker-beat share `langgenius/dify-api:1.14.2@sha256:0628…`, web `1.14.2@sha256:db73…`, plugin-daemon `0.6.1-local@sha256:fa7a…`, pg etc. unchanged) | change platform, not version; both version and image pinned |
+| StatefulSet vs Deployment | **db-postgres / pgvector / redis use StatefulSet**; the rest (ssrf-proxy, plugin-daemon, api, worker, worker-beat, web) use Deployment | on a single node, RWO PVC + Deployment rolling updates briefly have old and new pods coexist; StatefulSet's ordered updates prevent RWO mount conflicts; StatefulSet also gives databases stable network identity |
+| Service naming | `db-postgres`, `pgvector`, `redis`, `ssrf-proxy`, `plugin-daemon`, `api`, `web`; env `DB_HOST: db-postgres`, `SSRF_PROXY_HTTP_URL: http://ssrf-proxy:3128`, `PLUGIN_DAEMON_URL: http://plugin-daemon:5002` etc. change accordingly | k8s Service names disallow underscores |
+| which get NodePort | **web(30086), api(30087), plugin-daemon(30088)**; rest ClusterIP internal | corresponds to NPM's three backends (default → web, 7 locations → api, `/e/` → plugin-daemon). worker/worker-beat/ssrf-proxy/db/redis/pgvector have no external entry |
+| SSRF isolation | **two layers**: (1) application layer — keep compose's `SSRF_PROXY_HTTP_URL/HTTPS_URL=http://ssrf-proxy:3128`, api/worker's outbound HTTP goes through squid, squid.conf blocks private ranges/metadata; (2) network layer — dify ns **egress NetworkPolicy**: api/worker/worker-beat may only egress to same-ns Services (incl. ssrf-proxy) + DNS, no direct internet; plugin-daemon may egress to the internet (its model-provider calls are direct, not via squid — compose never set proxy env for it); ssrf-proxy may egress; web may egress to same ns + internet (marketplace) | compose's `ssrf_proxy_network: internal` is network-layer isolation but api/plugin are also on the proxy network, so a direct-internet path still exists — "application-layer proxy + incomplete network isolation". k8s completes the isolation with egress NetworkPolicy. **No default-deny on ingress** — NPM's inbound `world` traffic must reach web/api/plugin-daemon's NodePorts (the k8s README gotcha: default-deny + NPM needs an extra allow-world, so here we simply skip default-deny) |
+| SSRF verification gate | after migration, **run a real workflow** (with an HTTP-request node and an LLM conversation) to confirm SSRF isolation doesn't block normal model calls and the HTTP node can still reach the internet | if the egress policy wrongly blocks model calls, the fallback is to keep only application-layer isolation and drop the network layer (see "Known limitations") |
+| storage | 5 PVCs: `db-postgres`, `pgvector`, `redis`, `plugin-daemon`, `storage` (shared by api/worker/beat, RWO single-node semantics) | corresponds to compose's 5 `/etc/dify/*` directories. The `storage` sharing relies on single-node (see "Known limitations"). db/pgvector/redis go through their own StatefulSet PVCs |
+| `enableServiceLinks` | all **false** | uniformly avoids `<SVC>_PORT` colliding with env |
+| secrets | `dify-secrets` (DB_PASSWORD, PGVECTOR_PASSWORD, REDIS_PASSWORD, SECRET_KEY, INIT_PASSWORD) created manually | see "Secrets strategy"; plugin-daemon's `SERVER_KEY`/`DIFY_INNER_API_KEY` are upstream defaults (already committed in compose, author notes non-sensitive), can stay in manifest |
+| config | ssrf-proxy's `squid.conf.template` + `docker-entrypoint.sh` → ConfigMap | these two files are in the repo, mounted via ConfigMap |
+| first boot | keep `MIGRATION_ENABLED: "true"` (api runs DB migration on start), `INIT_PASSWORD` | keep compose behavior |
 
-### llm 推理棧（llm 命名空間）
+### llm inference stack(llm namespace)
 
-| 項目 | 決定 | 理由 |
+| Item | Decision | Rationale |
 |---|---|---|
-| llama-cpp | Deployment + ClusterIP `llama-cpp:8080`，models 目錄 → PVC（1.9G），env 保留 `LLAMA_ARG_THREADS=3`/`CTX_SIZE=8192`/`CACHE_RAM=4096`，resources `1C/2Gi → 3C/9Gi` | 沿用 compose 的 router 模式與資源上限（Ampere 優化的 `amperecomputingai/llama.cpp:3.4.2`，別換回 ollama）。目前停機中＝PVC 從 `/etc/llama-cpp/models` 複製，無並發寫入風險 |
-| open-webui | Deployment + NodePort `30089`，`/app/backend/data` → PVC（894M），`WEBUI_SECRET_KEY` secret，`OPENAI_API_BASE_URLS=http://llama-cpp:8080/v1`（k8s DNS） | NPM 的 `ollama.jerome.cloudns.asia` 域名實際指的就是 open-webui（歷史遺留命名），域名不動、只把 Forward 改指 NodePort |
-| sillytavern | Deployment + NodePort `30091`，config/data/plugins/extensions → PVC（21M），basic auth 憑證 secret | ST 的 `SILLYTAVERN_<path>` env 覆蓋機制在 compose 已用來注入帳密（`.env`），k8s 用 secretKeyRef 注入同名 env。Service 名 `sillytavern` 會注入 `SILLYTAVERN_PORT`，而 ST 的泛用 env 覆蓋機制會誤讀它 → **`enableServiceLinks: false` 必設** |
-| 資源 | llama-cpp `1C/2Gi → 3C/9Gi`；open-webui `500m/1Gi → 1C/2Gi`；sillytavern `200m/256Mi → 200m/512Mi` | 合計 limits `4.2C/11.5Gi`，落在 llm ns 配額 `5C/13Gi` 內 |
-| 內網通訊 | 只有 open-webui / sillytavern → llama-cpp 需要互相通，ClusterIP 即可 | 不接 NPM 以外任何入口 |
+| llama-cpp | Deployment + ClusterIP `llama-cpp:8080`, models dir → PVC (1.9G), keep env `LLAMA_ARG_THREADS=3`/`CTX_SIZE=8192`/`CACHE_RAM=4096`, resources `1C/2Gi → 3C/9Gi` | keep compose's router mode and resource ceilings (Ampere-optimized `amperecomputingai/llama.cpp:3.4.2`, don't revert to ollama). Currently stopped = PVC copied from `/etc/llama-cpp/models`, no concurrent-write risk |
+| open-webui | Deployment + NodePort `30089`, `/app/backend/data` → PVC (894M), `WEBUI_SECRET_KEY` secret, `OPENAI_API_BASE_URLS=http://llama-cpp:8080/v1` (k8s DNS) | NPM's `ollama.jerome.cloudns.asia` domain actually points at open-webui (historical naming); domain unchanged, only the Forward repointed to the NodePort |
+| sillytavern | Deployment + NodePort `30091`, config/data/plugins/extensions → PVC (21M), basic auth credentials secret | ST's `SILLYTAVERN_<path>` env override mechanism was already used in compose to inject credentials (`.env`); k8s injects the same-named env via secretKeyRef. The Service name `sillytavern` would inject `SILLYTAVERN_PORT`, which ST's generic env override misreads → **`enableServiceLinks: false` is required** |
+| resources | llama-cpp `1C/2Gi → 3C/9Gi`; open-webui `500m/1Gi → 1C/2Gi`; sillytavern `200m/256Mi → 200m/512Mi` | total limits `4.2C/11.5Gi`, within the llm ns quota `5C/13Gi` |
+| internal networking | only open-webui / sillytavern → llama-cpp need to talk to each other, ClusterIP suffices | no entry points besides NPM |
 
-### relay 映像
+### relay image
 
-`vikunja-notify-relay` 是 repo 內唯一本地 build 的 image（Dockerfile + app.py + test_app.py 都在 `vps_oracle/compose/vikunja/notify-relay/`）。k8s 要拉得動，得推到 registry：
+`vikunja-notify-relay` is the only locally-built image in the repo (Dockerfile + app.py + test_app.py all under `vps_oracle/compose/vikunja/notify-relay/`). For k8s to pull it, it must be pushed to a registry:
 
-- **推薦**：加一個 GitHub Actions workflow，照 `placeholder-hello.yml` 的既有形狀（build `linux/arm64` → Trivy → keyless Cosign → push 到 `ghcr.io/jeromefromcn/vikunja-notify-relay`），trigger 指向 `vps_oracle/compose/vikunja/notify-relay/**`。與路線圖「之後所有部署都走 GitOps」一致，也讓 relay 後續修改可重現
-- 退回方案：手動 `docker build` + `docker push` 一次。可接受，但失去 CI 的可重現性
+- **Recommended**: add a GitHub Actions workflow, following the existing shape of `placeholder-hello.yml` (build `linux/arm64` → Trivy → keyless Cosign → push to `ghcr.io/jeromefromcn/vikunja-notify-relay`), trigger on `vps_oracle/compose/vikunja/notify-relay/**`. Consistent with the roadmap's "all future deployments go through GitOps", and makes future relay changes reproducible
+- Fallback: manually `docker build` + `docker push` once. Acceptable, but loses CI reproducibility
 
-### Secrets 策略（phase E 前的暫代）
+### Secrets strategy(stopgap before phase E)
 
-**手動、帶外建立 Secret，不進 git**。原因：ArgoCD 的 repo-server 從 git clone，gitignored 的 `.env` 不在 repo 裡，Kustomize `secretGenerator` 讀不到——這條路在 GitOps 下走不通。改用：
+**Create Secrets manually, out-of-band, not in git**. Rationale: ArgoCD's repo-server clones from git, the gitignored `.env` isn't in the repo, so Kustomize `secretGenerator` can't read it — this path doesn't work under GitOps. Instead:
 
-- 來源：各 compose 目錄既有的 gitignored `.env`（`vikunja/.env`、`dify/.env`、`llm/.env`）
-- 建立：`kubectl create secret generic <name> --from-env-file=<該 .env>`（或 `--from-literal` 指定 key）
-- 消費：Deployment/StatefulSet 用 `secretKeyRef` 引用
-- ArgoCD 不會動這些 Secret（不在 repo 的資源，prune/selfHeal 只管 ArgoCD 自己管理的），所以能存活；**每次 sync 前要確認 Secret 存在**（plan 的步驟會驗）
-- phase E 用 Sealed Secrets 接管後，這些帶外 Secret 退場
+- Source: each compose directory's existing gitignored `.env` (`vikunja/.env`, `dify/.env`, `llm/.env`)
+- Creation: `kubectl create secret generic <name> --from-env-file=<that .env>` (or `--from-literal` for specific keys)
+- Consumption: Deployment/StatefulSet reference via `secretKeyRef`
+- ArgoCD won't touch these Secrets (resources not in the repo; prune/selfHeal only manage what ArgoCD manages), so they survive; **confirm the Secret exists before every sync** (the plan's steps verify this)
+- once phase E takes over with Sealed Secrets, these out-of-band Secrets are retired
 
-| 命名空間 | Secret | 內容 |
+| Namespace | Secret | Contents |
 |---|---|---|
 | workloads | `vikunja` | `VIKUNJA_SERVICE_SECRET` |
-| dify | `dify-secrets` | `DB_PASSWORD`、`PGVECTOR_PASSWORD`、`REDIS_PASSWORD`、`SECRET_KEY`、`INIT_PASSWORD` |
+| dify | `dify-secrets` | `DB_PASSWORD`, `PGVECTOR_PASSWORD`, `REDIS_PASSWORD`, `SECRET_KEY`, `INIT_PASSWORD` |
 | llm | `open-webui` | `WEBUI_SECRET_KEY` |
-| llm | `sillytavern` | `SILLYTAVERN_BASICAUTHUSER_USERNAME`、`SILLYTAVERN_BASICAUTHUSER_PASSWORD` |
+| llm | `sillytavern` | `SILLYTAVERN_BASICAUTHUSER_USERNAME`, `SILLYTAVERN_BASICAUTHUSER_PASSWORD` |
 
-## Repo 佈局
+## Repo layout
 
-沿用 phase B/C 慣例，一個 compose stack 對應一個 child Application。dify / llm 的 namespace + quota 收進各自 app 目錄：
+Follow phase B/C conventions: one compose stack maps to one child Application. dify / llm's namespace + quota fold into their own app directories:
 
 ```
 vps_oracle/k3s/
   argocd/apps/
-    vikunja.yaml                # 新增 → ../../apps/vikunja/k8s/（vikunja + relay 同一個 Application）
-    apprise.yaml                # 新增 → ../../apps/apprise/k8s/
-    dify.yaml                   # 新增 → ../../apps/dify/k8s/
-    llm.yaml                    # 新增 → ../../apps/llm/k8s/
+    vikunja.yaml                # new → ../../apps/vikunja/k8s/(vikunja + relay, one Application)
+    apprise.yaml                # new → ../../apps/apprise/k8s/
+    dify.yaml                   # new → ../../apps/dify/k8s/
+    llm.yaml                    # new → ../../apps/llm/k8s/
   apps/
     vikunja/k8s/
-      pvc.yaml                  # local-path，2Gi
+      pvc.yaml                  # local-path, 2Gi
       deployment.yaml           # vikunja
       service.yaml              # NodePort 30084
       relay/deployment.yaml     # vikunja-notify-relay
       relay/service.yaml        # ClusterIP 8080
     apprise/k8s/
-      pvc.yaml                  # local-path，1Gi（40K config）
+      pvc.yaml                  # local-path, 1Gi(40K config)
       deployment.yaml
       service.yaml              # NodePort 30085
     dify/k8s/
       namespace.yaml            # dify ns
       resourcequota.yaml        # requests 2.5C/2Gi, limits 3C/4Gi
-      networkpolicies.yaml      # SSRF egress 隔離
+      networkpolicies.yaml      # SSRF egress isolation
       configmap.yaml            # ssrf squid.conf + entrypoint
       db-postgres.yaml          # StatefulSet + Service + PVC
       pgvector.yaml             # StatefulSet + Service + PVC
@@ -194,7 +194,7 @@ vps_oracle/k3s/
       worker.yaml               # Deployment
       worker-beat.yaml          # Deployment
       web.yaml                  # Deployment + Service(NodePort 30086)
-      storage-pvc.yaml          # api/worker/beat 共享
+      storage-pvc.yaml          # shared by api/worker/beat
     llm/k8s/
       namespace.yaml            # llm ns
       resourcequota.yaml        # requests 2C/4Gi, limits 5C/13Gi
@@ -203,64 +203,64 @@ vps_oracle/k3s/
       sillytavern.yaml          # Deployment + Service(NodePort 30091) + PVC
 ```
 
-原 `vps_oracle/compose/{vikunja,dify,llm}/` 保持不動——舊 compose 定義是回滾路徑，phase H 才決定去留。`vps_oracle/compose/3x-ui/` 同理（本就決定保留）。
+The original `vps_oracle/compose/{vikunja,dify,llm}/` stay unchanged — the old compose definitions are the rollback path, decommission is decided in phase H. `vps_oracle/compose/3x-ui/` likewise (already decided keep).
 
-dify / llm 的 child Application 要加 `syncPolicy.syncOptions: [CreateNamespace=true]`（新命名空間由 ArgoCD 建立，`k8s/` 目錄裡照樣放 `namespace.yaml` 供它管轄）；vikunja / apprise 落在既有 `workloads` ns，不需要。
+dify / llm's child Applications need `syncPolicy.syncOptions: [CreateNamespace=true]` (new namespaces created by ArgoCD, with `namespace.yaml` still placed in `k8s/` for it to govern); vikunja / apprise land in the existing `workloads` ns and don't need it.
 
-## 遷移 SOP（沿用 phase C，逐服務套用）
+## Migration SOP(reuse phase C, applied per service)
 
-phase C 的 SOP 原樣適用，逐服務重複（盤點 → 翻譯 manifest → 搬資料 → 進 GitOps → 內部驗證 → 切流 → 外部驗證 → 舊容器停機）。本階段新增三個注意點：
+Phase C's SOP applies unchanged, repeated per service (inventory → translate manifests → move data → into GitOps → internal verification → cutover → external verification → stop old containers). Three new points this phase:
 
-1. **多容器棧的依賴順序**：dify 有 9 個 pod、Service 間有依賴。ArgoCD sync 一次全建，靠 initContainer/readiness 而非依賴排序；但**驗證要從底層往上**（db/redis healthy → api/worker 起來 → web 起來 → 跑 workflow）
-2. **DB 資料搬遷順序**：照 trilium 六步，seed pod 觸發 `WaitForFirstConsumer` provisioner → rsync → chown（dify 的 storage 屬主是 uid 1001，postgres/pgvector/redis 的資料目錄屬主是各自 image 的 postgres/redis uid，搬完要 `chown` 對）
-3. **NPM custom locations**：dify 那 8 條 location 要逐一改 Forward Host/Port，不只改預設 forward。用 NPM automation API（`vps_oracle/compose/npm/.npm-automation.env` + README）逐 location `PUT`
+1. **Dependency ordering for multi-container stacks**: dify has 9 pods with inter-Service dependencies. ArgoCD sync creates all at once, relying on initContainer/readiness rather than dependency ordering; but **verification must go bottom-up** (db/redis healthy → api/worker up → web up → run the workflow)
+2. **DB data migration order**: follow the trilium six steps, seed pod triggers `WaitForFirstConsumer` provisioner → rsync → chown (dify's storage owner is uid 1001; postgres/pgvector/redis data-dir owners are each image's postgres/redis uid — `chown` correctly after copying)
+3. **NPM custom locations**: dify's 8 locations must each have Forward Host/Port changed, not just the default forward. Use the NPM automation API (`vps_oracle/compose/npm/.npm-automation.env` + README) to `PUT` each location
 
-## 遷移順序
+## Migration order
 
-1. **vikunja 棧**（最簡單、自包含）——驗證「多 pod 互相依賴 + sqlite PVC + relay 進 registry + webhook URL 沿用」這套，為後面兩個棧打底
-2. **dify**（最大、最重）——9 容器、3 個 StatefulSet、SSRF NetworkPolicy、5 個 secret、8 條 NPM location。自包含、低外部風險
-3. **llm**（目前停機，無切流）——排最後因為它是休眠狀態、不急著復活，且資源佔用最大（一跑就 3C/9G）
+1. **vikunja stack** (simplest, self-contained) — validates the "multi-pod mutual dependency + sqlite PVC + relay into registry + webhook URL reuse" pattern, laying groundwork for the next two stacks
+2. **dify** (largest, heaviest) — 9 containers, 3 StatefulSets, SSRF NetworkPolicy, 5 secrets, 8 NPM locations. Self-contained, low external risk
+3. **llm** (currently stopped, no cutover) — last because it's dormant, no urgency to revive, and heaviest on resources (3C/9G once running)
 
-每個服務遷完並穩定（過關清單通過）才開下一個。
+Only start the next service after the previous one is migrated and stabilized (passed the checklist).
 
-## 驗證清單（phase D 過關標準）
+## Verification checklist(phase D pass criteria)
 
-**共通（每個服務）：**
-1. `kubectl -n <ns> get applications` → 新增的 `vikunja`、`apprise`、`dify`、`llm` 皆 `Synced` + `Healthy`
-2. `kubectl get pods -n <ns>` → 全部 `Running`，無 `CrashLoopBackOff`
-3. PVC 皆 `Bound`
-4. **內部連通**：切 NPM 前先 `curl http://localhost:<NodePort>` 驗證（vikunja 登入頁、apprise 根路徑、dify web 首頁、open-webui 登入頁、sillytavern）
-5. **資料完整性**：搬遷後 PV 目錄檔案數/大小與基準一致（phase C 的「檔案數別在停容器瞬間量」教訓）；有狀態服務在 UI 實際讀寫驗證
-6. **外部無感**：改 NPM 後 `curl https://<域名>` 正常 + 瀏覽器實操
-7. **舊 compose 容器停機保留**：`docker ps -a` 為 `Exited`，未被刪除（llm 本就無容器）
+**Common (every service):**
+1. `kubectl -n <ns> get applications` → the new `vikunja`, `apprise`, `dify`, `llm` are all `Synced` + `Healthy`
+2. `kubectl get pods -n <ns>` → all `Running`, no `CrashLoopBackOff`
+3. all PVCs `Bound`
+4. **Internal connectivity**: before switching NPM, first `curl http://localhost:<NodePort>` to verify (vikunja login page, apprise root path, dify web homepage, open-webui login page, sillytavern)
+5. **Data integrity**: after migration, the file count/size in the PV directory matches the baseline (phase C's "don't count files at the exact moment you stop the container" lesson); stateful services verified by actually reading/writing in the UI
+6. **Externally invisible**: after changing NPM, `curl https://<domain>` works + browser spot-check
+7. **Old compose containers stopped but preserved**: `docker ps -a` shows `Exited`, not deleted (llm had no containers to begin with)
 
-**服務特定：**
-8. **vikunja**：登入、建任務；**Telegram 通知端到端**（改任務觸發 webhook → relay → apprise → Telegram 收到）——證明 relay+apprise 遷移後整條鏈還通
-9. **dify**：登入（`INIT_PASSWORD` 首登）；跑一個**真實 workflow**：LLM 對話 + 含 HTTP-request node 的應用（證明 SSRF 隔離沒誤擋、模型調用正常、HTTP node 能出外網）；上傳一份文件進知識庫（證明共享 storage 的讀寫正常）
-10. **llm**：open-webui 開對話 → llama.cpp 正常推理（3B 模型）；sillytavern 能連後端
-11. **配額**：`kubectl describe resourcequota -n {dify,llm}` → `Used` 在 hard cap 內；`workloads` 也在
-12. **NodePort**：新 NodePort（30084-30089、30091）無撞號（`kubectl get svc -A` 複查）
+**Service-specific:**
+8. **vikunja**: login, create a task; **end-to-end Telegram notification** (edit a task to trigger webhook → relay → apprise → Telegram received) — proves the whole chain still works after migrating relay+apprise
+9. **dify**: login (`INIT_PASSWORD` first login); run a **real workflow**: LLM conversation + an app with an HTTP-request node (proves SSRF isolation doesn't wrongly block, model calls work, HTTP node reaches the internet); upload a document into the knowledge base (proves the shared storage reads/writes normally)
+10. **llm**: open-webui starts a conversation → llama.cpp infers normally (3B model); sillytavern can reach the backend
+11. **Quotas**: `kubectl describe resourcequota -n {dify,llm}` → `Used` within hard caps; `workloads` too
+12. **NodePorts**: new NodePorts (30084-30089, 30091) don't collide (`kubectl get svc -A` double-check)
 
-## 已知限制 / 失敗模式
+## Known limitations / failure modes
 
-- **dify 共享 storage 依賴單節點語義**：RWO PVC 被 api/worker/beat 三個 pod 掛載，靠「RWO=單一 node、本叢集只有一個 node」成立。一旦上多節點就會擋第二個 pod——本階段接受，記錄在案
-- **dify egress NetworkPolicy 可能誤擋模型調用**：設計上 plugin-daemon 直連外網（model 提供方）、api/worker 走 squid。若實測發現 api/worker 有沒走 squid 的必要外呼，policy 會把它擋掉 → 過關清單第 9 條就是要抓這個；真擋到就撤掉網絡層、只留應用層 SSRF（跟 compose 現狀一致），不影響遷移本身
-- **relay 映像要先上 registry**：vikunja sync 依賴 `ghcr.io/jeromefromcn/vikunja-notify-relay` 已存在。順序上先跑 CI（或手動 push）再 sync
-- **手動 Secret 是帶外狀態**：ArgoCD 不建也不修它，刪了就沒了（pod 起不來）。plan 每個服務 sync 前驗證 secret 存在；phase E 接 Sealed Secrets 前這是已知妥協
-- **llm 配額打破 request==limit 慣例**：`requests 2C/4Gi, limits 5C/13Gi`。這是有意的（見「命名空間與配額」），未來加 llm 服務要記得 limits 超賣是設計的一部分
-- **dify 大 image 拉取**：~8.5GB 一次性下載進 containerd；open-webui 單張 6.5GB。磁碟 89G 可用無虞，只是首次 sync 會慢。若在意可 `docker save` + `ctr images import` 預載
-- **TZ**：全部設 `TZ=Asia/Hong_Kong`，但 image 沒有 tzdata 就無效（k8s README 的對照表）。遷完用 `date` 實測每個容器，與 compose 行為對齊即可，不額外追
-- **webhook 重註冊**：vikunja DB 裡已註冊的 webhook URL（`http://vikunja-notify-relay:8080/`）因 Service 同名而沿用，不需重跑 `register-telegram-webhooks.sh`；但該腳本本身以後若重跑，`http://vikunja:3456` 的 API base 要改成 k8s Service 位址（plan 提一句）
-- **NPM 切流瞬間短暫斷線**：改 location/forward 會斷既有連線。vikunja/dify 不是長連線敏感型（對比 3x-ui 的 VLESS），影響可忽略
+- **dify shared storage relies on single-node semantics**: the RWO PVC is mounted by three pods (api/worker/beat), valid only because "RWO = single node, this cluster has one node". A second node would block the second pod — accepted this phase, recorded
+- **dify egress NetworkPolicy may wrongly block model calls**: by design plugin-daemon reaches the internet directly (model providers), api/worker go via squid. If testing shows api/worker have necessary outbound calls that don't go through squid, the policy blocks them → checklist item 9 is meant to catch this; if truly blocked, drop the network layer and keep only application-layer SSRF (matching compose's current state), without affecting the migration itself
+- **relay image must hit the registry first**: vikunja sync depends on `ghcr.io/jeromefromcn/vikunja-notify-relay` already existing. Order-wise, run CI (or manual push) before sync
+- **manual Secrets are out-of-band state**: ArgoCD neither creates nor repairs them; deleted = gone (pods won't start). The plan verifies secret existence before each service's sync; this is a known compromise until phase E adopts Sealed Secrets
+- **llm quota breaks the request==limit convention**: `requests 2C/4Gi, limits 5C/13Gi`. Intentional (see "Namespaces and quotas"); when adding llm services later, remember that oversubscribed limits are part of the design
+- **dify large image pulls**: ~8.5GB one-time download into containerd; open-webui alone is 6.5GB. Disk at 89G available is no concern, just slow first sync. If it matters, `docker save` + `ctr images import` to preload
+- **TZ**: all set `TZ=Asia/Hong_Kong`, but does nothing if the image lacks tzdata (k8s README's comparison table). After migration, test each container with `date` and align with compose behavior, no further chasing
+- **webhook re-registration**: the already-registered webhook URL in vikunja's DB (`http://vikunja-notify-relay:8080/`) is reused because the Service name matches, so no need to rerun `register-telegram-webhooks.sh`; but if that script is rerun later, its API base `http://vikunja:3456` must change to the k8s Service address (the plan mentions this)
+- **brief outage at NPM cutover**: changing location/forward breaks existing connections. vikunja/dify aren't long-connection-sensitive (contrast with 3x-ui's VLESS), impact negligible
 
-## 3x-ui 去留決策（compose 保留）
+## 3x-ui keep/decommission decision(stay in compose)
 
-- **決策：保留在 compose，不遷**。39876 是客戶端直連的 VLESS+Reality 原始 TCP，不走 HTTP 反代，且有過真實故障（2026-07-24 incident：淺層探測 + `ulimit`）。遷移的動作者要求零中斷，而任何 k8s 方案（擴 NodePort 範圍要重啟 k3s、hostNetwork 與 phase E 的 PSS/Kyverno 衝突）都要動到一個運作良好的線上端口——風險/收益不成比例
-- 3x-ui 留在 docker `proxy` 網絡不影響其他遷移：NPM 的 `panel.3x`/`sub.3x`/`3xpanel` 轉發、靜態 IP/DNS hosts 覆寫全部原樣
-- **附錄（未來若想遷的候選機制）**：Klipper LB（k3s 內建 LoadBalancer）綁 `39876`，不需要重啟 k3s、pod 保持隔離——是最可能的路；要處理的是宿主機防火牆對 39876 的放行、以及把 xray 的 DNS hosts 覆寫從 docker 網絡（172.19.0.3）改成指向 NPM 的可達位址。本階段不實作
+- **Decision: keep in compose, don't migrate**. 39876 is client-direct VLESS+Reality raw TCP, not via an HTTP reverse proxy, and has had a real outage (2026-07-24 incident: shallow probing + `ulimit`). The migration demands zero downtime, but any k8s approach (extending the NodePort range requires restarting k3s; hostNetwork conflicts with phase E's PSS/Kyverno) touches a well-functioning production port — risk/benefit doesn't add up
+- 3x-ui staying on the docker `proxy` network doesn't affect other migrations: NPM's `panel.3x`/`sub.3x`/`3xpanel` forwards, static IP/DNS host overrides all unchanged
+- **Appendix (candidate mechanisms if migration is wanted later)**: Klipper LB (k3s's built-in LoadBalancer) binding `39876`, no k3s restart needed, pods stay isolated — the most likely path; still need to allow 39876 on the host firewall, and change xray's DNS host override from the docker network (172.19.0.3) to a reachable address pointing at NPM. Not implemented this phase
 
-## 交棒給 phase E
+## Handoff to phase E
 
-Phase E（供應鏈安全）依賴本階段：**Sealed Secrets 接管 D 的手動 Secret**、**Kyverno/PSS 基線**要處理本階段留下的三個已知衝突（trilium 的無 `runAsUser`、3x-ui 若遷的 hostNetwork、dify 共享 storage 若改 hostPath 的例外）——D 階段盡量用對的抽象（PVC、NetworkPolicy、secretKeyRef），把需要開例外的面壓到最小。
+Phase E (supply chain security) depends on this phase: **Sealed Secrets takes over D's manual Secrets**, and **Kyverno/PSS baseline** must handle the three known conflicts left by this phase (trilium's missing `runAsUser`, 3x-ui's hostNetwork if migrated, dify shared storage's hostPath exception if changed) — phase D uses the right abstractions (PVC, NetworkPolicy, secretKeyRef) wherever possible to minimize the surface of exceptions needed.
 
-本階段同時是 phase G（服務網格）的前置：dify 棧的 Service 命名與 NetworkPolicy 模型、llm 棧的大資源預算，都會是 G 階段「哪些服務進網格」的考量輸入。
+This phase is also phase G (service mesh)'s precondition: dify's Service naming and NetworkPolicy model, and llm's large resource budget, both feed into G's "which services enter the mesh" considerations.

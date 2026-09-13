@@ -1,53 +1,53 @@
 # dify
 
-自建 Dify 1.14.2（社区版），精简自官方 `docker/docker-compose.yaml`。
+Self-hosted Dify 1.14.2 (community edition), trimmed down from the official `docker/docker-compose.yaml`.
 
-## 跟官方默认部署的区别
+## Differences from the official default deployment
 
-- **不用官方自带的 nginx** —— 官方 nginx 只做按路径转发（`/console/api`、`/api`、`/v1`、`/files`、`/mcp`、`/triggers`、`/openapi` → api；`/e/` → plugin_daemon；其余 → web），全部在同一个域名下。这里改成用 NPM 的 Custom Locations 功能直接照抄这几条转发规则，不用单独起一个 nginx 容器。见下面"接入 NPM 反代"。
-- **不部署 sandbox**（代码执行沙箱）—— Workflow 里的 Code 节点会不可用，其余功能不受影响。之后要用再单独加这个容器。
-- **不用 certbot** —— 证书统一走 NPM。
-- **向量库用 pgvector**，不用官方默认的 weaviate —— 注意 pgvector 是官方 compose 里独立的一个 Postgres 容器（`pgvector` 服务），不是复用 `db_postgres` 这个 Dify 自己的元数据库实例。
-- **不用最新的 1.16.x** —— 1.16.0 新增了一整套 "Dify Agent" 子系统（`agent_backend`+`local_sandbox`+`agent_ssrf_proxy`+`api_websocket`），用不上，还多吃内存。
-- **锁定 1.14.2，不用 1.15.x** —— 1.15.0 把 `web/hooks/use-timestamp.ts` 改成了用 `react-query` 独立发 `GET /console/api/account/profile`（1.14.x 是直接读已加载好的 app context，不产生额外请求）。这个背景请求只要碰上一次瞬时 401，`web/service/base.ts` 就会无条件把整页硬跳转到 `/signin`（没有做 silent 请求豁免——对应修复 PR #38273 提出了但没合并），跳转后页面重载又重新触发同一个 hook，形成登录后一直重定向的死循环（上游 issue [#38457](https://github.com/langgenius/dify/issues/38457)，同版本同症状）。已经通过直接 diff 1.14.2/1.15.0 源码确认：1.14.2 没有这条额外请求，这个循环的触发路径根本不存在。**如果之后升级到修复此问题的版本，记得把这条注释和下面 URL 那节一起复查。**
-- **不开 collaboration（`api_websocket`）** —— 多人协作编辑 workflow 的功能，没有这个需求。
+- **Don't use the official bundled nginx** — the official nginx only does path-based forwarding (`/console/api`, `/api`, `/v1`, `/files`, `/mcp`, `/triggers`, `/openapi` → api; `/e/` → plugin_daemon; the rest → web), all under one domain. Here we use NPM's Custom Locations feature to copy these forwarding rules directly, without spinning up a separate nginx container. See "Wiring the service into an NPM reverse proxy" below.
+- **Don't deploy the sandbox** (the code-execution sandbox) — the Code node in Workflow becomes unavailable; the rest of the functionality is unaffected. Add this container separately later if it's needed.
+- **Don't use certbot** — certificates all go through NPM.
+- **Use pgvector for the vector store**, not the official default weaviate — note that pgvector is a separate Postgres container in the official compose (the `pgvector` service), not a reuse of `db_postgres`, Dify's own metadata database instance.
+- **Don't use the latest 1.16.x** — 1.16.0 added a whole "Dify Agent" subsystem (`agent_backend`+`local_sandbox`+`agent_ssrf_proxy`+`api_websocket`) that we don't need, and it costs extra memory.
+- **Pin 1.14.2, don't use 1.15.x** — 1.15.0 changed `web/hooks/use-timestamp.ts` to independently issue a `GET /console/api/account/profile` via `react-query` (1.14.x reads the already-loaded app context directly, producing no extra request). If this background request hits a transient 401 even once, `web/service/base.ts` unconditionally hard-redirects the whole page to `/signin` (no silent-request exemption — the corresponding fix, PR #38273, was proposed but never merged); after the redirect the page reload re-triggers the same hook, forming a redirect loop that keeps bouncing after login (upstream issue [#38457](https://github.com/langgenius/dify/issues/38457), same version, same symptom). Confirmed by directly diffing the 1.14.2/1.15.0 source: 1.14.2 has no such extra request, so the loop's trigger path doesn't exist. **If we later upgrade to a version that fixes this, remember to re-check this note and the URL section below together.**
+- **Don't enable collaboration (`api_websocket`)** — the multi-user collaborative workflow-editing feature, which we have no need for.
 
-## 架构
+## Architecture
 
-| 容器 | 作用 |
+| Container | Role |
 |---|---|
-| `dify-db` | Dify 自己的元数据 Postgres |
-| `dify-pgvector` | 向量库，独立 Postgres 容器 |
-| `dify-redis` | 缓存 / Celery broker |
-| `dify-ssrf-proxy` | Squid，workflow HTTP 请求节点和插件的出站请求走这里防 SSRF，跟 sandbox 无关，是核心组件 |
-| `dify-plugin-daemon` | 插件运行时，**必须有**——1.x 起连 OpenAI/Anthropic 这些 model provider 都是插件实现的 |
-| `dify-api` | 后端 API |
-| `dify-worker` | Celery worker（跑数据集索引、workflow 异步任务等） |
-| `dify-worker-beat` | Celery 定时任务调度 |
-| `dify-web` | 前端 |
+| `dify-db` | Dify's own metadata Postgres |
+| `dify-pgvector` | The vector store, a separate Postgres container |
+| `dify-redis` | Cache / Celery broker |
+| `dify-ssrf-proxy` | Squid; outbound requests from workflow HTTP request nodes and plugins go through here for SSRF protection — unrelated to the sandbox, this is a core component |
+| `dify-plugin-daemon` | Plugin runtime, **required** — from 1.x on, even model providers like OpenAI/Anthropic are implemented as plugins |
+| `dify-api` | Backend API |
+| `dify-worker` | Celery worker (runs dataset indexing, async workflow tasks, etc.) |
+| `dify-worker-beat` | Celery scheduler |
+| `dify-web` | Frontend |
 
-没有一次性 init 容器：`/app/api/storage` 的权限（api/worker 跑在 uid 1001 下）是在宿主机上直接 `sudo chown -R 1001:1001 /etc/dify/storage` 搞定的，永久生效，不用每次启动跑一个用完就退出的容器。
+There's no one-shot init container: the permissions on `/app/api/storage` (api/worker run as uid 1001) were handled directly on the host with `sudo chown -R 1001:1001 /etc/dify/storage` — permanent, no need to run a use-once-and-exit container on every start.
 
-只有 `dify-web`、`dify-api`、`dify-plugin-daemon` 加入外部网络 `proxy`（给 NPM 转发用），其余容器只在内部网络，不发布任何宿主机端口。
+Only `dify-web`, `dify-api`, and `dify-plugin-daemon` join the external network `proxy` (for NPM forwarding); the rest of the containers stay on the internal network only and publish no host ports.
 
-## 给服务接入 NPM 反代
+## Wiring the service into an NPM reverse proxy
 
-已通过 NPM API（`vps_oracle/compose/npm/.npm-automation.env` 里的自动化账号）配好，proxy host id 24，证书 id 26。跟根目录 README 的通用约定不同 —— 这个服务需要**一个 proxy host + 多条 Custom Locations**，不是简单的单容器单端口转发。以下是实际配置，供之后对照/复查：
+Already configured via the NPM API (the automation account in `vps_oracle/compose/npm/.npm-automation.env`), proxy host id 24, certificate id 26. Unlike the general convention in the root README, this service needs **one proxy host + several Custom Locations**, not a simple single-container single-port forward. The actual configuration follows, for later reference/re-checking:
 
-**Details 标签页**
+**Details tab**
 
-| 字段 | 值 |
+| Field | Value |
 |---|---|
 | Domain Names | `dify.jerome.cloudns.asia` |
 | Scheme | `http` |
 | Forward Hostname / IP | `dify-web` |
 | Forward Port | `3000` |
-| Cache Assets | 关闭 |
-| Block Common Exploits | 开启 |
-| Websockets Support | 开启 |
+| Cache Assets | Off |
+| Block Common Exploits | On |
+| Websockets Support | On |
 | Access List | `self-only` |
 
-**Custom Locations**（同一个 proxy host 里加）
+**Custom Locations** (added within the same proxy host)
 
 | Location | Forward Hostname/IP | Forward Port |
 |---|---|---|
@@ -60,33 +60,33 @@
 | `/openapi` | `dify-api` | `5001` |
 | `/e/` | `dify-plugin-daemon` | `5002` |
 
-SSL 标签页照根目录 README 的通用配置走（Force SSL / HTTP2 / 邮箱固定值），记得保存后重新打开复查那个已知坑。
+The SSL tab follows the general config in the root README (Force SSL / HTTP2 / fixed email value); remember to save and reopen to re-check that known gotcha.
 
-**另一个坑**：Custom Locations 生成的 nginx 配置是 `proxy_pass http://dify-api:5001;` 这种写死主机名的写法，不是 resolver+变量的动态解析模式——nginx 只在 worker 启动/reload 时解析一次主机名并缓存 IP，不会每个请求都重新查。**每次 `docker compose down && up`（网络重建，容器 IP 会变）之后，如果 `/console/api` 等路径开始 502 而 `/` 正常，先 `docker exec npm nginx -s reload` 让它重新解析。** 平时只是 `docker compose restart` 之类不重建网络的操作不受影响。
+**Another gotcha**: the nginx config generated by Custom Locations uses the hardcoded-hostname form `proxy_pass http://dify-api:5001;`, not the resolver+variable dynamic-resolution form — nginx resolves the hostname and caches the IP only once, at worker startup/reload, and does not re-resolve on every request. **After every `docker compose down && up` (network rebuilt, container IPs changed), if paths like `/console/api` start returning 502 while `/` is fine, first run `docker exec npm nginx -s reload` to make it re-resolve.** Ordinary operations like `docker compose restart` that don't rebuild the network are unaffected.
 
-## 给新服务加 homepage 卡片
+## Adding a homepage card for a new service
 
-已经按根目录 README 的格式加到 `vps_oracle/compose/homepage/config/services.yaml`。
+Already added to `vps_oracle/compose/homepage/config/services.yaml` in the format from the root README.
 
-**踩过的坑**：`dify-web` 的 `server.js` 会绑定到 `$HOSTNAME`（Docker 从 compose 的 `hostname:` 字段自动注入），不是 `0.0.0.0`。不修的话它只监听 `default` 网络那个 IP，`proxy` 网络（也就是 NPM）连不上，表现为除了 `/console/api` 等转发到 `dify-api` 的路径外，首页固定 502。已经在 compose 里给 `web` 显式加了 `HOSTNAME: "0.0.0.0"` 环境变量覆盖掉。
+**Gotcha hit**: `dify-web`'s `server.js` binds to `$HOSTNAME` (which Docker injects from the compose `hostname:` field), not `0.0.0.0`. Unfixed, it only listens on the `default` network IP, so the `proxy` network (i.e. NPM) can't connect — manifesting as a persistent 502 on the homepage, except for paths like `/console/api` that forward to `dify-api`. Already fixed in compose by explicitly setting `HOSTNAME: "0.0.0.0"` on the `web` service to override it.
 
-## URL 类配置的内外之分
+## Internal vs external URL-style config
 
-compose 里几类 `*_URL` 变量,踩过的坑记录一下:
+A note on the gotchas hit with the several `*_URL` variables in compose:
 
-- **内部（容器名:端口，走 docker 网络）**：`DB_HOST`/`REDIS_HOST`/`PGVECTOR_HOST`、`SSRF_PROXY_HTTP(S)_URL`、`PLUGIN_DAEMON_URL`、`DIFY_INNER_API_URL`、`SERVER_CONSOLE_API_URL`（web 的 SSR 阶段拿这个直连 api，容器内没有"当前请求域名"可推断）、`INTERNAL_FILES_URL`（api/worker 用，插件读文件走这个而不是绕一圈公网域名）。前提是双方共享至少一个 docker 网络（都验证过)。
-- **外部（真实公网域名，给浏览器/第三方用）**：`CONSOLE_WEB_URL`/`CONSOLE_API_URL`/`SERVICE_API_URL`/`APP_WEB_URL`/`FILES_URL`（api、worker、worker_beat 都要有——注册/邀请/重置密码邮件是 worker 的 Celery 任务发的，图片/文件下载链接也是拼进 API 响应体里给外部客户端用的，不是容器内部用的，必须是能从外面访问到的地址）、`ENDPOINT_URL_TEMPLATE`（插件 Endpoint 类型的回调 URL,比如接 Slack 用的）、`TRIGGER_URL`（插件 Trigger 的回调 URL，对应 NPM 里的 `/triggers`）。这两个一开始漏配，官方默认值是 `http://localhost/...`，如果真去装一个需要 webhook 回调的插件，生成出来的 URL 外部完全打不进来——已经补上。
-- **第三方外部（不是我们的基础设施）**：`MARKETPLACE_API_URL`/`MARKETPLACE_URL`（`https://marketplace.dify.ai`，Dify 官方插件市场，浏览器直接访问，不经过我们的容器）。
+- **Internal (container-name:port, over the docker network)**: `DB_HOST`/`REDIS_HOST`/`PGVECTOR_HOST`, `SSRF_PROXY_HTTP(S)_URL`, `PLUGIN_DAEMON_URL`, `DIFY_INNER_API_URL`, `SERVER_CONSOLE_API_URL` (web's SSR stage connects directly to api via this; inside a container there's no "current request domain" to infer), `INTERNAL_FILES_URL` (used by api/worker; plugins read files via this rather than going around through the public domain). The precondition is that both sides share at least one docker network (all verified).
+- **External (real public domain, for browsers/third parties)**: `CONSOLE_WEB_URL`/`CONSOLE_API_URL`/`SERVICE_API_URL`/`APP_WEB_URL`/`FILES_URL` (api, worker, and worker_beat all need it — registration/invite/password-reset emails are sent by worker's Celery tasks, and image/file download links are also composed into API response bodies for external clients, not consumed inside the container, so they must be addresses reachable from outside), `ENDPOINT_URL_TEMPLATE` (the callback URL for plugin Endpoint types, e.g. for Slack integration), `TRIGGER_URL` (the callback URL for plugin Triggers, corresponding to `/triggers` in NPM). These two were initially left unset; the official defaults are `http://localhost/...`, and if you actually installed a plugin needing a webhook callback, the generated URL would be unreachable from outside entirely — now filled in.
+- **Third-party external (not our infrastructure)**: `MARKETPLACE_API_URL`/`MARKETPLACE_URL` (`https://marketplace.dify.ai`, Dify's official plugin marketplace, accessed directly by the browser, not through our containers).
 
-`PLUGIN_REMOTE_INSTALL_HOST`/`PORT`（api）和 `PLUGIN_REMOTE_INSTALLING_HOST`/`PORT`（plugin_daemon）留着 `localhost`/`0.0.0.0` 没改——这俩是"远程插件调试安装"功能用的，因为没往宿主机发布 5003 端口（按最小暴露原则），这功能本来就连不进来，不是配错，是没启用。
+`PLUGIN_REMOTE_INSTALL_HOST`/`PORT` (api) and `PLUGIN_REMOTE_INSTALLING_HOST`/`PORT` (plugin_daemon) are left at `localhost`/`0.0.0.0` unchanged — these two are for the "remote plugin debug install" feature, and since we don't publish the 5003 port to the host (least-exposure principle), that feature was never reachable in the first place; it's not a misconfiguration, it's just not enabled.
 
-## 首次安装
+## First-time install
 
 1. `docker compose up -d`
-2. 等 `dify-api`、`dify-web` 都 healthy（`docker compose ps`）
-3. 如果是重建过网络（`down` 之后再 `up`），按上面那条坑先 `docker exec npm nginx -s reload`
-4. 配好 NPM 反代后访问 `https://dify.jerome.cloudns.asia/install`，用 `.env` 里的 `INIT_PASSWORD` 值设置管理员账号
+2. Wait for `dify-api` and `dify-web` to be healthy (`docker compose ps`)
+3. If the network was rebuilt (`down` then `up`), first run `docker exec npm nginx -s reload` per the gotcha above
+4. After the NPM reverse proxy is configured, visit `https://dify.jerome.cloudns.asia/install` and set up the admin account using the `INIT_PASSWORD` value from `.env`
 
-## 内存占用
+## Memory usage
 
-部署后建议跑一次 `docker stats --no-stream $(docker compose ps -q)` 记录基线，主机内存本来就偏紧（部署前可用 ~8.9GB）。
+After deploying, it's worth running `docker stats --no-stream $(docker compose ps -q)` once to record a baseline; host memory is already tight (~8.9GB free before deployment).

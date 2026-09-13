@@ -1,7 +1,7 @@
 # Points Headlamp's Prometheus plugin at the standalone Prometheus that runs
 # as plain docker compose on this same host (vps_oracle/compose/monitoring/),
 # not inside k3s, at its fixed IP on the docker `proxy` network (172.19.0.4,
-# registered in README.md's 网络隔离 static-IP table and pinned in that
+# registered in README.md's network isolation static-IP table and pinned in that
 # compose file's prometheus.networks.proxy.ipv4_address).
 #
 # Headlamp queries this via the k3s apiserver's built-in service proxy

@@ -64,9 +64,9 @@ services:
     networks:
       - default
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = pgadmin, Forward Port = 80（容器名直连，走 proxy 网络）
-    # 未发布宿主端口 — 管理面板只走 NPM，见仓库 README 约定。
+    # NPM reverse proxy: Forward Hostname/IP = pgadmin, Forward Port = 80 (container name direct, over the proxy network)
+    # No host port published — the admin panel goes only via NPM, per the repo README convention.
 
 networks:
   proxy:
-    external: true   # 手动创建一次：docker network create proxy --subnet 172.19.0.0/16 --gateway 172.19.0.1 --ip-range 172.19.1.0/24
+    external: true   # create once manually: docker network create proxy --subnet 172.19.0.0/16 --gateway 172.19.0.1 --ip-range 172.19.1.0/24

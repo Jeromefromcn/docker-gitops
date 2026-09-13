@@ -1,56 +1,56 @@
 # vps_gcp/tofu — greenfield root module
 
-练习 greenfield 的那半：完整生命周期，从零 apply → 改 → destroy → 再 apply 验证可重现。
+Practices the greenfield half: full lifecycle, from a clean apply → change → destroy → apply again to verify reproducibility.
 
-## 免费层边界（敲死，别动）
+## Free-tier boundaries (locked, don't touch)
 
-| 项 | 值 | 为什么 |
+| Item | Value | Why |
 |---|---|---|
-| region / zone | `us-central1` / `us-central1-a` | e2-micro 仅 us-west1/us-central1/us-east1 免费；对齐前线上实例所在的免费机房 |
-| machine_type | `e2-micro` | 写死字面值，不用变量，防手滑改成 e2-medium |
-| boot disk | 30 GB `pd-standard` | 免费层 30 GB 标准永久磁盘总额 |
-| egress | 1 GB/月（不含中国/澳洲） | 见 instance.tf 注释 |
+| region / zone | `us-central1` / `us-central1-a` | e2-micro is free only in us-west1/us-central1/us-east1; matches the free-tier region the prior live instance was in |
+| machine_type | `e2-micro` | Hardcoded literal, not a variable, to prevent an accidental slip to e2-medium |
+| boot disk | 30 GB `pd-standard` | The free tier's total allowance is 30 GB of standard persistent disk |
+| egress | 1 GB/month (excludes China/Australia) | See the comment in instance.tf |
 
-## 认证
+## Authentication
 
-专设 service account + key JSON。角色收窄到 `roles/compute.networkAdmin`、`roles/compute.instanceAdmin.v1`、`roles/serviceusage.serviceUsageAdmin`。
+A dedicated service account + key JSON. Roles narrowed to `roles/compute.networkAdmin`, `roles/compute.instanceAdmin.v1`, `roles/serviceusage.serviceUsageAdmin`.
 
-- key 放仓库之外，经环境变量引用：`export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json`
-- `.auto.tfvars`（gitignored）填 `project_id`、`project_number` 与 `billing_account` 三个必填项，见 `.auto.tfvars.example`。`project_number` 是纯数字的项目编号，跟字母数字的 `project_id` 是两个不同的标识——budget 的 `budget_filter.projects` 只认 `projects/{project_number}`。
+- The key lives outside the repo, referenced via an environment variable: `export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json`
+- `.auto.tfvars` (gitignored) holds the three required values `project_id`, `project_number`, and `billing_account` — see `.auto.tfvars.example`. `project_number` is the purely-numeric project number, a different identifier from the alphanumeric `project_id` — the budget's `budget_filter.projects` only accepts `projects/{project_number}`.
 
-`google_billing_budget` 的权限挂在**账单账户**上、不是项目上——需在账单账户层级授 `roles/billing.costsManager`。
+`google_billing_budget`'s permissions attach to the **billing account**, not the project — grant `roles/billing.costsManager` at the billing-account level.
 
-## SSH 登入（兩層，分開看）
+## SSH login (two layers, considered separately)
 
-**Key 持久** —— 可選填 `ssh_public_key`（公鑰，非 secret）。GCP 的 `ssh-keys` metadata 由 guest-agent 裝進 `ubuntu` 的 `authorized_keys`，且掛在 instance resource 上，所以 **destroy→apply 重建後會自動重裝**。
+**The key persists** — you may optionally set `ssh_public_key` (a public key, not a secret). GCP's `ssh-keys` metadata is installed into `ubuntu`'s `authorized_keys` by the guest-agent, and is attached to the instance resource, so **it gets reinstalled automatically after a destroy→apply rebuild**.
 
-- 值格式 `ssh-ed25519 AAAA... comment`。經 `TF_VAR_ssh_public_key="$(cat ~/.ssh/id_gcp.pub)"` 注入（`.auto.tfvars` 只放 identity-type 值，不放 key）。
-- 留空（default）＝回退到 Console browser SSH。
+- Value format: `ssh-ed25519 AAAA... comment`. Injected via `TF_VAR_ssh_public_key="$(cat ~/.ssh/id_gcp.pub)"` (`.auto.tfvars` holds only identity-type values, never the key itself).
+- Left blank (default) = falls back to Console browser SSH.
 
-**IP 不持久** —— 當前 `nat_ip` 是 ephemeral（見 instance.tf），每次重建外網 IP 都會變。不建議給這台練習機加 `google_compute_address`（reserved IP 在未掛載的 destroy→apply 空窗會計費，違反免費層紅線）。做法：apply 後讀新 IP：
+**The IP does not persist** — the current `nat_ip` is ephemeral (see instance.tf), so the external IP changes on every rebuild. Adding a `google_compute_address` for this practice machine isn't recommended (a reserved IP is billed during the destroy→apply gap while unattached, which would violate the free-tier red line). Approach: read the new IP after apply:
 
 ```bash
-# 有 gcloud：即時查
+# With gcloud: query live
 gcloud compute instances describe vps-gcp --zone us-central1-a \
   --format='value(networkInterfaces[0].accessConfigs[0].natIP)'
 
-# 沒 gcloud：直接讀 state（本機可跑，無需 GCP 認證）
+# Without gcloud: read state directly (runs locally, no GCP auth needed)
 tofu state show google_compute_instance.vps | grep '"nat_ip"'
 ```
 
-每次重建後把新 IP 寫進 `~/.ssh/config` 的 `Host vps-gcp` entry（`HostName` 欄）即可。無需「自動發現」的常駐背景任務——重建是手動命中的低頻事件，一個 grep 就解。
+After each rebuild, just write the new IP into the `Host vps-gcp` entry's `HostName` field in `~/.ssh/config`. No need for an "auto-discovery" background daemon — a rebuild is a low-frequency, manually-triggered event; a single grep handles it.
 
-## 验收标准
+## Acceptance criteria
 
-`tofu destroy` 之后 `tofu apply` 能完整重现，且重现后 `tofu plan` 输出 `No changes.`。
+After `tofu destroy`, `tofu apply` can fully reproduce the setup, and `tofu plan` outputs `No changes.` afterward.
 
-## 操作
+## Operation
 
 ```bash
 cd vps_gcp/tofu
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
-cp .auto.tfvars.example .auto.tfvars   # 填 project_id / project_number / billing_account
+cp .auto.tfvars.example .auto.tfvars   # fill in project_id / project_number / billing_account
 tofu init
-tofu plan    # 验收：终态 No changes.
+tofu plan    # acceptance: final state is No changes.
 tofu apply
 ```

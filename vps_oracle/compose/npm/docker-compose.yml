@@ -1,16 +1,18 @@
 services:
   app:
-    image: 'jc21/nginx-proxy-manager:2.15.1' # 固定版本，稳定不踩坑。2026-08-21 从 2.12.3 升上来，两个原因：
-                                             # 1) Dashboard 的 Proxy Hosts 计数只算当前登录用户拥有的 host
-                                             #    （report.js 把 permission_visibility 写成 visibility，恒为
-                                             #    undefined 于是永远按 owner 过滤），自动化账号建的 host 不计入；
-                                             #    上游在 2.14.0 修好。列表页一直是对的，只有首页数字不准。
-                                             # 2) 2.15.0 修了任意已认证用户可通过 PUT 改自己 roles 字段的提权
-                                             #    问题——直接影响 .npm-automation.env 里那个本该最小权限的
-                                             #    claude 账号。另含 OpenResty CVE 修复。
+    image: 'jc21/nginx-proxy-manager:2.15.1' # Pinned version, stable and no gotchas. Upgraded from 2.12.3 on 2026-08-21 for two reasons:
+                                             # 1) The Dashboard's Proxy Hosts count only counts hosts owned by the current logged-in user
+                                             #    (report.js writes permission_visibility as visibility, so it's always
+                                             #    undefined and thus always filters by owner), so hosts created with the
+                                             #    automation account aren't counted; the upstream fixed it in 2.14.0. The
+                                             #    list page was always correct, only the homepage number was wrong.
+                                             # 2) 2.15.0 fixed the privilege escalation where any authenticated user could
+                                             #    change their own roles field via PUT — directly affecting the claude
+                                             #    account in .npm-automation.env that was supposed to be least-privileged.
+                                             #    Also includes an OpenResty CVE fix.
     container_name: npm
     hostname: npm
-    restart: unless-stopped          # 手动停止后不会随宿主机重启被拉起
+    restart: unless-stopped          # won't come back after a host reboot if manually stopped
     logging:
       driver: json-file
       options:
@@ -19,35 +21,38 @@ services:
     ports:
       - '80:80'
       - '443:443'
-      # 81（管理面板）不发布到宿主机，走 https://npm.jerome.cloudns.asia 访问；
-      # 应急时 SSH 到服务器用容器内部 IP 隧道访问
+      # 81 (admin panel) is not published to the host; access it via https://npm.jerome.cloudns.asia;
+      # in an emergency, SSH to the server and use a tunnel over the container's internal IP
     environment:
-      TZ: "Asia/Hong_Kong" # 保持时区一致，日志时间才准确
+      TZ: "Asia/Hong_Kong" # keep the timezone consistent so log timestamps are accurate
     volumes:
-      - /etc/npm/data:/data           # 面板数据持久化（绝对路径，仓库目录搬家不受影响）
-      - /etc/npm/letsencrypt:/etc/letsencrypt  # 证书持久化
+      - /etc/npm/data:/data           # panel data persistence (absolute path, unaffected if the repo directory moves)
+      - /etc/npm/letsencrypt:/etc/letsencrypt  # certificate persistence
     networks:
       proxy:
-        ipv4_address: 172.19.0.3  # 钉死静态 IP：3x-ui 的 xray 有条 DNS hosts 覆写规则
-                                   # （domain:jerome.cloudns.asia -> 172.19.0.3），把代理进来的
-                                   # *.jerome.cloudns.asia 流量直接在 proxy 网络内部转给这个 IP，
-                                   # 必须固定等于 npm 自己的位址，不然代理进来的流量会被送错地方
+        ipv4_address: 172.19.0.3  # pinned static IP: 3x-ui's xray has a DNS hosts override rule
+                                   # (domain:jerome.cloudns.asia -> 172.19.0.3) that sends the proxied
+                                   # *.jerome.cloudns.asia traffic to this IP inside the proxy network —
+                                   # it must be fixed and equal to npm's own address, otherwise the
+                                   # proxied traffic gets routed to the wrong place
     extra_hosts:
-      # 用途：仅供容器内 shell 调试用（如 docker exec npm curl/wget host.docker.internal:30080），
-      # 走 glibc 解析 /etc/hosts，方便进容器排查宿主机连通性时不用记 IP。
-      # 跟 NPM 实际反代流量无关 —— nginx 生成的 proxy_pass 配置走 Docker 内嵌 DNS resolver
-      # （127.0.0.11）动态解析，不读 /etc/hosts/extra_hosts，所以 NPM 面板里配置反代到
-      # 宿主机端口（如 k3s NodePort）时，Forward Hostname/IP 必须直接填宿主机内网 IP
-      # （如 10.0.0.95），不能填 host.docker.internal，否则报 "could not be resolved" 导致 502。
-      # 另一个坑：不能用 `host-gateway` 魔法值代替这个 IP —— 它解析到 docker0 网桥网关
-      # 172.17.0.1，但 Cilium kube-proxy replacement 的 NodePort eBPF 程序只绑定在实际
-      # 网卡 enp0s6（节点内网 IP，见 `cilium status --verbose` 的 KubeProxyReplacement
-      # Device），连宿主机本机 curl 172.17.0.1:30080 都连不通，必须直接指向该内网 IP。
-      # 这个 IP 是 DHCP 分配的（`ip -4 addr show enp0s6` 显示 dynamic）——如果 Oracle
-      # 换了地址，NPM 反代到 NodePort 的服务会静默变成 502，先查这个 IP 有没有变，
-      # 再排查别的。
+      # Purpose: only for in-container shell debugging (e.g. docker exec npm curl/wget host.docker.internal:30080),
+      # resolved via glibc /etc/hosts, so you don't need to remember the IP when troubleshooting host
+      # connectivity from inside the container. Unrelated to NPM's actual reverse-proxy traffic — the
+      # proxy_pass config nginx generates uses Docker's built-in DNS resolver (127.0.0.11) for dynamic
+      # resolution and doesn't read /etc/hosts/extra_hosts, so when configuring a reverse proxy to a host
+      # port in the NPM panel (e.g. a k3s NodePort), the Forward Hostname/IP must be the host's internal
+      # IP (e.g. 10.0.0.95) directly, not host.docker.internal, otherwise it errors with
+      # "could not be resolved" and returns 502.
+      # Another gotcha: you can't replace this IP with the `host-gateway` magic value — it resolves to the
+      # docker0 bridge gateway 172.17.0.1, but the Cilium kube-proxy replacement NodePort eBPF programs are
+      # bound only to the actual NIC enp0s6 (the node's internal IP, see the KubeProxyReplacement Device in
+      # `cilium status --verbose`); even a curl from the host itself to 172.17.0.1:30080 won't connect, so
+      # you must point directly at that internal IP. This IP is DHCP-assigned (`ip -4 addr show enp0s6`
+      # shows dynamic) — if Oracle changes the address, NPM reverse proxies to NodePort services will
+      # silently turn into 502; check whether this IP changed first before troubleshooting anything else.
       - "host.docker.internal:10.0.0.95"
 
 networks:
   proxy:
-    external: true   # 手动创建一次：docker network create proxy
+    external: true   # create once manually: docker network create proxy

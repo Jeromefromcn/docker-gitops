@@ -1,28 +1,29 @@
 #!/usr/bin/env bash
-# 给指定（或全部）Vikunja project 注册 Telegram 通知 webhook，转发给 vikunja-notify-relay
-# （拼好项目名/任务标题/任务超链接的 HTML 消息后，再按 Vikunja 账号转发给 apprise 对应的
-#  vikunja-tg-{username} 持久化配置，一个账号一个 target，不是共用一个）。
+# Register a Telegram notification webhook for a specified (or all) Vikunja project, forwarding to vikunja-notify-relay
+# (which assembles an HTML message with the project name/task title/task hyperlink, then forwards per Vikunja account
+#  to the apprise vikunja-tg-{username} persisted config — one target per account, not a shared one).
 #
-# 前提：
-#   - apprise 容器已给每个 Vikunja 账号各自用 `POST /add/vikunja-tg-<username>` 存好 tgram:// 目标（见 docs/2026-08-03-vikunja-apprise-telegram-webhooks.md）
-#   - vikunja 的 docker-compose.yml 已加 VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS=true 并 up -d 过
-#   - vps_oracle/vikunja-notify-relay 已经 docker compose up -d 过
-#   - 本机能跑 `docker run --network proxy curlimages/curl`（用于容器间调用，不依赖宿主机装 curl）
+# Preconditions:
+#   - the apprise container has already stored a tgram:// target for each Vikunja account via `POST /add/vikunja-tg-<username>` (see docs/2026-08-03-vikunja-apprise-telegram-webhooks.md)
+#   - vikunja's docker-compose.yml has VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS=true and it's been `up -d`-ed
+#   - vps_oracle/vikunja-notify-relay has been `docker compose up -d`-ed
+#   - this machine can run `docker run --network proxy curlimages/curl` (for container-to-container calls, without depending on a host-installed curl)
 #
-# 用法：
-#   VIKUNJA_TOKEN=tk_xxx ./register-telegram-webhooks.sh            # 对所有真实 project（排除 -2/-4 这类伪 project）生效
-#   VIKUNJA_TOKEN=tk_xxx ./register-telegram-webhooks.sh 5 7 12     # 只对指定 project id 生效
+# Usage:
+#   VIKUNJA_TOKEN=tk_xxx ./register-telegram-webhooks.sh            # applies to all real projects (excludes pseudo-projects like -2/-4)
+#   VIKUNJA_TOKEN=tk_xxx ./register-telegram-webhooks.sh 5 7 12     # applies only to the specified project ids
 #
-# 新建 project 后，对新 id 重跑一次即可补上 webhook（本版本 Vikunja 的 API token 拿不到
-# /api/v1/user/settings/webhooks 的全局 webhook 权限，只能逐 project 注册，见文档里的说明）。
+# After creating a new project, re-run with the new id to add its webhook (this version of Vikunja's API token
+# has no access to the global webhook permission under /api/v1/user/settings/webhooks, so registration is per
+# project only — see the doc for details).
 
 set -euo pipefail
 
-: "${VIKUNJA_TOKEN:?必须设置 VIKUNJA_TOKEN 环境变量（Vikunja Settings > API Tokens 生成）}"
+: "${VIKUNJA_TOKEN:?VIKUNJA_TOKEN environment variable must be set (generated in Vikunja Settings > API Tokens)}"
 
 RELAY_URL="http://vikunja-notify-relay:8080/"
 
-# 四个事件都发到同一个 relay 地址，relay 自己根据 payload 里的 event_name 分流格式化。
+# All four events go to the same relay address; the relay formats them by the event_name in the payload.
 EVENTS=("task.assignee.created" "task.reminder.fired" "task.overdue" "task.updated")
 
 curl_v() {

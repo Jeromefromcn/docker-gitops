@@ -71,7 +71,7 @@ services:
       - /etc/apprise/config:/config
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = apprise, Forward Port = 8000（未发布到宿主机）
+    # NPM reverse proxy config: Forward Hostname/IP = apprise, Forward Port = 8000 (not published to the host)
 
 networks:
   proxy:
@@ -200,7 +200,7 @@ services:
         max-size: "10m"
         max-file: "5"
     env_file:
-      - .env   # 需要一行 VIKUNJA_SERVICE_SECRET=<值>，见 Step 2
+      - .env   # needs a line VIKUNJA_SERVICE_SECRET=<value>, see Step 2
     environment:
       TZ: "Asia/Hong_Kong"
       VIKUNJA_DATABASE_TYPE: sqlite
@@ -213,7 +213,7 @@ services:
       - /etc/vikunja/db:/db
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = vikunja, Forward Port = 3456（未发布到宿主机）
+    # NPM reverse proxy config: Forward Hostname/IP = vikunja, Forward Port = 3456 (not published to the host)
 
   vikunja-notify-relay:
     image: ghcr.io/jeromefromcn/vikunja-notify-relay@sha256:163e88a174aad5e477e475d8d5d4f2dea66f44de08ecf0ea0771ff24327214b7
@@ -237,8 +237,10 @@ services:
       PORT: "8080"
     networks:
       - proxy
-    # 纯内部 glue 服务：接 Vikunja webhook，拼好 project/task/超链接的 HTML 消息后转发给 apprise。
-    # 不接 NPM、不发布端口，只在 proxy 网络内被 vikunja 用容器名访问。见 notify-relay/app.py。
+    # Purely internal glue service: receives the Vikunja webhook, assembles an HTML message with
+    # project/task/hyperlink, then forwards it to apprise.
+    # Not exposed via NPM, no published port; reached only inside the proxy network by vikunja using
+    # the container name. See notify-relay/app.py.
 
 networks:
   proxy:
@@ -388,7 +390,7 @@ Expected: sizes matching the source PVCs (~1.9GB, ~890MB) — confirms the copy 
 ```yaml
 services:
   llama-cpp:
-    image: amperecomputingai/llama.cpp:3.4.2   # Ampere Altra 优化版，注意不是 -ampereone 后缀（那是另一颗芯片，在 A1 上跑不了）
+    image: amperecomputingai/llama.cpp:3.4.2   # Ampere Altra optimized build; note it's not the -ampereone suffix (that's a different chip, won't run on an A1)
     container_name: llama-cpp
     hostname: llama-cpp
     restart: unless-stopped
@@ -432,7 +434,7 @@ services:
         max-size: "10m"
         max-file: "5"
     env_file:
-      - .env   # WEBUI_SECRET_KEY，见 Task 6
+      - .env   # WEBUI_SECRET_KEY, see Task 6
     environment:
       TZ: "Asia/Hong_Kong"
       ENABLE_OLLAMA_API: "false"
@@ -444,8 +446,9 @@ services:
       - proxy
     depends_on:
       - llama-cpp
-    # NPM 反代配置: Forward Hostname/IP = open-webui, Forward Port = 8080（未发布到宿主机）
-    # 域名仍是 ollama.jerome.cloudns.asia（历史命名，后端早已换成 llama.cpp，未改域名）
+    # NPM reverse proxy config: Forward Hostname/IP = open-webui, Forward Port = 8080 (not published to the host)
+    # The domain is still ollama.jerome.cloudns.asia (a historical name; the backend switched to llama.cpp
+    # long ago, but the domain was never renamed)
 
 networks:
   proxy:
@@ -604,7 +607,7 @@ kubectl get applications -n argocd -o name
 - Depends on: Task 9.
 - Produces: no repo doc still claims these 3 apps are k3s-hosted.
 
-- [ ] **Step 1: Update the root README's "已经迁移完成并从 k3s 提供服务" sentence** (currently reads, after part 1's edit: "以及 `vikunja`/`apprise`/`llm`（llama-cpp/open-webui）已经迁移完成并从 k3s 提供服务") — remove these three, note they also moved back to compose on the same day as part 1 (or today's date if this runs later), pointing at this plan doc.
+- [ ] **Step 1: Update the root README's "already migrated and served from k3s" sentence** (currently reads, after part 1's edit: "as well as `vikunja`/`apprise`/`llm` (llama-cpp/open-webui) already migrated and served from k3s") — remove these three, note they also moved back to compose on the same day as part 1 (or today's date if this runs later), pointing at this plan doc.
 
 - [ ] **Step 2: Add "migrated back to compose" notes to `vps_oracle/k3s/README.md`'s existing `vikunja`/apprise/llm sections** (same pattern as part 1's homepage/trilium notes — check for section headers first: `grep -n "^## " vps_oracle/k3s/README.md`), without rewriting the historical migration narrative underneath.
 

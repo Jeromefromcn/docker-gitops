@@ -17,8 +17,8 @@
 - **Git-first, ArgoCD syncs.** Every k3s mutation in this plan is a file commit to `main`, synced by the existing `hello` ArgoCD Application (`path: vps_oracle/k3s/apps/hello/k8s`, `automated: {prune: true, selfHeal: true}`). **Never `kubectl apply`/`patch`/`edit` a live k3s resource** — `selfHeal` will revert it. Read-only `kubectl get/describe/exec/logs` diagnostics are always fine.
 - **Only one file is created in this whole plan:** `vps_oracle/k3s/apps/hello/k8s/hello-backend-ratelimit-trafficextension.yaml`. Nothing else in the repo changes (the design/plan docs are already committed; the roadmap update is a separate final task).
 - **`pr-lanes-quota` is unaffected.** The `TrafficExtension` is a pure control-plane resource — zero CPU/memory request/limit. Confirm `kubectl -n pr-lanes describe resourcequota pr-lanes-quota` is unchanged after the sync (should stay `requests.cpu: 125m/400m`, `requests.memory: 320Mi/768Mi`, `limits.cpu: 500m/1200m`, `limits.memory: 640Mi/1536Mi`).
-- **`hello-backend` and `hello-backend-canary` Services both carry `istio.io/use-waypoint: waypoint`** — confirmed live. The PR-lane Service (`hello-backend-pr-N`) does NOT, but its HTTPRoute `parentRefs` points at `hello-backend` Service, so PR-lane traffic still flows through the waypoint and is rate-limited. Direct (waypoint-bypassing) calls to `hello-backend-pr-N.svc` are NOT rate-limited — this is a documented, accepted boundary (see spec "已知限制").
-- **Lua filter is per-worker state.** The waypoint pod runs Envoy with `concurrency` derived from its 200m CPU limit — almost certainly 1 worker on this 4-core host, making the counter effectively global. If it turns out to be 2 workers, the effective limit is ~2× configured. This is accepted for the demo namespace (spec "已知限制").
+- **`hello-backend` and `hello-backend-canary` Services both carry `istio.io/use-waypoint: waypoint`** — confirmed live. The PR-lane Service (`hello-backend-pr-N`) does NOT, but its HTTPRoute `parentRefs` points at `hello-backend` Service, so PR-lane traffic still flows through the waypoint and is rate-limited. Direct (waypoint-bypassing) calls to `hello-backend-pr-N.svc` are NOT rate-limited — this is a documented, accepted boundary (see spec "Known limitations").
+- **Lua filter is per-worker state.** The waypoint pod runs Envoy with `concurrency` derived from its 200m CPU limit — almost certainly 1 worker on this 4-core host, making the counter effectively global. If it turns out to be 2 workers, the effective limit is ~2× configured. This is accepted for the demo namespace (spec "Known limitations").
 - **Lua semantics (Envoy Lua filter):** `request_handle:timestamp()` returns milliseconds since epoch (confirmed from Envoy docs). File-level `local` globals in `inlineCode` are shared across requests within one worker thread. `request_handle:respond(headers, body)` sends a direct response without upstream call (request flow only). `stats()` is available for counters but this plan uses plain Lua globals for simplicity.
 - **Threshold:** 60 req/min/worker, 60-second fixed window. Generous enough that normal traffic never trips it, tight enough to observe the 429 in a quick test.
 - **This checkout has had concurrent-session activity before.** Run `git status` and `git log --oneline -3` before every commit; only `git add` the file this plan touches, never `git add -A`.
@@ -62,7 +62,7 @@ Create `vps_oracle/k3s/apps/hello/k8s/hello-backend-ratelimit-trafficextension.y
 # counter is effectively global. PR-lane traffic (HTTPRoute parentRefs ->
 # hello-backend Service) flows through this waypoint and IS rate-limited;
 # direct waypoint-bypassing calls to hello-backend-pr-N.svc are NOT (accepted
-# boundary, see spec "已知限制").
+# boundary, see spec "Known limitations").
 apiVersion: extensions.istio.io/v1alpha1
 kind: TrafficExtension
 metadata:
@@ -242,7 +242,7 @@ kubectl exec -n pr-lanes "$WP" -c istio-proxy -- /usr/local/bin/pilot-agent requ
   | grep -oE 'envoy\.filters\.http\.(lua|rbac)' | head -20
 ```
 
-Expected: the grep shows both `envoy.filters.http.lua` and `envoy.filters.http.rbac`, and the **order** reveals whether Lua (STATS) comes before or after RBAC (AUTHZ). Record the observed order. This is informational — either order is acceptable for the demo — but the plan must record which it is, to backfill the spec's "已知限制" note.
+Expected: the grep shows both `envoy.filters.http.lua` and `envoy.filters.http.rbac`, and the **order** reveals whether Lua (STATS) comes before or after RBAC (AUTHZ). Record the observed order. This is informational — either order is acceptable for the demo — but the plan must record which it is, to backfill the spec's "Known limitations" note.
 
 For worker count (spec item 11), check the waypoint's Envoy server info or concurrency:
 
@@ -273,41 +273,41 @@ Expected: clean working tree (no code change in this task). Record the verificat
 
 - [ ] **Step 1: Update the roadmap L row**
 
-In `docs/superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md`, change the L row (currently "評估性" / "不預設一定要交付") to completed, and fix the GEP-2257 error in the "現狀約束" section.
+In `docs/superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md`, change the L row (currently "evaluation" / "not assumed to be a promised delivery") to completed, and fix the GEP-2257 error in the "Current-state constraints" section.
 
 The L row currently reads:
 ```
-| L. 限流（評估性） | 評估 Gateway API experimental channel 升級 vs. Istio EnvoyFilter 兩條路徑的成本，**不預設一定要交付** | 一份取捨紀錄；若評估結果是「不值得」，路線圖到此為止，不強行實作 | I |
+| L. Rate limiting (evaluation) | Evaluate the cost of two paths — upgrading Gateway API to the experimental channel vs. Istio EnvoyFilter — **not assumed to be a promised delivery** | A trade-off record; if the evaluation concludes "not worth it," the roadmap stops here, no forced implementation | I |
 ```
 
 Replace with:
 ```
-| ~~L. 限流~~（✅ 已完成） | 評估後未走原定兩條路徑（experimental channel 無限流 API、EnvoyFilter 在 ambient 不背書），改採 Istio 1.30 `TrafficExtension` + Lua 固定窗口令牌桶，附加在 waypoint 上，`hello-backend` 限流 60 req/min，超限回 429 | `pr-lanes` 的 `hello-backend` 流量有限流保護，驗證 429 + `x-envoy-ratelimited`；完整查證與取捨見 [L 階段設計文檔](2026-08-25-k3s-phase-l-ratelimit-design.md) | I |
+| ~~L. Rate limiting~~ (✅ done) | after evaluation, neither of the two original paths was taken (experimental channel has no rate limiting API; EnvoyFilter is not blessed under ambient), instead adopted Istio 1.30 `TrafficExtension` + Lua fixed-window token bucket, attached to the waypoint, `hello-backend` rate-limited to 60 req/min, over-limit returns 429 | `pr-lanes`'s `hello-backend` traffic gets rate-limit protection, verified 429 + `x-envoy-ratelimited`; full verification and trade-offs in the [L phase design doc](2026-08-25-k3s-phase-l-ratelimit-design.md) | I |
 ```
 
-- [ ] **Step 2: Fix the GEP-2257 error in the roadmap's "現狀約束"**
+- [ ] **Step 2: Fix the GEP-2257 error in the roadmap's "Current-state constraints"**
 
 The line currently reads:
 ```
-- **Gateway API 裝的是 standard channel**（[standard-install.yaml](../../../vps_oracle/k3s/gateway-api/standard-install.yaml)），不含 experimental 功能通道——原生限流（GEP-2257）等實驗性 API 目前不存在，這直接影響 Phase L 的可行性評估，不是配置問題而是安裝範圍問題
+- **Gateway API is installed on the standard channel** ([standard-install.yaml](../../../vps_oracle/k3s/gateway-api/standard-install.yaml)), without the experimental feature channel — native rate limiting (GEP-2257) and other experimental APIs do not currently exist, which directly affects Phase L's feasibility evaluation — this is not a configuration issue but an installation-scope issue
 ```
 
 Replace with:
 ```
-- **Gateway API 裝的是 standard channel**（[standard-install.yaml](../../../vps_oracle/k3s/gateway-api/standard-install.yaml)），不含 experimental 功能通道——**原標記「原生限流（GEP-2257）」有誤**：GEP-2257 實為 Duration 字符串格式標準，與限流無關；Gateway API 官方 GEP 列表至今沒有 rate limiting API，experimental channel 亦無。這使「升級 experimental 拿原生限流」這條路徑不成立，Phase L 最終改採 `TrafficExtension` + Lua（見 L 階段設計文檔）
+- **Gateway API is installed on the standard channel** ([standard-install.yaml](../../../vps_oracle/k3s/gateway-api/standard-install.yaml)), without the experimental feature channel — **the original note about "native rate limiting (GEP-2257)" is wrong**: GEP-2257 is actually the Duration string format standard, unrelated to rate limiting; the Gateway API official GEP list has no rate limiting API to this day, nor does the experimental channel. This invalidates the "upgrade to experimental for native rate limiting" path, and Phase L ultimately adopted `TrafficExtension` + Lua (see the L phase design doc)
 ```
 
-- [ ] **Step 3: Add the L-phase design doc link to the roadmap's "各階段設計文檔" section**
+- [ ] **Step 3: Add the L-phase design doc link to the roadmap's "Per-phase design docs" section**
 
 ```markdown
-- L：✅ 已完成 — [設計文檔](2026-08-25-k3s-phase-l-ratelimit-design.md)（含評估筆記 [2026-08-25-k3s-phase-l-ratelimit-evaluation.md](2026-08-25-k3s-phase-l-ratelimit-evaluation.md)）、[實作計畫](../plans/2026-08-25-k3s-phase-l-ratelimit.md)（已打勾）
+- L:✅ done — [design doc](2026-08-25-k3s-phase-l-ratelimit-design.md)(incl. evaluation note [2026-08-25-k3s-phase-l-ratelimit-evaluation.md](2026-08-25-k3s-phase-l-ratelimit-evaluation.md)), [implementation plan](../plans/2026-08-25-k3s-phase-l-ratelimit.md)(checked off)
 ```
 
 Append this line after the K row.
 
-- [ ] **Step 4: Update the "各階段設計備註" — add a note that the L evaluation reversed the original two paths**
+- [ ] **Step 4: Update the "Per-phase design notes" — add a note that the L evaluation reversed the original two paths**
 
-After the existing "L 階段：為什麼限流只是「評估」不是「承諾交付」" section, append a short "L 階段實作結果（2026-08-25 完成）" subsection documenting the pivot: the two originally-planned paths were both dead ends (with one-line evidence each), and the actual implementation used `TrafficExtension` + Lua. Keep it concise; the design doc has the full detail.
+After the existing "Phase L: why rate limiting is only an "evaluation", not a "promised delivery"" section, append a short "Phase L implementation result (2026-08-25 done)" subsection documenting the pivot: the two originally-planned paths were both dead ends (with one-line evidence each), and the actual implementation used `TrafficExtension` + Lua. Keep it concise; the design doc has the full detail.
 
 - [ ] **Step 5: Commit the roadmap update**
 

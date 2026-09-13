@@ -2,8 +2,8 @@
 # checks/k3s-completed-jobs.sh
 #
 # Deletes completed Jobs older than INSPECTOR_COMPLETED_JOB_MAX_AGE_
-# SECONDS (default 3 days). Design spec's "k3s Completed Job 堆積" row
-# (auto tier). Age-only on purpose: the spec's "超過 N 個或超過 N 天"
+# SECONDS (default 3 days). Design spec's "k3s Completed Job pile-up" row
+# (auto tier). Age-only on purpose: the spec's "more than N, or more than N days"
 # offers count or age, and a count cap would delete fresh jobs whose
 # output someone may still be reading — age is the low-misjudgment-cost
 # dimension, matching the spec's own tiering philosophy.

@@ -14,8 +14,8 @@ services:
       TZ: "Asia/Hong_Kong"
     networks:
       - proxy
-    # NPM 反代：plans.jerome.cloudns.asia → plans:80，access list=self-only。
-    # 配置方法见 README.md 的「给服务接入 NPM 反代」一节。
+    # NPM reverse proxy: plans.jerome.cloudns.asia → plans:80, access list=self-only.
+    # For configuration see the "Reverse-proxy the service via NPM" section of README.md.
 
 networks:
   proxy:

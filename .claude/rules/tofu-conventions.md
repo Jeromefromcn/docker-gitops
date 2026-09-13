@@ -3,33 +3,33 @@ paths:
   - "*/tofu/**"
 ---
 
-# OpenTofu 约定
+# OpenTofu conventions
 
-编写或修改任何 `<host>/tofu/` 下的 .tf 文件时必须遵守。这里是唯一权威，README 只做指引。
+Must be followed when writing or modifying any `.tf` file under `<host>/tofu/`. This file is the single source of truth; README is only a pointer.
 
-## 红线
+## Red lines
 
-> **禁止在 `vps_oracle/tofu/` 执行 `tofu destroy`。**
+> **`tofu destroy` is forbidden under `vps_oracle/tofu/`.**
 
-OCI 侧 IAM 已不授予 `manage instance-family`，`destroy` 打不到运算实例；但红线仍要写明——纵深防御，对人、对 Claude 都是同一份说明。GCP 侧 `vps_gcp/tofu/` 的 destroy 是设计目标，不受此限。
+The OCI-side IAM no longer grants `manage instance-family`, so `destroy` can't reach the compute instances; but the red line is still written out — defense in depth, one statement for both humans and Claude. On the GCP side, `destroy` under `vps_gcp/tofu/` is the design goal and is exempt from this rule.
 
-## 版本
+## Versions
 
-- `versions.tf` 里 `required_version` 与 `required_providers` 钉死具体版本，不用范围、不用 latest。
-- `.terraform.lock.hcl` 是纳管文件，**必须提交**——锁 provider 版本与 checksum，跟 compose 钉死 image tag/digest 同理。
+- Pin `required_version` and `required_providers` in `versions.tf` to exact versions — no ranges, no latest.
+- `.terraform.lock.hcl` is a managed file and **must be committed** — it locks provider versions and checksums, the same principle as pinning image tag/digest in compose.
 
-## State 与机密
+## State and secrets
 
-- `*.tfstate`、`*.tfstate.*`、`.terraform/`、`*.auto.tfvars` 一律不提交（已在 `.gitignore`）。
-- `.auto.tfvars` 只放身份类值（GCP 的 `project_id` / `billing_account`；OCI 的 OCID / compartment / region），不放 key。key 放仓库之外，经环境变量引用（GCP `GOOGLE_APPLICATION_CREDENTIALS`）。
-- 不在任何 `.tf` 里内联密钥、key、token。
+- `*.tfstate`, `*.tfstate.*`, `.terraform/`, `*.auto.tfvars` are never committed (already in `.gitignore`).
+- `.auto.tfvars` holds identity-type values (GCP's `project_id` / `billing_account`; OCI's OCID / compartment / region) and genuinely non-secret values like an SSH **public** key. It's still gitignored, but that's about not committing machine-specific config, not about hiding it — a public key isn't a secret and belongs here so its value survives across shells (a bare `TF_VAR_*` env var doesn't: it's gone the moment the shell exits, and the next `apply` silently reverts whatever depends on it — see `vps_gcp/tofu/instance.tf`'s `ssh_public_key` handling for the incident this caused).
+- Private keys, API credentials, and other actual secrets never go in `.auto.tfvars` or any `.tf` file — they live outside the repo, referenced via environment variables (GCP `GOOGLE_APPLICATION_CREDENTIALS`).
 
-## 认证
+## Authentication
 
-- OCI 用 Instance Principal：`auth = "InstancePrincipal"`，磁盘零长期凭据。Dynamic Group + policy 在 console 建，不在仓库。
-- GCP 用专设 service account + key JSON，角色收窄（networkAdmin / instanceAdmin.v1 / serviceusage.serviceUsageAdmin），key 存仓库外。
+- OCI uses Instance Principal: `auth = "InstancePrincipal"`, zero long-lived credentials on disk. The Dynamic Group + policy are created in the console, not in this repo.
+- GCP uses a dedicated service account + key JSON, with roles narrowed down (networkAdmin / instanceAdmin.v1 / serviceusage.serviceUsageAdmin); the key lives outside the repo.
 
-## 收编与免费层
+## Adoption and free tier
 
-- OCI 收编用 `import {}` 区块（进 git、可 review），不用 `tofu import` 一次性指令。
-- GCP 免费层是硬边界：`machine_type`、区域、磁盘大小写死字面值、不用变量；第一批资源就含 `google_billing_budget`。
+- OCI adoption uses `import {}` blocks (committed to git, reviewable), not one-off `tofu import` commands.
+- GCP free tier is a hard boundary: `machine_type`, region, and disk size are hardcoded literals, not variables; the first batch of resources already includes `google_billing_budget`.

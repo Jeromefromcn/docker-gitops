@@ -571,7 +571,7 @@ Expected: `getent` prints the host gateway IP; `wget` prints the nginx welcome H
 
 - [ ] **Step 4: Create a temporary NPM proxy host**
 
-In the NPM UI (`https://npm.jerome.cloudns.asia`), per README's "给服务接入 NPM 反代" conventions but deliberately without SSL (this proxy host is deleted at the end of this task, so requesting a Let's Encrypt cert for it would be wasted issuance):
+In the NPM UI (`https://npm.jerome.cloudns.asia`), per README's "adding a service to the NPM reverse proxy" conventions but deliberately without SSL (this proxy host is deleted at the end of this task, so requesting a Let's Encrypt cert for it would be wasted issuance):
 
 | Field | Value |
 |---|---|
@@ -593,7 +593,7 @@ Save the proxy host.
 curl -sS http://k3s-smoketest.jerome.cloudns.asia | head -5
 ```
 
-Expected: nginx welcome HTML — this is the spec's actual "NPM 能打進來" deliverable, confirmed over the real domain, not just `localhost`.
+Expected: nginx welcome HTML — this is the spec's actual "NPM can reach a workload in the cluster" deliverable, confirmed over the real domain, not just `localhost`.
 
 - [ ] **Step 6: Tear down the smoke-test workload and NetworkPolicy**
 
@@ -636,6 +636,6 @@ git commit -m "Bridge NPM to k3s NodePorts via host-gateway extra_hosts"
 
 ## Self-Review Notes
 
-- **Spec coverage:** every item in the phase A design's "驗證清單" (1–8) maps to a task step: node Ready (Task 1/2), `cilium status --wait` + KubeProxyReplacement (Task 2 Step 7), Hubble reachable (Task 2 Step 8), quota/limitrange enforced (Task 3 Step 5, Task 4 Step 4), NodePort curl (Task 4 Step 3), NetworkPolicy enforcement (Task 5), end-to-end via NPM (Task 6 Step 5), cleanup back to empty (Task 6 Steps 6–8).
+- **Spec coverage:** every item in the phase A design's "verification checklist" (1–8) maps to a task step: node Ready (Task 1/2), `cilium status --wait` + KubeProxyReplacement (Task 2 Step 7), Hubble reachable (Task 2 Step 8), quota/limitrange enforced (Task 3 Step 5, Task 4 Step 4), NodePort curl (Task 4 Step 3), NetworkPolicy enforcement (Task 5), end-to-end via NPM (Task 6 Step 5), cleanup back to empty (Task 6 Steps 6–8).
 - **Placeholder scan:** the only bracketed values left (`<K3S_VERSION from Task 1 Step 2>`, `<CILIUM_CHART_VERSION from Task 2 Step 2>`, `<pinned version>`, `<today's date>`) are explicitly instructed to be replaced with real values produced by the preceding step in the same task — not unresolved TBDs.
 - **Type/name consistency:** `workloads` namespace, `smoke-test` Deployment/Service names, `netpol-tester` pod name, and NodePort `30080` are used identically across Tasks 3–6.

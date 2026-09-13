@@ -1,41 +1,41 @@
 # vps_oracle
 
-Oracle Cloud VPS 上跑的服务。
+Services running on the Oracle Cloud VPS.
 
-## 服务器信息
+## Server information
 
-- 域名：`jerome.cloudns.asia`（DDNS，解析到本机）
-- 当前 IP：`161.118.254.107`（IP 会变，以域名解析结果为准，这里仅记录最近一次已知值）
+- Domain: `jerome.cloudns.asia` (DDNS, resolves to this machine)
+- Current IP: `161.118.254.107` (the IP changes; go by the DNS result — this just records the last known value)
 
-## 目录结构
+## Directory structure
 
-这台机器上不是只有 docker compose，`vps_oracle/` 下每个子目录是各自独立的 scope：
+This machine runs more than just docker compose; each subdirectory under `vps_oracle/` is its own independent scope:
 
-| 目录 | 管的是什么 | 约定见 |
+| Directory | What it manages | Conventions in |
 |---|---|---|
-| `compose/` | docker compose 栈，每个子目录就是该栈的工作目录 | 根 [README.md](../README.md) |
-| `k3s/` | K3s 云原生实验平台（Cilium / ArgoCD / Istio Ambient / Kyverno / Trivy / Sealed Secrets + `lab-environment`、`headlamp`、`pr-lanes` 三个负载），一律走 GitOps，不手动 `kubectl apply` | [k3s/README.md](k3s/README.md) |
-| `inspector/` | 宿主机巡检脚本 + systemd timer，跨 docker 与 k3s 两侧做只读体检 | [inspector/README.md](inspector/README.md) |
-| `host-firewall/` | 宿主机 iptables 规则脚本（`INPUT` 默认 REJECT，逐条放行） | [host-firewall/README.md](host-firewall/README.md) |
-| `tofu/` | OpenTofu brownfield 收編：VCN / subnet / IGW / route table / security list（遞回納管上游那層 OCI 網路資源） | [tofu/README.md](tofu/README.md) |
-| `npm-nodeport-relay/` | host netns 里的 TCP relay，补上 NPM 容器到 k3s NodePort 的可达性 | [npm-nodeport-relay/README.md](npm-nodeport-relay/README.md) |
-| `dotfiles/` | 这台机器上一部分本机配置（Claude Code 全局设置、shell/git 配置、VS Code Server 机器级设置等）软链进仓库纳管 | [dotfiles/README.md](dotfiles/README.md) |
+| `compose/` | docker compose stacks; each subdirectory is that stack's working directory | root [README.md](../README.md) |
+| `k3s/` | the K3s cloud-native experiment platform (Cilium / ArgoCD / Istio Ambient / Kyverno / Trivy / Sealed Secrets + the `lab-environment`, `headlamp`, `pr-lanes` workloads), always via GitOps, never manual `kubectl apply` | [k3s/README.md](k3s/README.md) |
+| `inspector/` | host inspection scripts + systemd timer, doing read-only checks across both docker and k3s | [inspector/README.md](inspector/README.md) |
+| `host-firewall/` | host iptables rule script (`INPUT` defaults to REJECT, whitelisted one rule at a time) | [host-firewall/README.md](host-firewall/README.md) |
+| `tofu/` | OpenTofu brownfield adoption: VCN / subnet / IGW / route table / security list (recursively bringing the upstream OCI network resources under management) | [tofu/README.md](tofu/README.md) |
+| `npm-nodeport-relay/` | a TCP relay in the host netns, filling in reachability from the NPM container to the k3s NodePort | [npm-nodeport-relay/README.md](npm-nodeport-relay/README.md) |
+| `dotfiles/` | part of this machine's local config (Claude Code global settings, shell/git config, VS Code Server machine-level settings, etc.), symlinked into the repo for management | [dotfiles/README.md](dotfiles/README.md) |
 
-下面的网络约定只适用于 `compose/`；k3s 侧的网络（Cilium pod network、NodePort、NPM 反代到 NodePort 的坑）见 `k3s/README.md` 和根 README。
+The network conventions below apply only to `compose/`; the k3s-side network (Cilium pod network, NodePort, the NPM-to-NodePort gotcha) is in `k3s/README.md` and the root README.
 
-## 网络
+## Network
 
-统一用一个共享的 external Docker 网络做反代入口：
+A single shared external Docker network is the reverse-proxy entry point:
 
 ```bash
 docker network create proxy
 ```
 
-这个网络不属于任何一个服务的 compose 生命周期，手动创建一次，长期存在，`docker compose down` 不会把它删掉。
+This network doesn't belong to any one service's compose lifecycle — create it manually once, it persists, and `docker compose down` won't remove it.
 
-- **nginx-proxy-manager**（[compose/npm/](compose/npm/)）：唯一对外暴露 80/443 的入口，加入了 `proxy` 网络。
+- **nginx-proxy-manager** ([compose/npm/](compose/npm/)): the only externally-facing 80/443 entry point; joined to the `proxy` network.
 
-- **默认规则：有 HTTP(S) 服务、要被 NPM 反代的容器，都加入 `proxy` 网络**，不发布端口给宿主机，NPM 里直接用容器名当 Forward Hostname/IP，例如：
+- **Default rule: any container with an HTTP(S) service that should be reverse-proxied by NPM joins the `proxy` network**, publishes no port to the host, and NPM uses the container name directly as the Forward Hostname/IP, e.g.:
 
   ```yaml
   networks:
@@ -46,8 +46,8 @@ docker network create proxy
       external: true
   ```
 
-  好处：服务本身不暴露端口，NPM 是唯一入口，攻击面最小；地址用容器名解析，重建容器也不用改配置。这是默认做法，不因为服务"新"或"旧"而例外。
+  Benefit: the service exposes no port itself, NPM is the only entry point, minimizing the attack surface; addressing by container name means recreating containers doesn't require config changes. This is the default — without exception for services because they are "new" or "old".
 
-- **例外：协议本身要求客户端直连、不是 HTTP、没法走 NPM 反代的端口**（比如 VPN 节点的原始握手端口）：这类端口该发布到宿主机就发布，跟加不加入 `proxy` 网络无关——它们从来就不是 NPM 反代的对象。如果同一个服务里还有 HTTP 部分（比如管理面板、订阅接口），那部分仍然按上面默认规则走 `proxy` + 容器名。
+- **Exception: ports the protocol requires clients to reach directly, that aren't HTTP and can't go through an NPM reverse proxy** (e.g. a VPN node's raw handshake port): publish these to the host as needed, independent of whether they join the `proxy` network — they were never reverse-proxy subjects. If the same service also has an HTTP part (e.g. a management panel or subscription endpoint), that part still follows the default rule above via `proxy` + container name.
 
-- **纯后端、不对外提供服务、不需要被反代的容器**（数据库、内部 worker 等）：不要加入 `proxy` 网络，保持默认隔离，避免被同网络里的其他容器直接访问到。
+- **Pure backends that serve nothing externally and don't need reverse-proxying** (databases, internal workers, etc.): don't join the `proxy` network; keep the default isolation to avoid being reachable by other containers on the same network.

@@ -1,51 +1,51 @@
-# OpenTofu 集成實作計畫（vps_oracle 收編 + vps_gcp 沙盒）
+# OpenTofu Integration Implementation Plan (vps_oracle adoption + vps_gcp sandbox)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在倉庫裡落一套完整的 OpenTofu IaC——`vps_gcp` greenfield 全生命週期 + `vps_oracle` brownfield 收編，各一份 root module、獨立 state、獨立憑證，外加一份路徑範圍規則檔與 CI 靜態檢查。
+**Goal:** Land a complete OpenTofu IaC setup in the repo — `vps_gcp` full greenfield lifecycle + `vps_oracle` brownfield adoption, each with its own root module, its own state, its own credentials, plus a path-scoped rules file and CI static checks.
 
-**Architecture:** 兩個獨立的 root module（`vps_gcp/tofu/`、`vps_oracle/tofu/`），並存於既有 host-first 目錄結構下，各自 `*.tfstate` 本機 + gitignore。GCP 用專設 service account + key（角色收窄），OCI 用 Instance Principal（磁碟零憑證 + IAM 硬牆）。CI 走靜態檢查（`tofu fmt -check` + `tofu validate`），不碰線上。
+**Architecture:** Two independent root modules (`vps_gcp/tofu/`, `vps_oracle/tofu/`), living alongside the existing host-first directory structure, each with its own local `*.tfstate` + gitignore. GCP uses a dedicated service account + key (roles narrowed down); OCI uses Instance Principal (zero credentials on disk + an IAM hard wall). CI runs static checks (`tofu fmt -check` + `tofu validate`) only, never touching anything live.
 
-**Tech Stack:** OpenTofu 1.12.6、provider `oracle/oci` 9.0.0、provider `hashicorp/google` 8.2.0、GitHub Actions `opentofu/setup-opentofu@v1`（`tofu_version: 1.12.6`）。
+**Tech Stack:** OpenTofu 1.12.6, provider `oracle/oci` 9.0.0, provider `hashicorp/google` 8.2.0, GitHub Actions `opentofu/setup-opentofu@v1` (`tofu_version: 1.12.6`).
 
-**Spec:** [docs/superpowers/specs/2026-09-09-opentofu-integration-design.md](../specs/2026-09-09-opentofu-integration-design.md)（計畫以 spec 為準，執行者要連 spec 一起讀）
+**Spec:** [docs/superpowers/specs/2026-09-09-opentofu-integration-design.md](../specs/2026-09-09-opentofu-integration-design.md) (this plan defers to the spec — whoever executes it must read the spec alongside it)
 
 ## Global Constraints
 
-- **tofu 能做什麼 = 發給它的身分被 IAM 授權做什麼，不多不少。** 最小權限在 IAM 設，不在 Terraform 設。
-- **永不可在 `vps_oracle/tofu/` 執行 `tofu destroy`。**（IAM 硬牆已讓它打不到實例，但紅線仍要寫明——縱深防禦。）
-- GCP 免費層硬邊界（超出即真金白銀）：e2-micro 僅 us-west1 / us-central1 / us-east1 免費；30 GB 標準永久磁碟總額；每月 1 GB 出網（不含中國與澳洲）。`machine_type`／區域／磁碟大小**寫死字面值、不用變數**。
-- 版本釘死：`required_version` 與 `required_providers` 用具體版本，不用範圍、不用 latest。`.terraform.lock.hcl` 必須提交。
-- 不提交任何密鑰：`*.tfstate`、`*.tfstate.*`、`.terraform/`、`*.auto.tfvars` 全部 gitignore；GCP key JSON 存倉庫之外，經 `GOOGLE_APPLICATION_CREDENTIALS` 環境變數引用。
-- OCI 收編用 `import {}` 區塊（進 git、可 review），不用 `tofu import` 一次性指令。
-- 兩份 root module、兩份 state、兩套憑證彼此隔離——OCI 的 state 壞掉不卡 GCP 的工作。
-- 英文 commit message（本倉庫慣例）。
+- **What tofu can do = exactly what the identity handed to it is authorized to do by IAM, no more, no less.** Least privilege is set in IAM, not in Terraform.
+- **Never run `tofu destroy` in `vps_oracle/tofu/`.** (The IAM hard wall already makes it unable to reach the instances, but the red line still needs to be written down — defense in depth.)
+- GCP free-tier hard boundaries (exceed them and it's real money): e2-micro is free only in us-west1 / us-central1 / us-east1; 30 GB total standard persistent disk; 1 GB/month egress (excludes China and Australia). `machine_type` / region / disk size are **hardcoded literals, not variables**.
+- Versions pinned: `required_version` and `required_providers` use exact versions, no ranges, no latest. `.terraform.lock.hcl` must be committed.
+- No secrets committed: `*.tfstate`, `*.tfstate.*`, `.terraform/`, `*.auto.tfvars` are all gitignored; the GCP key JSON lives outside the repo, referenced via the `GOOGLE_APPLICATION_CREDENTIALS` env var.
+- OCI adoption uses `import {}` blocks (goes into git, reviewable), not one-off `tofu import` commands.
+- The two root modules, two states, and two sets of credentials are isolated from each other — a broken OCI state doesn't block GCP work.
+- English commit messages (this repo's convention).
 
 ---
 
-## 前置條件（blocking，人工在 console 操作，Claude 無法代做）
+## Prerequisites (blocking, manual console operations, cannot be done by Claude)
 
-執行者在開始 Phase 1 的 live 步驟（Task 7）與 Phase 2 的 live 步驟（Task 9–11）前，必須先與使用者逐項確認下列都已完成：
+Before starting Phase 1's live steps (Task 7) and Phase 2's live steps (Tasks 9–11), whoever executes this plan must confirm item-by-item with the user that all of the following are done:
 
-1. **安裝 OpenTofu（arm64）**：使 `tofu` 在宿主機 PATH 上可用，版本 ≥ 1.12（建議 1.12.6）。
-2. **OCI**：console 建立 Dynamic Group（匹配這台機的 OCID）+ 一條 policy 只授權 `manage virtual-network-family`。
-3. **GCP**：建立專用 service account，賦予 `roles/compute.networkAdmin`、`roles/compute.instanceAdmin.v1`、`roles/serviceusage.serviceUsageAdmin` 三個角色，產生 key JSON 放到倉庫之外。
-4. **GCP 帳單帳戶（最易踩空）**：`google_billing_budget` 的權限掛在**帳單帳戶**上、不是專案上，需在帳單帳戶層級授予 `roles/billing.costsManager`（或等效）。專案層級角色再全也管不到預算。
+1. **Install OpenTofu (arm64)**: make `tofu` available on the host's PATH, version ≥ 1.12 (1.12.6 recommended).
+2. **OCI**: in the console, create a Dynamic Group (matching this machine's OCID) + one policy that grants only `manage virtual-network-family`.
+3. **GCP**: create a dedicated service account, grant the three roles `roles/compute.networkAdmin`, `roles/compute.instanceAdmin.v1`, `roles/serviceusage.serviceUsageAdmin`, generate a key JSON and store it outside the repo.
+4. **GCP billing account** (the easiest one to get wrong): `google_billing_budget`'s permission is attached at the **billing account** level, not the project level — `roles/billing.costsManager` (or equivalent) must be granted at the billing-account level. No amount of project-level roles can reach the budget.
 
-> Claude 可以為上述每一項準備好確切的 console 點位／指令，但實際授權動作必須由使用者完成。live apply/import 任務（Task 7、9、10、11）的 Step 1 都以「確認前置條件已就緒」開始。
+> Claude can prepare the exact console click-paths / commands for each item above, but the actual authorization action must be performed by the user. Step 1 of every live apply/import task (Tasks 7, 9, 10, 11) starts with "confirm the prerequisites are ready."
 
 ---
 
-### Task 1: 倉庫護欄——`.gitignore` + `tofu-conventions.md`
+### Task 1: Repo guardrails — `.gitignore` + `tofu-conventions.md`
 
 **Files:**
-- Modify: `.gitignore`（末尾追加 4 行）
+- Modify: `.gitignore` (append 4 lines at the end)
 - Create: `.claude/rules/tofu-conventions.md`
 
 **Interfaces:**
-- Produces: 規則檔 `.claude/rules/tofu-conventions.md`（`paths: */tofu/**`，後續所有任務的 `.tf` 改動受其約束）；`.gitignore` 的 state/tfvars 排除（後續任務產生的 `*.tfstate` / `.auto.tfvars` 才不會被誤提）。
+- Produces: rules file `.claude/rules/tofu-conventions.md` (`paths: */tofu/**`, governs all `.tf` changes in every later task); `.gitignore`'s state/tfvars exclusions (so the `*.tfstate` / `.auto.tfvars` produced by later tasks don't get committed by mistake).
 
-- [ ] **Step 1: 在 `.gitignore` 末尾追加**
+- [ ] **Step 1: Append to the end of `.gitignore`**
 
 ```gitignore
 # OpenTofu (vps_oracle/tofu, vps_gcp/tofu)
@@ -55,7 +55,7 @@
 *.auto.tfvars
 ```
 
-- [ ] **Step 2: 寫 `.claude/rules/tofu-conventions.md`**（格式對齊現有 `compose-conventions.md` / `k3s-gitops.md`：frontmatter `paths:` + 中文內文）
+- [ ] **Step 2: Write `.claude/rules/tofu-conventions.md`** (format aligned with the existing `compose-conventions.md` / `k3s-gitops.md`: `paths:` frontmatter + prose body)
 
 ```markdown
 ---
@@ -63,41 +63,41 @@ paths:
   - "*/tofu/**"
 ---
 
-# OpenTofu 约定
+# OpenTofu conventions
 
-编写或修改任何 `<host>/tofu/` 下的 .tf 文件时必须遵守。这里是唯一权威，README 只做指引。
+Must be followed when writing or modifying any `.tf` file under `<host>/tofu/`. This is the single source of truth here; the README is only a pointer.
 
-## 红线
+## Red lines
 
-> **禁止在 `vps_oracle/tofu/` 执行 `tofu destroy`。**
+> **`tofu destroy` is forbidden in `vps_oracle/tofu/`.**
 
-OCI 侧 IAM 已不授予 `manage instance-family`，`destroy` 打不到运算实例；但红线仍要写明——纵深防御，对人、对 Claude 都是同一份说明。GCP 侧 `vps_gcp/tofu/` 的 destroy 是设计目标，不受此限。
+The OCI-side IAM no longer grants `manage instance-family`, so `destroy` cannot reach the compute instance; but the red line still needs to be written down — defense in depth, the same statement for both humans and Claude. On the GCP side, destroy under `vps_gcp/tofu/` is the design goal and is not subject to this restriction.
 
-## 版本
+## Versions
 
-- `versions.tf` 里 `required_version` 与 `required_providers` 钉死具体版本，不用范围、不用 latest。
-- `.terraform.lock.hcl` 是纳管文件，**必须提交**——锁 provider 版本与 checksum，跟 compose 钉死 image tag/digest 同理。
+- In `versions.tf`, pin `required_version` and `required_providers` to exact versions — no ranges, no latest.
+- `.terraform.lock.hcl` is a managed file and **must be committed** — it locks provider versions and checksums, the same principle as pinning image tag/digest in compose.
 
-## State 与机密
+## State and secrets
 
-- `*.tfstate`、`*.tfstate.*`、`.terraform/`、`*.auto.tfvars` 一律不提交（已在 `.gitignore`）。
-- `.auto.tfvars` 只放身份类值（GCP 的 `project_id` / `billing_account`；OCI 的 OCID / compartment / region），不放 key。key 放仓库之外，经环境变量引用（GCP `GOOGLE_APPLICATION_CREDENTIALS`）。
-- 不在任何 `.tf` 里内联密钥、key、token。
+- `*.tfstate`, `*.tfstate.*`, `.terraform/`, `*.auto.tfvars` are never committed (already in `.gitignore`).
+- `.auto.tfvars` holds only identity-type values (GCP's `project_id` / `billing_account`; OCI's OCID / compartment / region), never a key. Keys live outside the repo, referenced via environment variables (GCP `GOOGLE_APPLICATION_CREDENTIALS`).
+- Never inline a secret, key, or token in any `.tf` file.
 
-## 认证
+## Authentication
 
-- OCI 用 Instance Principal：`auth = "InstancePrincipal"`，磁盘零长期凭据。Dynamic Group + policy 在 console 建，不在仓库。
-- GCP 用专设 service account + key JSON，角色收窄（networkAdmin / instanceAdmin.v1 / serviceusage.serviceUsageAdmin），key 存仓库外。
+- OCI uses Instance Principal: `auth = "InstancePrincipal"`, zero long-lived credentials on disk. The Dynamic Group + policy are created in the console, not in this repo.
+- GCP uses a dedicated service account + key JSON, with roles narrowed down (networkAdmin / instanceAdmin.v1 / serviceusage.serviceUsageAdmin); the key lives outside the repo.
 
-## 收编与免费层
+## Adoption and free tier
 
-- OCI 收编用 `import {}` 区块（进 git、可 review），不用 `tofu import` 一次性指令。
-- GCP 免费层是硬边界：`machine_type`、区域、磁盘大小写死字面值、不用变量；第一批资源就含 `google_billing_budget`。
+- OCI adoption uses `import {}` blocks (goes into git, reviewable), not one-off `tofu import` commands.
+- GCP free tier is a hard boundary: `machine_type`, region, and disk size are hardcoded literals, not variables; the first batch of resources already includes `google_billing_budget`.
 ```
 
-- [ ] **Step 3: 自我驗證規則檔 frontmatter 格式**（與 `compose-conventions.md` 一致的 YAML `paths:`）
+- [ ] **Step 3: Self-verify the rules file's frontmatter format** (the same YAML `paths:` shape as `compose-conventions.md`)
 
-Run: `head -6 .claude/rules/tofu-conventions.md`（應看到 `---` / `paths:` / `  - "*/tofu/**"` / `---`）
+Run: `head -6 .claude/rules/tofu-conventions.md` (should show `---` / `paths:` / `  - "*/tofu/**"` / `---`)
 
 - [ ] **Step 4: Commit**
 
@@ -108,16 +108,16 @@ git commit -m "chore: add OpenTofu conventions rule and gitignore state/tfvars"
 
 ---
 
-### Task 2: CI 靜態檢查——`tofu` job
+### Task 2: CI static checks — the `tofu` job
 
 **Files:**
-- Modify: `.github/workflows/repo-conventions.yml`（`paths` 觸發 + 新增 job）
+- Modify: `.github/workflows/repo-conventions.yml` (`paths` trigger + a new job)
 
 **Interfaces:**
-- Consumes: Task 1 的 `*/tofu/**` 目錄（本任務落地時尚無 `.tf`，`find` 找不到目錄、迴圈空轉、exit 0）。
-- Produces: CI job `tofu`，之後所有任務新增的 `.tf` 檔受 `fmt -check` + `validate` 把關。
+- Consumes: Task 1's `*/tofu/**` directory (at the time this task lands there's no `.tf` yet — `find` won't locate the directory, the loop runs empty, exits 0).
+- Produces: CI job `tofu`, gatekeeping every `.tf` file added by later tasks with `fmt -check` + `validate`.
 
-- [ ] **Step 1: 擴充 `paths` 觸發**（`push` 與 `pull_request` 兩處都加，指向 `'*/tofu/**'`）
+- [ ] **Step 1: Extend the `paths` trigger** (add to both `push` and `pull_request`, pointing at `'*/tofu/**'`)
 
 ```yaml
     paths:
@@ -128,7 +128,7 @@ git commit -m "chore: add OpenTofu conventions rule and gitignore state/tfvars"
       - '.github/workflows/repo-conventions.yml'
 ```
 
-- [ ] **Step 2: 新增 `tofu` job**（加在 `inspector-tests` 之後）
+- [ ] **Step 2: Add the `tofu` job** (after `inspector-tests`)
 
 ```yaml
   # Static checks only — tofu fmt + validate never touch live cloud resources.
@@ -158,9 +158,9 @@ git commit -m "chore: add OpenTofu conventions rule and gitignore state/tfvars"
           exit $failed
 ```
 
-- [ ] **Step 3: 驗證 YAML 語法**
+- [ ] **Step 3: Verify the YAML syntax**
 
-Run: `python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/repo-conventions.yml'))"`（無輸出即通過）
+Run: `python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/repo-conventions.yml'))"` (no output means it passed)
 
 - [ ] **Step 4: Commit**
 
@@ -171,7 +171,7 @@ git commit -m "ci: add OpenTofu fmt/validate static checks"
 
 ---
 
-### Task 3: `vps_gcp/` 骨架 + `vps_gcp/tofu/` scaffold
+### Task 3: `vps_gcp/` skeleton + `vps_gcp/tofu/` scaffold
 
 **Files:**
 - Create: `vps_gcp/README.md`
@@ -180,25 +180,25 @@ git commit -m "ci: add OpenTofu fmt/validate static checks"
 - Create: `vps_gcp/tofu/provider.tf`
 - Create: `vps_gcp/tofu/variables.tf`
 - Create: `vps_gcp/tofu/.auto.tfvars.example`
-- Modify: `README.md`（Host 列表表格加 `vps_gcp` 行）
+- Modify: `README.md` (add a `vps_gcp` row to the Host list table)
 
 **Interfaces:**
-- Produces: `var.project_id`（string，必填）、`var.billing_account`（string，必填）——後續 Task 4/5/6 的 provider 與 budget 資源引用；`google_compute_network.main` 等資源名於 Task 4 起由後續任務定義。
+- Produces: `var.project_id` (string, required), `var.billing_account` (string, required) — referenced by Task 4/5/6's provider and budget resources; resource names like `google_compute_network.main` are defined starting in Task 4.
 
-- [ ] **Step 1: `vps_gcp/README.md`**（說明這台機器目前只納管 tofu 一層）
+- [ ] **Step 1: `vps_gcp/README.md`** (explains that this machine currently only has a tofu layer under management)
 
 ```markdown
 # vps_gcp
 
-GCP 免费层（free tier）e2-micro 实例。目前这台机器整机**不**纳入本仓库管理——这里只有 `tofu/` 一层，用于练 greenfield IaC 的完整生命周期（从零 apply → destroy → 再 apply 验证可重现）。
+A GCP free-tier e2-micro instance. This machine as a whole is **not** yet brought under this repo's management — only the `tofu/` layer exists here, used to practice the full greenfield IaC lifecycle (from a from-scratch apply → destroy → re-apply verifying it's reproducible).
 
-## 目前纳管范围
+## Currently under management
 
-| 目录 | 是什么 | 约定见 |
+| Directory | What it is | Conventions in |
 |---|---|---|
-| `tofu/` | OpenTofu root module：VPC / subnet / firewall / e2-micro 实例 / API 启用 / 预算告警 | [tofu/README.md](tofu/README.md) |
+| `tofu/` | OpenTofu root module: VPC / subnet / firewall / e2-micro instance / API enablement / budget alerts | [tofu/README.md](tofu/README.md) |
 
-机器上跑什么、怎么部署、README 怎么写，另案处理；本目录暂时只此一层。
+What runs on the machine, how it's deployed, and how that README should read is a separate matter — for now this directory has only this one layer.
 ```
 
 - [ ] **Step 2: `vps_gcp/tofu/README.md`**
@@ -206,38 +206,38 @@ GCP 免费层（free tier）e2-micro 实例。目前这台机器整机**不**纳
 ```markdown
 # vps_gcp/tofu — greenfield root module
 
-练习 greenfield 的那半：完整生命周期，从零 apply → 改 → destroy → 再 apply 验证可重现。
+The half that practices greenfield: the full lifecycle, from a from-scratch apply → change → destroy → re-apply verifying it's reproducible.
 
-## 免费层边界（敲死，别动）
+## Free-tier boundaries (fixed, don't touch)
 
-| 项 | 值 | 为什么 |
+| Item | Value | Why |
 |---|---|---|
-| region / zone | `us-west1` / `us-west1-a` | e2-micro 仅 us-west1/us-central1/us-east1 免费 |
-| machine_type | `e2-micro` | 写死字面值，不用变量，防手滑改成 e2-medium |
-| boot disk | 30 GB `pd-standard` | 免费层 30 GB 标准永久磁盘总额 |
-| egress | 1 GB/月（不含中国/澳洲） | 见 instance.tf 注释 |
+| region / zone | `us-west1` / `us-west1-a` | e2-micro is free only in us-west1/us-central1/us-east1 |
+| machine_type | `e2-micro` | hardcoded literal, not a variable, to prevent an accidental change to e2-medium |
+| boot disk | 30 GB `pd-standard` | the free tier's total 30 GB standard persistent disk allowance |
+| egress | 1 GB/month (excludes China/Australia) | see the comment in instance.tf |
 
-## 认证
+## Authentication
 
-专设 service account + key JSON。角色收窄到 `roles/compute.networkAdmin`、`roles/compute.instanceAdmin.v1`、`roles/serviceusage.serviceUsageAdmin`。
+A dedicated service account + key JSON. Roles narrowed down to `roles/compute.networkAdmin`, `roles/compute.instanceAdmin.v1`, `roles/serviceusage.serviceUsageAdmin`.
 
-- key 放仓库之外，经环境变量引用：`export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json`
-- `.auto.tfvars`（gitignored）填 `project_id` 与 `billing_account` 两个必填项，见 `.auto.tfvars.example`。
+- The key lives outside the repo, referenced via an environment variable: `export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json`
+- `.auto.tfvars` (gitignored) fills in the two required values `project_id` and `billing_account` — see `.auto.tfvars.example`.
 
-`google_billing_budget` 的权限挂在**账单账户**上、不是项目上——需在账单账户层级授 `roles/billing.costsManager`。
+`google_billing_budget`'s permission is attached at the **billing account** level, not the project — `roles/billing.costsManager` must be granted at the billing-account level.
 
-## 验收标准
+## Acceptance criteria
 
-`tofu destroy` 之后 `tofu apply` 能完整重现，且重现后 `tofu plan` 输出 `No changes.`。
+After a `tofu destroy`, `tofu apply` must fully reproduce the setup, and afterward `tofu plan` must output `No changes.`.
 
-## 操作
+## Operation
 
 ```bash
 cd vps_gcp/tofu
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
-cp .auto.tfvars.example .auto.tfvars   # 填 project_id / billing_account
+cp .auto.tfvars.example .auto.tfvars   # fill in project_id / billing_account
 tofu init
-tofu plan    # 验收：终态 No changes.
+tofu plan    # acceptance: final state is No changes.
 tofu apply
 ```
 ```
@@ -283,30 +283,30 @@ variable "billing_account" {
 }
 ```
 
-- [ ] **Step 6: `.auto.tfvars.example`**（提交的真身範本，無真實值；對齊倉庫既有 `.env.example` 慣例）
+- [ ] **Step 6: `.auto.tfvars.example`** (a committed placeholder template, no real values; matches the repo's existing `.env.example` convention)
 
 ```hcl
 project_id      = ""
 billing_account = ""
 ```
 
-- [ ] **Step 7: root `README.md` Host 列表加一行**
+- [ ] **Step 7: Add one row to the root `README.md` Host list**
 
 ```markdown
-| vps_gcp | GCP free-tier e2-micro（只纳管 `tofu/` 一层） | [vps_gcp/README.md](vps_gcp/README.md) |
+| vps_gcp | GCP free-tier e2-micro (only the `tofu/` layer is under management) | [vps_gcp/README.md](vps_gcp/README.md) |
 ```
 
-- [ ] **Step 8: 靜態驗證（本 module 目前無 resource，純 schema 檢查）**
+- [ ] **Step 8: Static validation** (this module currently has no resources, a pure schema check)
 
 Run:
 ```bash
 cd vps_gcp/tofu && tofu fmt -recursive -check && tofu init -backend=false -input=false && tofu validate
 ```
-Expected: 全綠，`Success! The configuration is valid.`
+Expected: all green, `Success! The configuration is valid.`
 
-- [ ] **Step 9: 確認 `.auto.tfvars.example` 不在 gitignore 範圍**
+- [ ] **Step 9: Confirm `.auto.tfvars.example` is not caught by gitignore**
 
-Run: `git status --ignored --short vps_gcp/tofu/`（`example` 檔應顯示為待提交、非 ignored）
+Run: `git status --ignored --short vps_gcp/tofu/` (the `example` file should show as staged for commit, not ignored)
 
 - [ ] **Step 10: Commit**
 
@@ -317,15 +317,15 @@ git commit -m "feat(vps_gcp): scaffold OpenTofu greenfield root module"
 
 ---
 
-### Task 4: GCP 網路——VPC / subnet / firewall
+### Task 4: GCP networking — VPC / subnet / firewall
 
 **Files:**
 - Create: `vps_gcp/tofu/network.tf`
 - Create: `vps_gcp/tofu/firewall.tf`
 
 **Interfaces:**
-- Consumes: `var.project_id`（Task 3）；provider 已設定 region `us-west1`。
-- Produces: `google_compute_network.main`、`google_compute_subnetwork.main`、`google_compute_firewall.ssh`——Task 5 的 `network_interface` 引用前兩者。
+- Consumes: `var.project_id` (Task 3); the provider is already configured for region `us-west1`.
+- Produces: `google_compute_network.main`, `google_compute_subnetwork.main`, `google_compute_firewall.ssh` — the first two are referenced by Task 5's `network_interface`.
 
 - [ ] **Step 1: `network.tf`**
 
@@ -360,7 +360,7 @@ resource "google_compute_firewall" "ssh" {
 }
 ```
 
-- [ ] **Step 3: 靜態驗證**
+- [ ] **Step 3: Static validation**
 
 Run:
 ```bash
@@ -377,22 +377,22 @@ git commit -m "feat(vps_gcp): declare VPC, subnet and SSH firewall rule"
 
 ---
 
-### Task 5: GCP 運算——e2-micro 實例 + API 啟用
+### Task 5: GCP compute — the e2-micro instance + API enablement
 
 **Files:**
 - Create: `vps_gcp/tofu/instance.tf`
 - Create: `vps_gcp/tofu/services.tf`
 
 **Interfaces:**
-- Consumes: `google_compute_network.main.id` / `google_compute_subnetwork.main.id`（Task 4）；`var.project_id`（Task 3）。
-- Produces: `google_compute_instance.vps`、`google_project_service.*`（後續 task 無依賴，budget 不依賴 instance）。
+- Consumes: `google_compute_network.main.id` / `google_compute_subnetwork.main.id` (Task 4); `var.project_id` (Task 3).
+- Produces: `google_compute_instance.vps`, `google_project_service.*` (no later task depends on these; the budget doesn't depend on the instance either).
 
 - [ ] **Step 1: `instance.tf`**
 
 ```hcl
 # FREE-TIER BOUNDARY — every value below is a hardcoded literal on purpose,
 # NOT a variable. Changing machine_type / region / disk size can produce real
-# billing. See README "免费层边界" before touching anything here.
+# billing. See the README's "free-tier boundaries" section before touching anything here.
 resource "google_compute_instance" "vps" {
   name         = "vps-gcp"
   machine_type = "e2-micro"   # free only in us-west1/us-central1/us-east1
@@ -442,7 +442,7 @@ resource "google_project_service" "cloudbilling" {
 }
 ```
 
-- [ ] **Step 3: 靜態驗證**
+- [ ] **Step 3: Static validation**
 
 Run:
 ```bash
@@ -459,14 +459,14 @@ git commit -m "feat(vps_gcp): declare free-tier e2-micro instance and API enable
 
 ---
 
-### Task 6: GCP 成本護欄——`google_billing_budget`
+### Task 6: GCP cost guardrail — `google_billing_budget`
 
 **Files:**
 - Create: `vps_gcp/tofu/budget.tf`
 
 **Interfaces:**
-- Consumes: `var.billing_account`（Task 3）；`var.project_id`（Task 3）。
-- Produces: `google_billing_budget.free_tier`——Phase 1 收尾，無下游依賴。
+- Consumes: `var.billing_account` (Task 3); `var.project_id` (Task 3).
+- Produces: `google_billing_budget.free_tier` — wraps up Phase 1, nothing downstream depends on it.
 
 - [ ] **Step 1: `budget.tf`**
 
@@ -500,7 +500,7 @@ resource "google_billing_budget" "free_tier" {
 }
 ```
 
-- [ ] **Step 2: 靜態驗證**
+- [ ] **Step 2: Static validation**
 
 Run:
 ```bash
@@ -508,7 +508,7 @@ cd vps_gcp/tofu && tofu fmt -recursive -check && tofu init -backend=false -input
 ```
 Expected: `Success! The configuration is valid.`
 
-> 若 provider 8.2.0 對 `budget_filter` 欄位名有變，`validate` 會在此步報出——依報錯訊息對齊欄位名，不改語意。這是唯一可能因 provider 版本而需微調的資源。
+> If provider 8.2.0 has renamed a `budget_filter` field, `validate` will surface it right here — align the field name to the error message without changing the intent. This is the one resource most likely to need a small tweak due to the provider version.
 
 - [ ] **Step 3: Commit**
 
@@ -517,21 +517,21 @@ git add vps_gcp/tofu/budget.tf vps_gcp/tofu/.terraform.lock.hcl
 git commit -m "feat(vps_gcp): add free-tier billing budget with alerts"
 ```
 
-> 注意：此 step 首次 `tofu init` 會產生 `.terraform.lock.hcl`，務必連同提交（spec 要求 lock 檔進 git）。
+> Note: this step's first `tofu init` will produce `.terraform.lock.hcl` — make sure to commit it too (the spec requires the lock file to be in git).
 
 ---
 
-### Task 7: GCP live 驗收——apply → destroy → apply → No changes
+### Task 7: GCP live acceptance — apply → destroy → apply → No changes
 
-**Files:** 無（純操作）；若有 drift 微調，改對應 `.tf` 並追加至本任務。
+**Files:** none (pure operations); if a drift fix is needed, edit the corresponding `.tf` and add it to this task.
 
 **Interfaces:**
-- Consumes: Task 3–6 定義的整套 GCP module。
-- Produces: 線上 GCP 資源；Phase 1 驗收證據（`tofu plan` = `No changes.`）。
+- Consumes: the whole GCP module defined by Tasks 3–6.
+- Produces: live GCP resources; Phase 1 acceptance evidence (`tofu plan` = `No changes.`).
 
-> **PREREQ 門檻**：前置條件 1（tofu 已裝）、3（SA key）、4（billing costsManager）已完成；`GOOGLE_APPLICATION_CREDENTIALS` 與 `.auto.tfvars` 已就緒。
+> **PREREQ gate**: Prerequisites 1 (tofu installed), 3 (SA key), 4 (billing costsManager) are done; `GOOGLE_APPLICATION_CREDENTIALS` and `.auto.tfvars` are ready.
 
-- [ ] **Step 1: 確認憑證與 tfvars 就緒**
+- [ ] **Step 1: Confirm credentials and tfvars are ready**
 
 Run:
 ```bash
@@ -539,38 +539,38 @@ cd vps_gcp/tofu
 test -n "$GOOGLE_APPLICATION_CREDENTIALS" && test -f "$GOOGLE_APPLICATION_CREDENTIALS" && echo "creds OK"
 test -s .auto.tfvars && grep -qE '^(project_id|billing_account)\s*=\s*"[^"]+"' .auto.tfvars && echo "tfvars OK"
 ```
-Expected: `creds OK` 與 `tfvars OK`。
+Expected: `creds OK` and `tfvars OK`.
 
 - [ ] **Step 2: `tofu init`**
 
 Run: `cd vps_gcp/tofu && tofu init`
 
-- [ ] **Step 3: `tofu plan` 檢視資源清單**
+- [ ] **Step 3: `tofu plan` to review the resource list**
 
 Run: `cd vps_gcp/tofu && tofu plan`
-Expected: plan 列出 VPC / subnet / firewall / instance / 3× `google_project_service` / budget，無錯誤。人工核對 instance 的 `machine_type = e2-micro`、`zone = us-west1-a`、`size = 30`。
+Expected: the plan lists VPC / subnet / firewall / instance / 3× `google_project_service` / budget, no errors. Manually confirm the instance's `machine_type = e2-micro`, `zone = us-west1-a`, `size = 30`.
 
 - [ ] **Step 4: `tofu apply`**
 
 Run: `cd vps_gcp/tofu && tofu apply`
-Expected: 全部建立成功，`Apply complete!`。
+Expected: everything created successfully, `Apply complete!`.
 
-- [ ] **Step 5: `tofu destroy`**（greenfield 的完整生命週期——這正是 spec 在 vps_oracle 上永不允許練的那一半）
+- [ ] **Step 5: `tofu destroy`** (the full greenfield lifecycle — exactly the half the spec permanently forbids practicing on vps_oracle)
 
 Run: `cd vps_gcp/tofu && tofu destroy`
-Expected: 資源全刪（API enable 因 `disable_on_destroy=false` 保留）。
+Expected: everything deleted (the enabled APIs stay, due to `disable_on_destroy=false`).
 
-- [ ] **Step 6: 再 `tofu apply` 驗證可重現**
+- [ ] **Step 6: `tofu apply` again to verify it's reproducible**
 
 Run: `cd vps_gcp/tofu && tofu apply`
-Expected: 完整重現。
+Expected: full reproduction.
 
-- [ ] **Step 7: 驗收 `tofu plan`**
+- [ ] **Step 7: Acceptance `tofu plan`**
 
 Run: `cd vps_gcp/tofu && tofu plan`
 Expected: **`No changes. Your infrastructure matches the configuration.`**
 
-- [ ] **Step 8: （僅在有 drift 微調時）Commit**
+- [ ] **Step 8: (only if a drift fix was needed) Commit**
 
 ```bash
 git add vps_gcp/tofu
@@ -579,7 +579,7 @@ git commit -m "fix(vps_gcp): align <resource> to converge on No changes"
 
 ---
 
-### Task 8: `vps_oracle/tofu/` scaffold（brownfield，先立骨架）
+### Task 8: `vps_oracle/tofu/` scaffold (brownfield, laying down the skeleton first)
 
 **Files:**
 - Create: `vps_oracle/tofu/README.md`
@@ -587,44 +587,44 @@ git commit -m "fix(vps_gcp): align <resource> to converge on No changes"
 - Create: `vps_oracle/tofu/provider.tf`
 - Create: `vps_oracle/tofu/variables.tf`
 - Create: `vps_oracle/tofu/.auto.tfvars.example`
-- Modify: `vps_oracle/README.md`（「目錄結構」表格加 `tofu/` 行）
-- Modify: `README.md`（「約定」一節「另外兩份規則」→「另外三份規則」）
+- Modify: `vps_oracle/README.md` (add a `tofu/` row to the "directory structure" table)
+- Modify: `README.md` ("conventions" section, "two other rule files" → "three other rule files")
 
 **Interfaces:**
-- Produces: `var.region`、`var.tenancy_ocid`、`var.compartment_id` 與五個 OCID 變數（Task 9 探查後於 `.auto.tfvars` 填入）；provider 走 Instance Principal。後續 Task 10 的 `import {}` 區塊與資源區塊引用這些變數。
+- Produces: `var.region`, `var.tenancy_ocid`, `var.compartment_id` and five OCID variables (filled into `.auto.tfvars` after Task 9's probing). The provider uses Instance Principal. Task 10's `import {}` blocks and resource blocks reference these variables.
 
 - [ ] **Step 1: `vps_oracle/tofu/README.md`**
 
 ```markdown
 # vps_oracle/tofu — brownfield root module
 
-练习 brownfield 的那半：`import` 已存在且被 console 手改过的资源、驯服 drift、`ignore_changes`。这台机器永远不能重建，只能练这半。
+The half that practices brownfield: `import`ing resources that already exist and have been hand-modified in the console, taming drift, `ignore_changes`. This machine can never be rebuilt — it only exists to practice this half.
 
-## 红线
+## Red lines
 
-> **禁止在此目录执行 `tofu destroy`。**
+> **`tofu destroy` is forbidden in this directory.**
 
-IAM 硬墙已让 `destroy` 打不到运算实例与 boot volume（policy 只授 `manage virtual-network-family`），但红线仍要写明——纵深防御。
+The IAM hard wall already makes `destroy` unable to reach the compute instance and boot volume (the policy grants only `manage virtual-network-family`), but the red line still needs to be written down — defense in depth.
 
-## 验证标准
+## Acceptance criteria
 
-`tofu plan` 输出 `No changes.`
+`tofu plan` outputs `No changes.`
 
-这一步会比预期久：OCI API 会回一堆 console 从未显示的默认字段，逐个对齐、或判断哪些该进 `ignore_changes`，就是这节的功课。
+This step takes longer than expected: the OCI API returns a pile of default fields the console never shows, and aligning them one by one — or deciding which ones belong in `ignore_changes` — is the actual homework of this section.
 
-## 目录说明
+## Directory layout
 
-| 文件 | 职责 |
+| File | Responsibility |
 |---|---|
-| `versions.tf` | required_version / required_providers（钉死版本） |
+| `versions.tf` | required_version / required_providers (pinned versions) |
 | `provider.tf` | `auth = "InstancePrincipal"` |
-| `variables.tf` | region / tenancy_ocid / compartment_id + 五个资源 OCID |
+| `variables.tf` | region / tenancy_ocid / compartment_id + five resource OCIDs |
 | `network.tf` | VCN / subnet / IGW / route table / security list |
-| `imports.tf` | `import {}` 区块（id 引用变量，实测 OCID 放 `.auto.tfvars`） |
+| `imports.tf` | `import {}` blocks (the `id`s reference variables; the actual OCIDs live in `.auto.tfvars`) |
 
-OCID 填在 gitignored 的 `.auto.tfvars`（见 `.auto.tfvars.example`），不进 git。
+OCIDs are filled into the gitignored `.auto.tfvars` (see `.auto.tfvars.example`), never committed.
 
-若探查发现这台用的是**默认**路由表/安全列表（display name 为 "Default Route Table/Security List for <vcn>"），resource 型别要用 `oci_core_default_route_table` / `oci_core_default_security_list`（见 Task 10 的分支说明）。
+If the probe finds this machine uses the **default** route table/security list (display name "Default Route Table/Security List for <vcn>"), the resource type must be `oci_core_default_route_table` / `oci_core_default_security_list` (see the branch note in Task 10).
 ```
 
 - [ ] **Step 2: `versions.tf`**
@@ -648,7 +648,7 @@ terraform {
 # InstancePrincipal — this very instance is the identity. Zero long-lived
 # credentials on disk, auto-rotated by OCI. Requires a Dynamic Group matching
 # this instance's OCID + a policy granting `manage virtual-network-family`
-# ONLY (the IAM hard wall — see spec "IAM 硬墙"). The `region` comes from
+# ONLY (the IAM hard wall — see spec "The IAM wall"). The `region` comes from
 # .auto.tfvars; the tenancy home region is discoverable in the console.
 provider "oci" {
   auth   = "InstancePrincipal"
@@ -695,19 +695,19 @@ route_table_ocid      = ""
 security_list_ocid    = ""
 ```
 
-- [ ] **Step 6: 更新 `vps_oracle/README.md` 目錄結構表格**（`host-firewall/` 行下加）
+- [ ] **Step 6: Update `vps_oracle/README.md`'s directory structure table** (add below the `host-firewall/` row)
 
 ```markdown
-| `tofu/` | OpenTofu brownfield 收編：VCN / subnet / IGW / route table / security list（遞回納管上游那層 OCI 網路資源） | [tofu/README.md](tofu/README.md) |
+| `tofu/` | OpenTofu brownfield adoption: VCN / subnet / IGW / route table / security list (brings the upstream OCI network layer under management) | [tofu/README.md](tofu/README.md) |
 ```
 
-- [ ] **Step 7: 更新 root `README.md` 規則指引**（「另外兩份規則」所在段）
+- [ ] **Step 7: Update the root `README.md`'s rule-file pointer** (the section that currently says "two other rule files")
 
 ```markdown
-另外三份规则：k3s/ArgoCD 的改动纪律见 [`.claude/rules/k3s-gitops.md`](.claude/rules/k3s-gitops.md)，OpenTofu 的收编/免费层/版本红线见 [`.claude/rules/tofu-conventions.md`](.claude/rules/tofu-conventions.md)，文档该写进哪一层见 [`.claude/rules/docs-layout.md`](.claude/rules/docs-layout.md)。
+Three other rule files: for k3s/ArgoCD change discipline see [`.claude/rules/k3s-gitops.md`](.claude/rules/k3s-gitops.md), for OpenTofu's adoption/free-tier/version red lines see [`.claude/rules/tofu-conventions.md`](.claude/rules/tofu-conventions.md), and for which layer documentation belongs in see [`.claude/rules/docs-layout.md`](.claude/rules/docs-layout.md).
 ```
 
-- [ ] **Step 8: 靜態驗證（此時無 resource、無 import，僅 schema）**
+- [ ] **Step 8: Static validation** (no resources, no imports yet, schema only)
 
 Run:
 ```bash
@@ -715,7 +715,7 @@ cd vps_oracle/tofu && tofu fmt -recursive -check && tofu init -backend=false -in
 ```
 Expected: `Success! The configuration is valid.`
 
-> 若本機未裝 tofu，可改用 CI 驗證（Task 2 的 job 已涵蓋此 module）。`validate` 不觸發 OCI API，不需憑證。
+> If tofu isn't installed locally, CI validation can be used instead (Task 2's job already covers this module). `validate` doesn't hit the OCI API and needs no credentials.
 
 - [ ] **Step 9: Commit**
 
@@ -726,18 +726,18 @@ git commit -m "feat(vps_oracle): scaffold OpenTofu brownfield root module"
 
 ---
 
-### Task 9: OCI 探查——與線上對齊的 factsheet
+### Task 9: OCI probing — a factsheet aligned with what's live
 
 **Files:**
-- Create: `vps_oracle/tofu/probe.tf`（**一次性，探查後刪除，不提交**）
+- Create: `vps_oracle/tofu/probe.tf` (**one-shot, deleted after probing, never committed**)
 
 **Interfaces:**
-- Consumes: `var.region` / `var.compartment_id`（Task 8 變數，`.auto.tfvars` 已填）。
-- Produces: 一份 factsheet——五個 OCID（VCN/subnet/IGW/route table/security list）、每個資源的 display name、以及「這台用的是預設還是自建 route table／security list」的判定。這份 factsheet 是 Task 10 的輸入。
+- Consumes: `var.region` / `var.compartment_id` (Task 8's variables, already filled into `.auto.tfvars`).
+- Produces: a factsheet — five OCIDs (VCN/subnet/IGW/route table/security list), each resource's display name, and a determination of "does this machine use a default or self-managed route table/security list." This factsheet is Task 10's input.
 
-> **PREREQ 門檻**：前置條件 1（tofu 裝好）、2（Dynamic Group + policy 建好）。
+> **PREREQ gate**: Prerequisites 1 (tofu installed), 2 (Dynamic Group + policy created).
 
-- [ ] **Step 1: 確認 InstancePrincipal 至少「能看見」網路資源**
+- [ ] **Step 1: Confirm the InstancePrincipal can at least "see" the network resources**
 
 Run:
 ```bash
@@ -745,7 +745,7 @@ cd vps_oracle/tofu
 test -s .auto.tfvars && echo "tfvars ready"
 ```
 
-- [ ] **Step 2: 寫一次性 `probe.tf`**（data source 唯讀探查，`tofu apply` 只讀不改）
+- [ ] **Step 2: Write the one-shot `probe.tf`** (data-source read-only probing — `tofu apply` here only reads, never changes anything)
 
 ```hcl
 # One-shot probe — delete this file after extracting the factsheet.
@@ -770,47 +770,47 @@ output "factsheet" {
 }
 ```
 
-- [ ] **Step 3: 跑探查**
+- [ ] **Step 3: Run the probe**
 
 Run:
 ```bash
 cd vps_oracle/tofu && tofu init && tofu apply -auto-approve && tofu output factsheet
 ```
-Expected: 輸出五類資源的 `id`、`display_name`、`cidr_block(s)`、以及 route table / security list 的 `route_rules`、`ingress_security_rules`。
+Expected: output of the five resource types' `id`, `display_name`, `cidr_block(s)`, and the route table / security list's `route_rules`, `ingress_security_rules`.
 
-- [ ] **Step 4: 判定資源型別**（關鍵決策）
+- [ ] **Step 4: Determine the resource type** (the key decision)
 
-在 factsheet 中找 route table 與 security list 的 `display_name`：
+In the factsheet, look at the route table's and security list's `display_name`:
 
-- 若為 **"Default Route Table for <vcn>"** → 這台的 route table 是**預設**，Task 10 用 `oci_core_default_route_table`，其 `manage_default_resource_id = <vcn_ocid>`。
-- 若為 **"Default Security List for <vcn>"** → 用 `oci_core_default_security_list`。
-- 否則為自建，用普通 `oci_core_route_table` / `oci_core_security_list`。
+- If it's **"Default Route Table for <vcn>"** → this machine's route table is the **default** one, so Task 10 uses `oci_core_default_route_table` with `manage_default_resource_id = <vcn_ocid>`.
+- If it's **"Default Security List for <vcn>"** → use `oci_core_default_security_list`.
+- Otherwise it's self-managed, use the plain `oci_core_route_table` / `oci_core_security_list`.
 
-記錄判定結果與五個 OCID 進 factsheet（寫在 Task 10 的進行說明或本地筆記，不進 git）。
+Record the determination and the five OCIDs in the factsheet (write them into Task 10's working notes or a local note, never into git).
 
-- [ ] **Step 5: 刪除 `probe.tf`**
+- [ ] **Step 5: Delete `probe.tf`**
 
-Run: `rm vps_oracle/tofu/probe.tf && cd vps_oracle/tofu && tofu apply -auto-approve`（第二個 apply 移除 output，為 Task 10 的清淨 base 做準備）
+Run: `rm vps_oracle/tofu/probe.tf && cd vps_oracle/tofu && tofu apply -auto-approve` (the second apply removes the output, preparing a clean base for Task 10)
 
-- [ ] **Step 6: （無提交）**——`probe.tf` 是一次性副作用，不進版本控制。本任務無 commit。
+- [ ] **Step 6: (nothing to commit)** — `probe.tf` is a one-shot side effect, never version-controlled. No commit for this task.
 
 ---
 
-### Task 10: OCI 收編——network.tf + imports.tf，收斂到 No changes
+### Task 10: OCI adoption — network.tf + imports.tf, converging to No changes
 
 **Files:**
 - Create: `vps_oracle/tofu/network.tf`
 - Create: `vps_oracle/tofu/imports.tf`
 
 **Interfaces:**
-- Consumes: Task 9 的 factsheet（五個 OCID + 資源型別判定）；Task 8 的 OCID 變數（`.auto.tfvars` 已填實測值）。
-- Produces: 五個被 `import` 納管的資源；`tofu plan` = `No changes.` 的驗收證據。
+- Consumes: Task 9's factsheet (five OCIDs + resource-type determination); Task 8's OCID variables (`.auto.tfvars` already filled with the real probed values).
+- Produces: five resources brought under management via `import`; the acceptance evidence of `tofu plan` = `No changes.`.
 
-> **PREREQ 門檻**：Task 9 已完成；五個 OCID 已填進 `.auto.tfvars`。
+> **PREREQ gate**: Task 9 done; the five OCIDs are already filled into `.auto.tfvars`.
 
-brownfield 的本質是「align 到 OCI 實際持有的值」。下面 `network.tf` 給的是**普通的資源型別 + 代表值**；每一處 `<probed>` 都用 Task 9 factsheet 的實際值替換，**不發明值**。若 Task 9 判定為預設型別，先跳到「Step 5 分支」。
+The essence of brownfield is "align to the values OCI actually holds." The `network.tf` below gives the **plain resource type + representative values**; every `<probed>` placeholder is replaced with the actual value from Task 9's factsheet, **never invented**. If Task 9 determined the default type, jump to "Step 5's branch" first.
 
-- [ ] **Step 1: 寫 `imports.tf`**（id 引用變數，OCID 留在 gitignored tfvars，進 git 的只有結構）
+- [ ] **Step 1: Write `imports.tf`** (the `id`s reference variables; OCIDs stay in gitignored tfvars, only the structure goes into git)
 
 ```hcl
 # Declarative import — the `id`s come from .auto.tfvars (gitignored), so no
@@ -838,7 +838,7 @@ import {
 }
 ```
 
-- [ ] **Step 2: 寫 `network.tf` 資源骨架（普通型別路徑）**
+- [ ] **Step 2: Write `network.tf`'s resource skeleton (the plain-type path)**
 
 ```hcl
 resource "oci_core_vcn" "main" {
@@ -887,25 +887,25 @@ resource "oci_core_security_list" "sl" {
     source   = "0.0.0.0/0"
     tcp_options { min = 22; max = 22 }
   }
-  # ...其余 ingress 规则一律按 factsheet 原样补齐
+  # ...fill in the rest of the ingress rules exactly as they appear in the factsheet
 }
 ```
 
-- [ ] **Step 3: 跑 import + 收斂迴圈**（本任務的核心功課，會比預期久）
+- [ ] **Step 3: Run the import + converge loop** (the core homework of this task, will take longer than expected)
 
-Run 迴圈，直到 `No changes.`：
+Loop the following until it reaches `No changes.`:
 ```bash
 cd vps_oracle/tofu
 tofu init
-tofu plan     # 首次：列出 import（新增）與欄位 diff
-tofu apply    # 完成 import + 寫入 state
-tofu plan     # 此後每一次都是純 drift 比對
+tofu plan     # first run: lists the import (create) plus field diffs
+tofu apply    # completes the import + writes to state
+tofu plan     # every run after this is a pure drift comparison
 ```
-每輪 `tofu plan` 報出的 diff，逐欄判斷：
-- 是 OCI 實際持有、但我們沒寫 → 補進 `network.tf` 對應欄位；
-- 是 tofu 無法預知／無意管理的預設欄位 → 加 `ignore_changes`。
+For every diff `tofu plan` reports, judge it field by field:
+- OCI actually holds this value but we haven't written it → add it to the matching field in `network.tf`;
+- it's a default field tofu can't predict or has no intention of managing → add it to `ignore_changes`.
 
-- [ ] **Step 4: `ignore_changes` 的正確姿勢**（在對應 resource 內追加，並把原因寫進 `vps_oracle/tofu/README.md`）
+- [ ] **Step 4: The right way to use `ignore_changes`** (append it inside the matching resource, and write the reason into `vps_oracle/tofu/README.md`)
 
 ```hcl
 resource "oci_core_vcn" "main" {
@@ -914,26 +914,26 @@ resource "oci_core_vcn" "main" {
     ignore_changes = [
       # <field>: OCI returns/updates this outside Terraform's view; accepting
       # it quiets the diff without claiming to manage it. Reason recorded in
-      # the README (spec: "对特定字段 ignore_changes 并在 README 记录原因").
+      # the README (spec: "ignore_changes on specific fields, with the reason recorded in the README").
     ]
   }
 }
 ```
 
-- [ ] **Step 5: 分支——若 Task 9 判定為預設型別**
+- [ ] **Step 5: Branch — if Task 9 determined the default type**
 
-把 `network.tf` 中 `oci_core_route_table.rt` 換成：
+Replace `oci_core_route_table.rt` in `network.tf` with:
 
 ```hcl
 resource "oci_core_default_route_table" "rt" {
   manage_default_resource_id = var.vcn_ocid
-  # 其余 route 属性按 factsheet 对齐（默认 RT 由 VCN 自动随建）
+  # align the remaining route attributes to the factsheet (the default RT is auto-created with the VCN)
 }
 ```
 
-`oci_core_security_list.sl` 同理換成 `oci_core_default_security_list`（`manage_default_resource_id = var.vcn_ocid`）。subnet 的 `route_table_id` / `security_list_ids` 仍指向這兩個 resource 的同一語意。`imports.tf` 的 `to =` 也同步改成 default 型別。**收斂迴圈（Step 3）不變。**
+Similarly replace `oci_core_security_list.sl` with `oci_core_default_security_list` (`manage_default_resource_id = var.vcn_ocid`). The subnet's `route_table_id` / `security_list_ids` still point at these same two resources, same semantics. Also update `imports.tf`'s `to =` to the default type. **The converge loop (Step 3) is unchanged.**
 
-- [ ] **Step 6: 驗收**
+- [ ] **Step 6: Acceptance**
 
 Run: `cd vps_oracle/tofu && tofu plan`
 Expected: **`No changes. Your infrastructure matches the configuration.`**
@@ -947,18 +947,18 @@ git commit -m "feat(vps_oracle): import OCI network resources into tofu"
 
 ---
 
-### Task 11: OCI IAM 硬牆負面驗證（唯讀）＋清理
+### Task 11: OCI IAM hard-wall negative verification (read-only) + cleanup
 
 **Files:**
-- Create: `vps_oracle/tofu/wall-check.tf`（**一次性，驗證後刪除，不提交**）
+- Create: `vps_oracle/tofu/wall-check.tf` (**one-shot, deleted after verification, never committed**)
 
 **Interfaces:**
-- Consumes: Task 10 的 module；`var.compartment_id`。
-- Produces: 一條安全的**負面驗證**證據——tofu 的身分連「看見」本機運算實例都做不到（404），遑論刪除。做完即移除，不留痕跡進 git。
+- Consumes: Task 10's module; `var.compartment_id`.
+- Produces: a piece of safe **negative-verification** evidence — that tofu's identity can't even "see" this machine's own compute instance (404), let alone delete it. Removed right after, leaving no trace in git.
 
-> **PREREQ 門檻**：Task 10 已完成。
+> **PREREQ gate**: Task 10 is done.
 
-- [ ] **Step 1: 寫一次性 `wall-check.tf`**
+- [ ] **Step 1: Write the one-shot `wall-check.tf`**
 
 ```hcl
 # Negative proof of the IAM hard wall: a `data` source pointing at the live
@@ -970,47 +970,47 @@ data "oci_core_instance" "self" {
 }
 ```
 
-說明：`var.instance_ocid` 需先加到 `variables.tf` 並在 `.auto.tfvars` 填本機 OCID（console 或 `curl http://169.254.169.254/opc/v2/instance/id` 取得）。此變數**只在本任務的生命週期內存在**，驗證後連同 `wall-check.tf` 一起移除。
+Note: `var.instance_ocid` must first be added to `variables.tf`, with the machine's own OCID filled into `.auto.tfvars` (obtain it from the console or `curl http://169.254.169.254/opc/v2/instance/id`). This variable **exists only for the lifetime of this task** and is removed along with `wall-check.tf` right after verification.
 
-- [ ] **Step 2: 跑 plan，預期「因權限不足失敗」**
+- [ ] **Step 2: Run plan, expecting it to "fail due to insufficient permission"**
 
 Run: `cd vps_oracle/tofu && tofu plan`
-Expected: **失敗**——OCI 對未授權的 compute 資源回 404/403（provider 錯誤含 `NotAuthorizedOrNotFound` 或 `404`）。**這是成功的訊號，不是 bug。**
+Expected: **failure** — OCI returns 404/403 for an unauthorized compute resource (the provider error contains `NotAuthorizedOrNotFound` or `404`). **This is the signal of success, not a bug.**
 
-- [ ] **Step 3: 移除一次性檔案與變數**
+- [ ] **Step 3: Remove the one-shot file and variable**
 
 Run:
 ```bash
 cd vps_oracle/tofu
-git checkout -- variables.tf 2>/dev/null || true   # 若不是 git 追蹤的內容則手動刪除 instance_ocid 變數
+git checkout -- variables.tf 2>/dev/null || true   # if not git-tracked yet, delete the instance_ocid variable by hand
 rm wall-check.tf
-# 從 .auto.tfvars 移除 instance_ocid 行
+# remove the instance_ocid line from .auto.tfvars
 ```
-再跑 `tofu plan` 確認恢復 `No changes.`（回到 Task 10 終態）。
+Then run `tofu plan` again to confirm it's back to `No changes.` (Task 10's final state).
 
-- [ ] **Step 4: 確認工作樹乾淨**
+- [ ] **Step 4: Confirm the working tree is clean**
 
-Run: `git status --short vps_oracle/tofu/`（預期無殘留：`wall-check.tf` 已刪、`variables.tf` 無 `instance_ocid`、無 `probe.tf`）
+Run: `git status --short vps_oracle/tofu/` (expect nothing left over: `wall-check.tf` deleted, `variables.tf` has no `instance_ocid`, no `probe.tf`)
 
-- [ ] **Step 5: （無提交）**——負面驗證是一次性事實，不進版本控制。
+- [ ] **Step 5: (nothing to commit)** — the negative verification is a one-shot fact, never version-controlled.
 
 ---
 
-## 收尾自檢（合併前）
+## Final self-check (before merging)
 
-- [ ] `git status` 乾淨，無 `.tfstate`、無 `.auto.tfvars`（含實值）、無 `probe.tf` / `wall-check.tf` 殘留。
-- [ ] `.terraform.lock.hcl` 已提交（兩個 module 各一份）。
-- [ ] CI `tofu` job 能在乾淨 checkout 上通過（`fmt -check` + `init` + `validate`）。
-- [ ] `vps_oracle/tofu/` 紅線（禁 `destroy`）已寫進 `tofu-conventions.md` 與 `vps_oracle/tofu/README.md` 兩處。
-- [ ] spec 未承諾的 Phase 3（共享資源池 module、redis ACL provider）**沒有**被誤放進本計畫。
+- [ ] `git status` is clean, with no `.tfstate`, no `.auto.tfvars` (with real values), no leftover `probe.tf` / `wall-check.tf`.
+- [ ] `.terraform.lock.hcl` is committed (one per module).
+- [ ] The CI `tofu` job passes on a clean checkout (`fmt -check` + `init` + `validate`).
+- [ ] `vps_oracle/tofu/`'s red line (no `destroy`) is written into both `tofu-conventions.md` and `vps_oracle/tofu/README.md`.
+- [ ] Phase 3, which the spec never promised (a shared-resource-pool module, the redis ACL provider), has **not** slipped into this plan by mistake.
 
-## 未納入本計畫（spec 明確 YAGNI / 後續練習）
+## Not included in this plan (explicit YAGNI / future practice per the spec)
 
-| 不做 | 留作 |
+| Not doing | Left for |
 |---|---|
-| 遠端 state backend | 後續練習（遷移本身是一課） |
-| GCP impersonation（ADC + SA impersonation 取代 key） | 後續練習（第一階段先 key 跑順） |
-| 共享資源池 per-service module（minio/postgres） | Phase 3，未承諾 |
-| redis ACL 自動化 | 無 provider，繼續 `gen-users-acl.sh` |
-| NPM / ClouDNS / docker / k8s 收編 | 已有 owner，疊上去等於一個資源兩個 owner |
-| OCI 運算實例 / boot volume | IAM 硬牆 + 爆炸半徑過大 |
+| Remote state backend | Future practice (the migration itself is a lesson) |
+| GCP impersonation (ADC + SA impersonation replacing a key) | Future practice (get the key working first in this phase) |
+| Per-service shared-resource-pool module (minio/postgres) | Phase 3, not promised |
+| redis ACL automation | No provider exists, keep using `gen-users-acl.sh` |
+| NPM / ClouDNS / docker / k8s adoption | Already has an owner — stacking this on top would mean two owners for one resource |
+| OCI compute instance / boot volume | The IAM hard wall + too large a blast radius |

@@ -85,7 +85,7 @@ resource "oci_core_default_security_list" "sl" {
     }
   }
   ingress_security_rules {
-    description = "vless 端口"
+    description = "vless port"
     protocol    = "6" # TCP 39876 (vless)
     source      = "0.0.0.0/0"
     tcp_options {

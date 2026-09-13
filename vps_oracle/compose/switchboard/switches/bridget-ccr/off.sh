@@ -3,7 +3,7 @@ import os
 
 env_path = "/home/ubuntu/.claude-provider/bridget.env"
 tmp_path = env_path + ".tmp"
-content = "# 空 = 走官方订阅 OAuth。switchboard 是唯一应该改写这个文件的东西。\n"
+content = "# Empty = use the official-subscription OAuth. switchboard is the only thing that should rewrite this file.\n"
 with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)

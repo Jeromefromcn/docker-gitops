@@ -403,14 +403,16 @@ git commit -m "Point vikunja-notify-relay at APPRISE_BASE_URL instead of a fixed
 In `vps_oracle/compose/vikunja/register-telegram-webhooks.sh`, replace:
 
 ```bash
-# 三个事件都发到同一个 relay 地址，relay 自己根据 payload 里的 event_name 分流格式化。
+# All three events are sent to the same relay address; the relay itself branches formatting based on
+# the event_name field in the payload.
 EVENTS=("task.assignee.created" "task.reminder.fired" "task.overdue")
 ```
 
 with:
 
 ```bash
-# 四个事件都发到同一个 relay 地址，relay 自己根据 payload 里的 event_name 分流格式化。
+# All four events are sent to the same relay address; the relay itself branches formatting based on
+# the event_name field in the payload.
 EVENTS=("task.assignee.created" "task.reminder.fired" "task.overdue" "task.updated")
 ```
 
@@ -563,7 +565,7 @@ In project 20 ("Love Bird OP"), create a task, assign it to both `jerome` and `b
 
 - [ ] **Step 3: Repeat-task check (documents the known limitation, doesn't need to pass)**
 
-Create a task with `repeat_after` set (e.g. repeats daily) in the same project, assign it, mark it done. Check whether a completion notification arrives. Record the outcome in a follow-up note to `docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`'s "已知限制" section — confirming either that the limitation is real (no notification, as predicted) or that it doesn't apply to this Vikunja version (notification arrives).
+Create a task with `repeat_after` set (e.g. repeats daily) in the same project, assign it, mark it done. Check whether a completion notification arrives. Record the outcome in a follow-up note to `docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`'s "Known Limitations" section — confirming either that the limitation is real (no notification, as predicted) or that it doesn't apply to this Vikunja version (notification arrives).
 
 - [ ] **Step 4 (optional, non-blocking): retire the old shared target**
 

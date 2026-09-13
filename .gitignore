@@ -18,10 +18,10 @@ secrets/
 *.key
 *credentials*.json
 
-# dotfiles: 含 OAuth token 的真身只留 example 進 git
+# dotfiles: only the example (without the real OAuth token) goes into git
 vps_oracle/dotfiles/config/rclone.conf
 vps_oracle/dotfiles/config/gh-hosts.yml
-# claude/jerome 的許可權設定是納管的真身, 例外於全局 settings.local.json 規則
+# claude/jerome's permission settings are managed as the real thing, excepted from the global settings.local.json rule
 !vps_oracle/dotfiles/claude-jerome/.claude/settings.local.json
 
 # local overrides (host-specific, not shared)

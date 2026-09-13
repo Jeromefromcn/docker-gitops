@@ -38,7 +38,7 @@ global:
     # exceeded the whole namespace's budget (Task 7 discovered this via
     # repeated FailedCreate/exceeded-quota events on the waypoint
     # Deployment's ReplicaSet). This is the design doc's own stated
-    # waypoint budget (phase F+G design, 元件與設定 table), just never
+    # waypoint budget (phase F+G design, Components and configuration table), just never
     # actually wired in anywhere until now. Do not raise pr-lanes-quota
     # instead -- it's deliberately sized around this exact budget,
     # including its ~8-concurrent-PR-lane capacity math.

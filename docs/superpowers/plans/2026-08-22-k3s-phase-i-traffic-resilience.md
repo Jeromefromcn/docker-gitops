@@ -586,14 +586,14 @@ Expected: roughly 3/30 canary; delay path ~10s with a timeout status; abort path
 
 - [x] **Step 4: Record the Task 4 Step 4 finding back into the design doc**
 
-Open [docs/superpowers/specs/2026-08-22-k3s-phase-i-traffic-resilience-design.md](../specs/2026-08-22-k3s-phase-i-traffic-resilience-design.md)'s "已知限制 / 失敗模式" section and add one line recording whether fault-injection abort actually triggered an observable outlier-detection ejection (Task 4 Step 4's finding) — the spec currently leaves this open, and this plan is what resolves it.
+Open [docs/superpowers/specs/2026-08-22-k3s-phase-i-traffic-resilience-design.md](../specs/2026-08-22-k3s-phase-i-traffic-resilience-design.md)'s "Known limitations / failure modes" section and add one line recording whether fault-injection abort actually triggered an observable outlier-detection ejection (Task 4 Step 4's finding) — the spec currently leaves this open, and this plan is what resolves it.
 
 ```bash
 git add docs/superpowers/specs/2026-08-22-k3s-phase-i-traffic-resilience-design.md
 git commit -m "Record Phase I implementation findings in the design doc
 
-Closes the open question in the 已知限制 section about whether fault-
-injection abort can trigger outlier detection ejection in practice."
+Closes the open question in the Known limitations section about whether
+fault-injection abort can trigger outlier detection ejection in practice."
 git push
 ```
 
@@ -609,6 +609,6 @@ Expected: 4 commits (Task 1, 2, 3, 4), touching exactly: `backend-canary-configm
 
 ## Self-Review Notes
 
-- **Spec coverage:** every item in the design doc's 驗證清單 maps to a step above — items 1-3 (canary ratio, PR-lane non-interference) are Task 2 Steps 4-5, re-verified in Task 3 Step 3 once the VirtualService coexists; item 4 (timeout) is Task 3 Step 4; item 5 (retry) is structurally covered by Task 3 (VirtualService is the only mechanism, confirmed live) — this plan does not attempt a full behavioral retry proof beyond the config existing, since forcing a real mid-request failure against a 1-replica backend without disturbing the demo isn't reliably achievable, and the plan says so rather than writing a step that looks like it proves something it doesn't; items 6-7 (outlier detection ejection/recovery) are Task 4 Steps 3-4, honestly framed as structural-verification-guaranteed / behavioral-verification-best-effort; items 8-9 (fault injection) are Task 3 Steps 4-6; item 10 (HTTPRoute/VirtualService coexistence) is Task 3 Step 3, the plan's central check; items 11-12 (resource quota, full regression) are Task 5 Steps 1-2.
+- **Spec coverage:** every item in the design doc's verification checklist maps to a step above — items 1-3 (canary ratio, PR-lane non-interference) are Task 2 Steps 4-5, re-verified in Task 3 Step 3 once the VirtualService coexists; item 4 (timeout) is Task 3 Step 4; item 5 (retry) is structurally covered by Task 3 (VirtualService is the only mechanism, confirmed live) — this plan does not attempt a full behavioral retry proof beyond the config existing, since forcing a real mid-request failure against a 1-replica backend without disturbing the demo isn't reliably achievable, and the plan says so rather than writing a step that looks like it proves something it doesn't; items 6-7 (outlier detection ejection/recovery) are Task 4 Steps 3-4, honestly framed as structural-verification-guaranteed / behavioral-verification-best-effort; items 8-9 (fault injection) are Task 3 Steps 4-6; item 10 (HTTPRoute/VirtualService coexistence) is Task 3 Step 3, the plan's central check; items 11-12 (resource quota, full regression) are Task 5 Steps 1-2.
 - **Placeholder scan:** no TBD/TODO. The one open-ended item (Task 4 Step 4's "may or may not demonstrate ejection") is not a placeholder — it's an honestly-flagged empirical uncertainty with a concrete command to resolve it and an explicit instruction for what to do with either outcome, closed out by Task 5 Step 4.
 - **Type/name consistency:** `hello-backend-canary` (Service/Deployment/host) is spelled identically across Tasks 1, 2, 3, 4. The 90/10 weight and 10s/8s timeout values match between Task 2's `HTTPRoute` and Task 3's `VirtualService` default route exactly — this pairing is this plan's single most failure-prone point if it's ever revisited (same risk class as the FG plan's lane-name-patches pairing), flagged explicitly in Global Constraints. `maxEjectionPercent: 100` is consistent across both Task 4 DestinationRules.

@@ -1,89 +1,89 @@
-# OpenTofu 集成設計（vps_oracle 收編 + vps_gcp 沙盒）
+# OpenTofu Integration Design (vps_oracle adoption + vps_gcp sandbox)
 
-日期：2026-09-09
+Date: 2026-09-09
 
-## 背景
+## Background
 
-這個倉庫已經把好幾層基礎設施宣告化了，但每層各有各的收斂機制：compose 檔靠人手 `docker compose up -d`、k3s 靠 ArgoCD 的 GitOps 迴路、宿主機防火牆靠 `host-firewall.sh` 這個冪等腳本、systemd unit 與 dotfiles 靠符號連結納管。
+This repo has already declaratively managed several layers of infrastructure, but each layer has its own convergence mechanism: compose files rely on manual `docker compose up -d`, k3s relies on ArgoCD's GitOps loop, the host firewall relies on the idempotent `host-firewall.sh` script, and systemd units and dotfiles are brought under management via symlinks.
 
-**唯一完全沒有被納管的，是這些東西底下那一層——雲端資源本身。** OCI 的 VCN、subnet、路由表、security list 現在只以文字形式散落在 README 裡（`vps_oracle/README.md` 甚至只能備註「IP 會變，以域名解析為準」）；宿主機層的 iptables 規則有 `host-firewall.sh` 當唯一可信來源，但它上游還有一層 OCI security list，那層在倉庫裡沒有任何痕跡。
+**The only layer with no management at all is the layer beneath these things — the cloud resources themselves.** OCI's VCN, subnet, route table, and security list exist only as prose scattered across the README (`vps_oracle/README.md` can only note "IPs change, defer to domain resolution"); the host-layer iptables rules have `host-firewall.sh` as their single source of truth, but upstream of it sits an OCI security-list layer that leaves no trace in the repo.
 
-倉庫裡目前沒有任何 IaC，宿主機上也沒有 `tofu` / `terraform` / `oci` / `gcloud` 任何一個 CLI。
+The repo currently has no IaC at all, and the host has none of the CLI tools `tofu` / `terraform` / `oci` / `gcloud`.
 
-此外還有一台幾乎空置的 GCP 免費層 e2-micro 實例，目前完全不在這個倉庫的視野內。
+Additionally, there is a nearly idle GCP free-tier e2-micro instance currently outside this repo's field of view.
 
-## 目標與範圍
+## Goals and scope
 
-**首要目標是學習**——在真實環境裡練一套完整的 IaC 工作流，性質等同 `k3s/` 那個「用真實工程當學習平台」的實驗。實用價值是附帶收穫，不是主要驅動力。
+**The primary goal is learning** — practicing a complete IaC workflow in a real environment, equivalent in nature to the `k3s/` "real engineering as a learning platform" experiment. Practical value is a by-product, not the main driver.
 
-Terraform/OpenTofu 的技能實際上是兩半，這次的設計刻意把兩半各分配一台機器：
+Terraform/OpenTofu skill is actually two halves; this design deliberately assigns each half to one machine:
 
-| | 機器 | 練的是 |
+| | Machine | What it practices |
 |---|---|---|
-| **Brownfield** | vps_oracle | `import` 已存在且被 console 手改過的資源、馴服 drift、`ignore_changes`。這台永遠不能重建，只能練這半 |
-| **Greenfield** | vps_gcp | 完整生命週期：從零 `apply` → 改 → `destroy` → 再 `apply` 驗證可重現。這半是 IaC 的靈魂，而在 vps_oracle 上永遠不敢練 |
+| **Brownfield** | vps_oracle | `import` existing resources already hand-modified in the console, tame drift, `ignore_changes`. This machine can never be rebuilt, so it only practices this half |
+| **Greenfield** | vps_gcp | Full lifecycle: `apply` from zero → change → `destroy` → re-`apply` to verify reproducibility. This half is the soul of IaC, and one would never dare practice it on vps_oracle |
 
-**範圍內**：
+**In scope**:
 
-- OCI 側網路與安全資源（VCN / subnet / internet gateway / route table / security list）的收編。
-- GCP 側從零建置一整套（VPC / subnet / firewall rules / e2-micro 實例 / API 啟用 / 預算告警）。
-- 兩份獨立的 root module、獨立 state、獨立憑證與權限。
-- 一份路徑範圍規則檔與 CI 靜態檢查。
+- Adoption of OCI-side network and security resources (VCN / subnet / internet gateway / route table / security list).
+- Building out a full set from zero on the GCP side (VPC / subnet / firewall rules / e2-micro instance / API enablement / budget alert).
+- Two independent root modules, independent state, independent credentials and permissions.
+- One path-scoped rule file and CI static checks.
 
-**非目標**：
+**Non-goals**:
 
-- **不納管 OCI 的運算實例與 boot volume。** 見下方「IAM 硬牆」。
-- **不把 GCP 那台機器整台納入這個倉庫。** 那意味著要長出第二個完整的 `<host>/` 樹（那台跑什麼、怎麼部署、README 怎麼寫），規模大得多，另案處理。這次 `vps_gcp/` 底下只有 `tofu/`。
-- 不接管任何已經有 owner 的層——見「刻意不做的事」。
+- **Not bringing OCI's compute instance and boot volume under management.** See "The IAM wall" below.
+- **Not bringing the whole GCP machine into this repo.** That would mean growing a second complete `<host>/` tree (what runs there, how it deploys, how its README is written), a much larger effort, handled separately. This time `vps_gcp/` holds only `tofu/`.
+- Not taking over any layer that already has an owner — see "Deliberately left undone".
 
-## 機制：OpenTofu 憑什麼能操作 OCI
+## Mechanism: why OpenTofu can operate OCI
 
-一個必要的澄清，因為它直接決定了安全模型。
+A necessary clarification, because it directly determines the security model.
 
-OpenTofu 本身完全不懂任何雲。它只是一個引擎：讀 `.tf` → 比對 desired state 與 state 檔 → 算出差異 → 交給 provider 執行。真正會講 OCI 的是 **provider**，一個獨立的二進位插件，tofu 用 gRPC 跟它溝通。
+OpenTofu itself does not understand any cloud at all. It is only an engine: reads `.tf` → compares desired state against the state file → computes the diff → hands it to a provider to execute. What actually speaks OCI is the **provider**, a separate binary plugin that tofu talks to over gRPC.
 
 ```mermaid
 flowchart LR
-    A[".tf 檔<br/>desired state"] --> B["OpenTofu 核心<br/>算 diff"]
-    S[("state 檔<br/>已知現況")] --> B
-    B -->|gRPC| C["oracle/oci provider<br/>(Oracle 官方維護)"]
+    A[".tf files<br/>desired state"] --> B["OpenTofu core<br/>computes diff"]
+    S[("state file<br/>known current state")] --> B
+    B -->|gRPC| C["oracle/oci provider<br/>(maintained by Oracle officially)"]
     C -->|HTTPS REST| D["OCI API"]
-    D --> E{"IAM 授權檢查"}
-    E -->|policy 允許| F["資源變更"]
-    E -->|policy 不允許| G["403 / 404<br/>硬性拒絕"]
+    D --> E{"IAM authorization check"}
+    E -->|policy allows| F["resource change"]
+    E -->|policy denies| G["403 / 404<br/>hard rejection"]
 ```
 
-`oracle/oci` 是 Oracle 自己寫並維護的，內部包的是他們的 OCI Go SDK，打的是跟 console、跟 `oci` CLI **同一組 REST API**。所以精確的說法是：OCI 提供的是「REST API + IAM 授權模型」，provider 只是把那組 API 包成 tofu 認得的資源型別。tofu 不是被授予了什麼特殊能力，它只是又一個 API client。
+`oracle/oci` is written and maintained by Oracle itself; internally it wraps their OCI Go SDK, hitting the **same set of REST APIs** as the console and the `oci` CLI. So the precise statement is: OCI provides "REST API + IAM authorization model", and the provider just wraps that API set into resource types tofu recognizes. Tofu was not granted any special capability; it is merely another API client.
 
-**由此推出本設計最重要的一條**：tofu 能做什麼，完全等於發給它的那個身分在 IAM 裡被授權做什麼，不多不少。
+**The most important conclusion this design derives**: what tofu can do equals exactly — no more, no less — what the identity it was issued is authorized to do in IAM.
 
-## IAM 硬牆（取代 prevent_destroy）
+## The IAM wall (replacing prevent_destroy)
 
-直覺做法是給運算實例掛 `lifecycle { prevent_destroy = true }`。但那只是 tofu 自己的君子協定，寫在我們自己管的檔案裡，刪一行就沒了。
+The intuitive approach is to attach `lifecycle { prevent_destroy = true }` to the compute instance. But that is only tofu's own gentleman's agreement, written in a file we manage ourselves — delete one line and it's gone.
 
-既然權限的裁決點在 OCI 那端，正確的做法是**在 IAM 層就不給能力**：
+Since the decision point for permissions is on the OCI side, the correct approach is **not granting the capability at the IAM layer in the first place**:
 
-- policy 只授權 `manage virtual-network-family`。
-- **不授權** `manage instance-family`、不授權 block storage 相關。
+- The policy only grants `manage virtual-network-family`.
+- It does **not** grant `manage instance-family`, nor block-storage-related permissions.
 
-這樣即使 `.tf` 寫錯、即使有人在 `vps_oracle/tofu/` 下執行 `tofu destroy`，API 在伺服器端就回 403——它在能力上根本碰不到這台正在跑所有服務的機器。這是硬牆，不是圍欄。
+This way, even if `.tf` is written wrong, even if someone runs `tofu destroy` under `vps_oracle/tofu/`, the API returns 403 on the server side — it is capability-wise unable to touch the machine running all the services. This is a wall, not a fence.
 
-最小權限是在 IAM 設，不是在 Terraform 設，這是本次設計要學到的第一課。
+Least privilege is set at IAM, not in Terraform — that is the first lesson this design aims to learn.
 
-## 目錄佈局
+## Directory layout
 
-依照倉庫既有的「`<host>/` 底下每個子目錄是一個獨立 scope」慣例（與 `compose/`、`k3s/`、`host-native/`、`dotfiles/` 平行），而不是另建一個頂層 `tofu/` 目錄——後者會與倉庫的 host-first 結構正交，多出一種心智模型。
+Follow the repo's existing convention that "each subdirectory under `<host>/` is an independent scope" (parallel to `compose/`, `k3s/`, `host-native/`, `dotfiles/`), rather than creating a separate top-level `tofu/` directory — the latter would be orthogonal to the repo's host-first structure, adding an extra mental model.
 
 ```
 vps_oracle/tofu/
-├── README.md              # 此 scope 的操作與約定
-├── versions.tf            # required_version / required_providers（釘死版本）
+├── README.md              # this scope's operations and conventions
+├── versions.tf            # required_version / required_providers (pinned versions)
 ├── provider.tf            # auth = "InstancePrincipal"
 ├── network.tf             # VCN / subnet / IGW / route table / security list
-└── imports.tf             # import {} 區塊
+└── imports.tf             # import {} blocks
 
 vps_gcp/
-├── README.md              # 這台機器是什麼、目前只納管 tofu 這一層
+├── README.md              # what this machine is; currently only the tofu layer is managed
 └── tofu/
     ├── README.md
     ├── versions.tf
@@ -97,104 +97,104 @@ vps_gcp/
 .claude/rules/tofu-conventions.md   # paths scope: */tofu/**
 ```
 
-兩個獨立 root module、兩份 state。OCI 的 state 壞掉不會卡住 GCP 的工作，兩邊的憑證與權限也天然隔離。
+Two independent root modules, two state files. A broken OCI state won't block GCP work, and the two sides' credentials and permissions are naturally isolated.
 
-## OCI 側細節（brownfield）
+## OCI-side details (brownfield)
 
-用 `import {}` 區塊（宣告式，進 git、可 code review），不用舊的 `tofu import` 指令（一次性副作用，沒有紀錄）。
+Use `import {}` blocks (declarative, committed to git, code-reviewable), not the old `tofu import` command (a one-shot side effect with no record).
 
-待收編資源：`oci_core_vcn`、`oci_core_subnet`、`oci_core_internet_gateway`、`oci_core_route_table`、`oci_core_security_list`。實際清單要等憑證就緒後探查才能確定——特別是 OCI 對「預設」資源有專門的資源型別（`oci_core_default_route_table` / `oci_core_default_security_list`），它們的語意與一般資源不同，要在探查後才知道這台用的是哪種。
+Resources to adopt: `oci_core_vcn`, `oci_core_subnet`, `oci_core_internet_gateway`, `oci_core_route_table`, `oci_core_security_list`. The actual list must wait for exploration once credentials are ready — notably, OCI has dedicated resource types for "default" resources (`oci_core_default_route_table` / `oci_core_default_security_list`) whose semantics differ from the general ones; exploration is needed to know which this machine uses.
 
-**驗收標準：`tofu plan` 輸出 `No changes.`**
+**Acceptance criterion: `tofu plan` outputs `No changes.`**
 
-這一步會比預期久。OCI API 會回一堆 console 從未顯示過的預設欄位，逐個對齊、或判斷哪些該進 `ignore_changes`，就是這節的功課——這正是 brownfield 練習的價值所在，不是障礙。
+This step will take longer than expected. The OCI API returns a host of default fields the console never showed; aligning each one, or deciding which belong in `ignore_changes`, is the exercise of this section — that is the value of brownfield practice, not an obstacle.
 
-## GCP 側細節（greenfield）
+## GCP-side details (greenfield)
 
-那台 e2-micro 目前基本是空的，所以它可以被 tofu **完整擁有，包含 destroy 權**。
+That e2-micro is basically empty right now, so tofu can be given **complete ownership, including destroy rights**.
 
-建置內容：自訂 VPC + subnet、firewall rules、e2-micro 實例、`google_project_service`（把「啟用哪些 API」本身也宣告化）、`google_billing_budget`。
+Buildout contents: custom VPC + subnet, firewall rules, e2-micro instance, `google_project_service` (declaratively managing "which APIs are enabled" itself), `google_billing_budget`.
 
-**免費層是硬邊界，超出就是真的花錢**：e2-micro 僅在 us-west1 / us-central1 / us-east1 免費，30 GB 標準永久磁碟總額，每月 1 GB 出網（不含中國與澳洲）。一個手滑把 `machine_type` 寫成 `e2-medium`、或多掛一顆磁碟，帳單就會出現。因此：
+**The free tier is a hard boundary; exceeding it means real money**: e2-micro is free only in us-west1 / us-central1 / us-east1, 30 GB total standard persistent disk, 1 GB egress per month (excluding China and Australia). One slip — writing `machine_type` as `e2-medium` or attaching one extra disk — and a bill appears. Therefore:
 
-- 機型、區域、磁碟大小寫死為字面值，不用變數，並在 README 標註免費層邊界。
-- 第一批資源就包含 `google_billing_budget` + 告警，不等到「以後再加」。
+- Machine type, region, and disk size are hard-coded as literal values, not variables, and the free-tier boundary is noted in the README.
+- The first batch of resources already includes `google_billing_budget` + alerting, not deferred to "add later".
 
-**驗收標準：`tofu destroy` 之後 `tofu apply` 能完整重現，且重現後 `tofu plan` 為 `No changes.`**
+**Acceptance criterion: after `tofu destroy`, `tofu apply` fully reproduces, and after reproduction `tofu plan` is `No changes.`**
 
-## 認證與權限
+## Authentication and permissions
 
-兩邊刻意不同，這個非對稱性本身就是要學的東西。
+The two sides are deliberately different; the asymmetry itself is part of what's to be learned.
 
-**OCI — Instance Principal**：讓這台實例本身當身分。在 console 建一個 Dynamic Group（匹配這台機的 OCID）+ 一條 policy，provider 設 `auth = "InstancePrincipal"`。磁碟上零長期憑證，憑證自動輪換，也不可能不小心提交進 git。代價是這台機器上的任何行程都用得到這個身分，所以 policy 必須收窄——而收窄本來就是上面「IAM 硬牆」要做的事，兩件事在此收斂為同一件。
+**OCI — Instance Principal**: let this instance itself be the identity. Create a Dynamic Group in the console (matching this machine's OCID) + one policy, and set `auth = "InstancePrincipal"` in the provider. Zero long-lived credentials on disk, automatic credential rotation, and no possibility of accidentally committing one to git. The cost is that any process on this machine can use this identity, so the policy must be narrowed — and narrowing is exactly what "The IAM wall" above is about; the two converge into one thing here.
 
-**GCP — 專用 service account + key**：這裡**拿不到 Instance Principal 的對等物**。Instance Principal 之所以成立，是因為 tofu 就跑在那台 OCI 機器上；從 OCI 機器打 GCP API，取不到 GCP 的 metadata 身分。
+**GCP — dedicated service account + key**: here there **is no Instance Principal equivalent**. Instance Principal works precisely because tofu runs on the OCI machine; hitting the GCP API from the OCI machine cannot obtain a GCP metadata identity.
 
-兩個選項與取捨：
+Two options and the trade-off:
 
-- `gcloud auth application-default login` 的使用者憑證：不用管 key，但等於把**個人帳號的全部權限**交給 tofu，與最小權限背道而馳。
-- 專用 service account + key JSON，角色收窄到 `roles/compute.networkAdmin`、`roles/compute.instanceAdmin.v1`、`roles/serviceusage.serviceUsageAdmin`：私鑰落在磁碟上，需要 gitignore 與人工輪換，但權限邊界清楚。
+- `gcloud auth application-default login` user credentials: no key management, but it hands **the personal account's full permissions** to tofu, running opposite to least privilege.
+- Dedicated service account + key JSON, role narrowed to `roles/compute.networkAdmin`, `roles/compute.instanceAdmin.v1`, `roles/serviceusage.serviceUsageAdmin`: the private key lands on disk, needing gitignore and manual rotation, but the permission boundary is clear.
 
-**本設計採後者**。更正統的做法是 ADC + service account impersonation（磁碟上沒有 SA 私鑰，又保有窄權限），但要多裝 gcloud、多一層設定。第一階段先用 key 跑順，之後再升級成 impersonation——**那次升級本身就是一課**，值得留著當後續練習，而不是一開始就把複雜度堆上來。
+**This design adopts the latter.** The more orthodox approach is ADC + service account impersonation (no SA private key on disk, while keeping narrow permissions), but it needs gcloud installed and one more layer of config. Phase 1 first gets the key path working, then upgrades to impersonation later — **that upgrade itself is a lesson**, worth keeping as a follow-up exercise rather than piling complexity on from the start.
 
-倉庫的 `.gitignore` 已有 `*credentials*.json` 與 `*.key`，剛好接得上；key 仍應存放在倉庫之外。
+The repo's `.gitignore` already has `*credentials*.json` and `*.key`, which happens to fit; the key should still be stored outside the repo.
 
-## State 與機密
+## State and secrets
 
-本機檔案 + gitignore。單人單機夠用，而且 state 沒了還能重新 `import` 救回來（OCI 資源本身還在）。之後若要遷到遠端 backend，**遷移動作本身也是一課**，適合留作後續練習。
+Local files + gitignore. Sufficient for one person on one machine, and if state is lost it can be re-recovered via re-`import` (the OCI resources themselves still exist). If migrating to a remote backend later, **the migration itself is also a lesson**, suitable as a follow-up exercise.
 
-`.gitignore` 需補：`*.tfstate`、`*.tfstate.*`、`.terraform/`、`*.auto.tfvars`。
+`.gitignore` needs additions: `*.tfstate`, `*.tfstate.*`, `.terraform/`, `*.auto.tfvars`.
 
-**`.terraform.lock.hcl` 要提交**——它鎖定 provider 版本與 checksum，跟這個倉庫釘死 image tag / digest 是同一個道理。
+**`.terraform.lock.hcl` should be committed** — it locks provider versions and checksums, the same rationale as pinning image tags / digests in this repo.
 
-## 護欄
+## Guardrails
 
-**規則檔** `.claude/rules/tofu-conventions.md`，`paths` 範圍 `*/tofu/**`，與現有三份路徑範圍規則（`compose-conventions.md`、`k3s-gitops.md`、`docs-layout.md`）同一機制、自動載入。其中最重要的一條紅線，寫法比照 `host-native/host-firewall/README.md` 的 `iptables-save` 紅線：
+**Rule file** `.claude/rules/tofu-conventions.md`, `paths` scope `*/tofu/**`, same mechanism and auto-loading as the three existing path-scoped rules (`compose-conventions.md`, `k3s-gitops.md`, `docs-layout.md`). Its single most important red line, written in the same style as `host-native/host-firewall/README.md`'s `iptables-save` red line:
 
-> **禁止在 `vps_oracle/tofu/` 執行 `tofu destroy`。**
+> **Forbidden to run `tofu destroy` under `vps_oracle/tofu/`.**
 
-（IAM 硬牆已經讓它打不到實例，但紅線仍要寫明——縱深防禦，且對人和 Claude 都是同一份說明。）
+(The IAM wall already makes it unable to reach the instance, but the red line still must be spelled out — defense in depth, and the same explanation for both humans and Claude.)
 
-**CI**：在既有的 `.github/workflows/repo-conventions.yml` 加 `tofu fmt -check` 與 `tofu validate`。兩者都是純靜態檢查，不會碰到線上資源。（`validate` 需要先 `tofu init` 下載 provider 插件——只連 registry，不需要任何雲端憑證。）
+**CI**: add `tofu fmt -check` and `tofu validate` to the existing `.github/workflows/repo-conventions.yml`. Both are pure static checks that never touch live resources. (`validate` needs `tofu init` first to download the provider plugin — only hits the registry, no cloud credentials needed.)
 
-## 階段順序
+## Phase order
 
-1. **Phase 1 — GCP greenfield**。零風險，能立刻跑完一整圈 `apply` / `destroy` / `apply`，建立手感。
-2. **Phase 2 — OCI brownfield 收編**。硬仗，帶著 Phase 1 的手感再上。
-3. **Phase 3（未承諾）— 共享資源池 module**。把 minio bucket + postgres DB 做成 per-service module，讓 `add-service` 從「照 checklist 手動開 prod/dev 兩套池」變成寫幾行 `.tf`。這是唯一有明確實用回報的部分，但它適合當第三題，不適合當第一題：社群 provider 的脾氣會搶走學 Terraform 本身的注意力。**redis ACL 沒有 provider，這條路無論如何都得繼續靠 `gen-users-acl.sh`。**
+1. **Phase 1 — GCP greenfield**. Zero risk, can immediately run a full `apply` / `destroy` / `apply` cycle to build muscle memory.
+2. **Phase 2 — OCI brownfield adoption**. The hard fight; go in carrying Phase 1's muscle memory.
+3. **Phase 3 (uncommitted) — shared resource pool module**. Turn the minio bucket + postgres DB into a per-service module, letting `add-service` go from "manually open prod/dev pools by checklist" to writing a few lines of `.tf`. This is the only part with a clear practical return, but it suits being the third exercise, not the first: the community providers' quirks would steal attention away from learning Terraform itself. **redis ACL has no provider, so this path must keep relying on `gen-users-acl.sh` regardless.**
 
-## 前置條件（需要人工在 console 操作，無法由 Claude 完成）
+## Prerequisites (manual console operations, cannot be done by Claude)
 
-- 安裝 OpenTofu（arm64）。
-- OCI：建立 Dynamic Group 匹配本機 OCID；建立 policy 只授權 `manage virtual-network-family`。
-- GCP：建立專用 service account、賦予上述三個角色、產生 key JSON 並放到倉庫外。
-- GCP：`google_billing_budget` 的權限**掛在帳單帳戶上、不是專案上**，需要在帳單帳戶層級授予 `roles/billing.costsManager`（或等效）。這是容易踩空的一點——專案層級的角色再全也管不到預算。
+- Install OpenTofu (arm64).
+- OCI: create a Dynamic Group matching this machine's OCID; create a policy granting only `manage virtual-network-family`.
+- GCP: create a dedicated service account, grant the three roles above, generate the key JSON and place it outside the repo.
+- GCP: `google_billing_budget`'s permission is **attached to the billing account, not the project**; it needs `roles/billing.costsManager` (or equivalent) granted at the billing-account level. This is an easy spot to miss — however complete the project-level roles are, they don't reach the budget.
 
-## 風險與緩解
+## Risks and mitigations
 
-| 風險 | 緩解 |
+| Risk | Mitigation |
 |---|---|
-| tofu 誤刪 vps_oracle 實例，全站中斷 | IAM 不授予 `manage instance-family`（硬牆）+ 規則檔紅線（縱深） |
-| GCP 超出免費層產生費用 | 機型/區域/磁碟寫死字面值；第一批資源就含預算告警 |
-| state 檔遺失 | OCI 側可重新 `import`；GCP 側可 `destroy` 重建（本來就是設計目標） |
-| SA key 外洩 | 角色收窄至三個；key 存倉庫外；`.gitignore` 已涵蓋該檔名樣式 |
-| OCI drift 永遠收斂不到 No changes | 這是預期中的功課，不是失敗；必要時對特定欄位 `ignore_changes` 並在 README 記錄原因 |
+| tofu accidentally deletes the vps_oracle instance, full outage | IAM does not grant `manage instance-family` (wall) + rule-file red line (defense in depth) |
+| GCP exceeds the free tier and incurs cost | Machine type/region/disk hard-coded as literals; first batch includes budget alerting |
+| state file lost | OCI side re-`import`able; GCP side re-`destroy`-reconstructible (a design goal in the first place) |
+| SA key leaked | Role narrowed to three; key stored outside the repo; `.gitignore` already covers the filename pattern |
+| OCI drift never converges to No changes | This is expected exercise, not failure; `ignore_changes` on specific fields as needed and record the reason in the README |
 
-## 驗證方式
+## Verification method
 
-- **OCI 收編完成**：`tofu plan` 輸出 `No changes.`
-- **GCP 可重現**：`destroy` 後 `apply`，再 `plan` 得 `No changes.`
-- **IAM 硬牆確實存在**（安全的負面驗證）：在 OCI root module 裡放一個 `data "oci_core_instance"` 資料源指向本機，`tofu plan` 應因權限不足而失敗（OCI 對未授權資源回 404）。**這是唯讀操作，不會變更任何東西**，卻能確證 tofu 的身分連「看見」實例都做不到，遑論刪除。驗證後移除該資料源。
-- **CI**：`tofu fmt -check` 與 `tofu validate` 通過。
+- **OCI adoption complete**: `tofu plan` outputs `No changes.`
+- **GCP reproducible**: `destroy` then `apply`, then `plan` yields `No changes.`
+- **IAM wall actually exists** (a negative verification that is safe): place a `data "oci_core_instance"` data source pointing at this machine in the OCI root module; `tofu plan` should fail due to insufficient permission (OCI returns 404 for unauthorized resources). **This is a read-only operation, changes nothing**, yet proves tofu's identity cannot even "see" the instance, let alone delete it. Remove the data source after verification.
+- **CI**: `tofu fmt -check` and `tofu validate` pass.
 
-## 刻意不做的事（YAGNI）
+## Deliberately left undone (YAGNI)
 
-| 不做 | 原因 |
+| Left undone | Reason |
 |---|---|
-| NPM proxy host | 社群 provider 很薄，而 `add-proxy-host.sh` 裡沉澱了三個會**靜默失敗**的坑（SSL 開關自我重置、k3s NodePort 必須填內網 IP、API 改 locations 不重新渲染磁碟配置）。換成 provider 等於把這些用故障換來的經驗丟掉。淨負值 |
-| redis ACL 使用者 | 沒有 provider |
-| docker 容器 / k8s manifest | compose 與 ArgoCD 已經各自擁有那一層。疊上 tofu 等於一個資源兩個 owner |
-| ClouDNS 記錄 | DDNS 動態 IP，子域可能是萬用字元；DNS 記錄是 Terraform 的 hello world，學習價值低 |
-| 遠端 state backend | 第一階段用不上。留作後續練習（遷移動作本身是一課） |
-| 跨雲共用 module | OCI 與 GCP 的資源型別本來就不通用，「多雲共用 module」是幻覺 |
-| OCI 運算實例 / boot volume | 爆炸半徑遠大於價值，且改某些欄位會觸發 destroy-recreate |
+| NPM proxy host | The community provider is thin, and `add-proxy-host.sh` has accumulated three gotchas that **silently fail** (SSL toggle self-resetting, k3s NodePort must use the internal IP, API changing locations doesn't re-render the disk config). Replacing with a provider means throwing away experience bought with failures. Net negative |
+| redis ACL users | No provider |
+| docker containers / k8s manifests | compose and ArgoCD each already own that layer. Layering tofu on top means one resource, two owners |
+| ClouDNS records | DDNS dynamic IP, subdomains may be wildcard; DNS records are Terraform's hello world with low learning value |
+| Remote state backend | Not needed in Phase 1. Keep as a follow-up exercise (the migration itself is a lesson) |
+| Cross-cloud shared module | OCI and GCP resource types are not interchangeable in the first place; the "multi-cloud shared module" is an illusion |
+| OCI compute instance / boot volume | Blast radius far exceeds value, and changing some fields triggers destroy-recreate |

@@ -1,28 +1,28 @@
 # vps_oracle Inspector — Phase 1 (Core + VS Code Checks) Implementation Plan
 
 > **STATUS: EXECUTED 2026-08-16, merged to main and deployed.** All 5 tasks complete, all tests pass, systemd timer live. Two deviations from the text below, both intentional:
-> 1. **Notification text is English, not the Chinese shown in the Task 4 code block and examples** (`已自動處理`/`需要人工確認`/`✅ 一切正常` → `Auto-handled`/`Needs manual review`/`✅ All clear — nothing needed attention`). Explicit user requirement at execution time; the committed `inspect.sh` and the spec's 通知格式 section are the source of truth.
+> 1. **Notification text is English, not the Chinese placeholder text shown in the Task 4 code block and examples** (the placeholders were replaced by the actual English: `Auto-handled`/`Needs manual review`/`✅ All clear — nothing needed attention`). Explicit user requirement at execution time; the committed `inspect.sh` and the spec's Notification format section are the source of truth.
 > 2. **Task 3 Step 5's host-state expectation was stale**: the host had 3 server version dirs (not 2), so the first real run deleted `Stable-df53daab...` (656M) — correct behavior, just different from the "expect no output" note below.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship a real, deployable `vps_oracle/inspector/` that solves the motivating incident end-to-end — detects and cleans up stray VS Code/Claude session process trees and stale `.vscode-server` version directories, sends a Telegram report every run via the already-registered `inspector-tg` apprise target, and runs on a systemd timer.
 
-**Architecture:** Host-native bash (no container — see spec's "架構" section for why). `lib/common.sh` holds the self-protection primitives (self-chain computation, PID identity verification, two-stage kill, apprise sender) shared by everything else. `inspect.sh` is the main entry: it globs `checks/*.sh`, runs each as a subprocess, collects their structured JSON-line output, and sends one aggregated Telegram report regardless of outcome. Each check script is independently executable and self-contained; `inspect.sh` has zero check-specific logic. This phase implements exactly two checks (`stray-vscode-sessions.sh`, `vscode-server-versions.sh`) — the ones that directly address the source incidents — plus the systemd deployment. Docker/k3s hygiene checks are a separate follow-up plan; `inspect.sh`'s glob-based discovery means adding them later requires no changes here.
+**Architecture:** Host-native bash (no container — see spec's "Architecture" section for why). `lib/common.sh` holds the self-protection primitives (self-chain computation, PID identity verification, two-stage kill, apprise sender) shared by everything else. `inspect.sh` is the main entry: it globs `checks/*.sh`, runs each as a subprocess, collects their structured JSON-line output, and sends one aggregated Telegram report regardless of outcome. Each check script is independently executable and self-contained; `inspect.sh` has zero check-specific logic. This phase implements exactly two checks (`stray-vscode-sessions.sh`, `vscode-server-versions.sh`) — the ones that directly address the source incidents — plus the systemd deployment. Docker/k3s hygiene checks are a separate follow-up plan; `inspect.sh`'s glob-based discovery means adding them later requires no changes here.
 
-**Tech Stack:** bash (`set -uo pipefail`, deliberately not `-e` — see Task 1 note), `jq` 1.7 (present on host), `curl`, `/proc` filesystem, systemd (service + timer, no install.sh — see spec's "部署" section).
+**Tech Stack:** bash (`set -uo pipefail`, deliberately not `-e` — see Task 1 note), `jq` 1.7 (present on host), `curl`, `/proc` filesystem, systemd (service + timer, no install.sh — see spec's "Deployment" section).
 
 **Spec:** [`docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md`](../specs/2026-08-15-vps-oracle-inspector-design.md)
 
 ## Global Constraints
 
-- **Report every run, no exceptions**: `inspect.sh` sends exactly one Telegram message per run via the `inspector-tg` apprise target (`http://localhost:30085/notify/inspector-tg` — apprise is a k3s NodePort, not a docker container, see spec's updated "通知格式" section), whether or not anything needed attention. If nothing happened, the message is `✅ 一切正常，無需處理`.
-- **Self-protection is non-negotiable**: every kill path must (1) compute the inspector's own process ancestor chain, (2) re-verify a target PID's identity (start time) immediately before killing it, (3) send `TERM` then wait then `KILL` survivors — never `-9` first, (4) abort the *entire* batch (not just skip one item) if any target overlaps the self-chain. These four rules live in `lib/common.sh` and must have their own automated verification script, not just a manual read-through (spec's "測試方式" §2).
+- **Report every run, no exceptions**: `inspect.sh` sends exactly one Telegram message per run via the `inspector-tg` apprise target (`http://localhost:30085/notify/inspector-tg` — apprise is a k3s NodePort, not a docker container, see spec's updated "Notification format" section), whether or not anything needed attention. If nothing happened, the message is `✅ All clear — nothing needed attention`.
+- **Self-protection is non-negotiable**: every kill path must (1) compute the inspector's own process ancestor chain, (2) re-verify a target PID's identity (start time) immediately before killing it, (3) send `TERM` then wait then `KILL` survivors — never `-9` first, (4) abort the *entire* batch (not just skip one item) if any target overlaps the self-chain. These four rules live in `lib/common.sh` and must have their own automated verification script, not just a manual read-through (spec's "Testing approach" §2).
 - **`INSPECTOR_DRY_RUN=1`**: when set, every check script that would kill/delete must instead print `would-kill`/`would-delete` and take no destructive action. This must be exercised for real (several dry runs) before any real run.
-- **No config-file mutation**: checks only clean up resources or alert; none of them edit compose/k8s config files (spec's "非目標").
+- **No config-file mutation**: checks only clean up resources or alert; none of them edit compose/k8s config files (spec's "Non-goals").
 - **Thresholds are overridable env vars declared at the top of each script**, not hardcoded inline, so they can be tuned later from observed reports without code changes.
 - **systemd runs as `ubuntu`, not root**: killing session processes and calling apprise over HTTP both work fine as the `ubuntu` user; nothing in this phase needs root.
-- **No `install.sh`**: `ExecStart` points directly at the repo checkout path. `git pull`/`git commit` is the deploy step. (Explicitly avoiding the claude-code-notify "forgot to run install.sh" failure mode — see [[claude_code_notify_deploy_path]] territory, and spec's "部署" section.)
+- **No `install.sh`**: `ExecStart` points directly at the repo checkout path. `git pull`/`git commit` is the deploy step. (Explicitly avoiding the claude-code-notify "forgot to run install.sh" failure mode — see [[claude_code_notify_deploy_path]] territory, and spec's "Deployment" section.)
 - **`vps_oracle/inspector/state/` is gitignored** — runtime dedup/comparison state, not version-controlled.
 
 ---
@@ -50,7 +50,7 @@ vps_oracle/inspector/
 └── README.md                        # Task 5
 ```
 
-(The spec's file-tree diagram doesn't list a `tests/` directory, but its "測試方式" section explicitly requires a minimal verification script for `lib/common.sh`'s self-protection functions — `tests/` is where that lives, plus a matching test per check script for the same "don't just eyeball it" reason.)
+(The spec's file-tree diagram doesn't list a `tests/` directory, but its "Testing approach" section explicitly requires a minimal verification script for `lib/common.sh`'s self-protection functions — `tests/` is where that lives, plus a matching test per check script for the same "don't just eyeball it" reason.)
 
 ---
 
@@ -85,7 +85,7 @@ vps_oracle/inspector/
 # lib/common.sh — shared helpers for the vps_oracle inspector.
 # Sourced by inspect.sh and by each checks/*.sh script; never executed
 # directly. See docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md
-# "自我保護規則" for why these specific functions exist — this file is
+# "Self-protection rules" for why these specific functions exist — this file is
 # the highest-risk part of the whole inspector (it's what decides what's
 # safe to kill), so every function here has a matching case in
 # tests/test-common.sh. Don't add a kill/delete path anywhere in this
@@ -540,7 +540,7 @@ check_claude_sessions() {
         2)
           # Self-chain overlap: kill_tree aborted the whole batch per the
           # design's self-protection rule 4. This must surface, not be
-          # swallowed -- spec's "只告警" table has an explicit row for it.
+          # swallowed -- spec's "Alert only" table has an explicit row for it.
           emit_result "alert" "flagged" "claude PID $pid" \
             "skipped: self-chain overlap -- session $session_id (cwd=$cwd) target PID overlapped the inspector's own process chain, entire kill aborted"
           ;;
@@ -765,7 +765,7 @@ git commit -m "Add stray-vscode-sessions check: finished/stuck sessions + orphan
 
 ### Task 3: `checks/vscode-server-versions.sh`
 
-Deletes stale `~/.vscode-server/cli/servers/<version>/` directories: not among the `INSPECTOR_KEEP_SERVER_VERSIONS` (default 2) most-recently-used entries in `lru.json`, and not referenced by any currently-running `server-main.js` process. Scope is deliberately limited to `cli/servers/*` (matches the spec's "6 個版本目錄/3.8G" incident reference) — the separate, much smaller `~/.vscode-server/code-<commit>` CLI-tunnel binaries are out of scope for this check (not mentioned in the spec; note this boundary in the README, Task 5).
+Deletes stale `~/.vscode-server/cli/servers/<version>/` directories: not among the `INSPECTOR_KEEP_SERVER_VERSIONS` (default 2) most-recently-used entries in `lru.json`, and not referenced by any currently-running `server-main.js` process. Scope is deliberately limited to `cli/servers/*` (matches the spec's "6 version directories/3.8G" incident reference) — the separate, much smaller `~/.vscode-server/code-<commit>` CLI-tunnel binaries are out of scope for this check (not mentioned in the spec; note this boundary in the README, Task 5).
 
 **Files:**
 - Create: `vps_oracle/inspector/checks/vscode-server-versions.sh`
@@ -785,7 +785,7 @@ Deletes stale `~/.vscode-server/cli/servers/<version>/` directories: not among t
 # Deletes stale ~/.vscode-server/cli/servers/<version>/ directories:
 # not among the N most-recently-used entries in lru.json, and not
 # referenced by any live server-main.js process. See design spec's
-# "VS Code server 版本目錄堆積" row.
+# "VS Code server-version directory pile-up" row.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
@@ -946,7 +946,7 @@ git commit -m "Add vscode-server-versions check: prune stale server version dire
 # output, and sends exactly one aggregated Telegram report via apprise
 # -- regardless of whether anything needed attention, so "is the
 # inspector still running" is itself observable (design spec's
-# "通知格式" section).
+# "Notification format" section).
 #
 # Not `set -e`: one check script crashing must not abort the whole run
 # and silently skip the report -- a crashing check becomes an alert
@@ -986,7 +986,7 @@ done
 elapsed="$(awk -v s="$start_epoch" -v n="$(date +%s.%N)" 'BEGIN{printf "%.1f", n-s}')"
 
 # Builds the HTML report body from collected JSON lines. Groups into
-# "已自動處理" (tier=auto) / "需要人工確認" (tier=alert) sections
+# "Auto-handled" (tier=auto) / "Needs manual review" (tier=alert) sections
 # matching the spec's example format; a run with nothing to report
 # prints a single reassuring line instead of two empty sections.
 build_report() {
@@ -1008,19 +1008,19 @@ build_report() {
   done < "$results_file"
 
   if [ -z "$auto_lines" ] && [ -z "$alert_lines" ]; then
-    printf '✅ 一切正常，無需處理\n\n本次耗時 %ss' "$elapsed"
+    printf '✅ All clear — nothing needed attention\n\nRun took %ss' "$elapsed"
     return
   fi
 
   local report=""
-  [ -n "$auto_lines" ] && report+="已自動處理"$'\n'"${auto_lines}"$'\n'
-  [ -n "$alert_lines" ] && report+="需要人工確認"$'\n'"${alert_lines}"$'\n'
-  report+="本次耗時 ${elapsed}s"
+  [ -n "$auto_lines" ] && report+="Auto-handled"$'\n'"${auto_lines}"$'\n'
+  [ -n "$alert_lines" ] && report+="Needs manual review"$'\n'"${alert_lines}"$'\n'
+  report+="Run took ${elapsed}s"
   printf '%s' "$report"
 }
 
 report_body="$(build_report)"
-title="🔍 巡檢報告 vps_oracle · $(date '+%Y-%m-%d %H:%M')"
+title="🔍 Inspection report vps_oracle · $(date '+%Y-%m-%d %H:%M')"
 status="$(send_apprise "$title" "$report_body")"
 
 if [ "$status" != "200" ]; then
@@ -1181,40 +1181,40 @@ WantedBy=timers.target
 ```markdown
 # vps_oracle/inspector
 
-Host-level巡檢腳本，非 docker compose 管理（跟 `vps_oracle/k3s/` 一樣是 `<host>/` 下的非 compose 子目錄，見 repo 根 README「目錄結構」一節）。設計背景、分級規則、自我保護規則見
-[`docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md`](../../docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md)。
+Host-level inspection script, not managed by docker compose (like `vps_oracle/k3s/`, it's a non-compose subdirectory under `<host>/` — see the repo root README's "Directory structure" section). For the design background, tiering rules, and self-protection rules, see
+[`docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md`](../../docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md).
 
-## 現況（phase 1）
+## Status (phase 1)
 
-已實作：
-- `checks/stray-vscode-sessions.sh` — 游離/卡死的 claude session、脫離連線的 server-main 樹
-- `checks/vscode-server-versions.sh` — 堆積的 `.vscode-server/cli/servers/*` 版本目錄
+Implemented:
+- `checks/stray-vscode-sessions.sh` — stray/stuck claude sessions, disconnected server-main trees
+- `checks/vscode-server-versions.sh` — piled-up `.vscode-server/cli/servers/*` version directories
 
-尚未實作（見另一份 phase 2 計畫）：docker 層與 k3s 層的資源清理 checks。新增時只要在 `checks/` 加一個新的可執行腳本，`inspect.sh` 用 glob 自動發現，不用改這裡任何現有代碼。
+Not yet implemented (see the separate phase 2 plan): docker-layer and k3s-layer resource-cleanup checks. Adding one later just means dropping a new executable script into `checks/` — `inspect.sh` discovers it via glob, no existing code here needs to change.
 
-**範圍邊界**：`vscode-server-versions.sh` 只清 `cli/servers/<version>/` 這種大目錄（單個 500-650M 級別），不動 `~/.vscode-server/code-<commit>` 這類小得多的 CLI tunnel binary（~27M/個）——spec 沒把它們列進范围，之后想扩再加新 check。
+**Scope boundary**: `vscode-server-versions.sh` only cleans the large `cli/servers/<version>/` directories (each in the 500-650M range), and leaves `~/.vscode-server/code-<commit>` — the much smaller CLI tunnel binaries (~27M each) — alone; the spec didn't list them in scope. Add a new check later if there's a desire to expand.
 
-## 執行
+## Running
 
 ```bash
 cd vps_oracle/inspector
-./inspect.sh                    # 正式跑一次，會發 Telegram
-INSPECTOR_DRY_RUN=1 ./inspect.sh  # 只印 would-kill/would-delete，不動手
+./inspect.sh                    # a real run, sends Telegram
+INSPECTOR_DRY_RUN=1 ./inspect.sh  # only prints would-kill/would-delete, acts on nothing
 ```
 
-## 測試
+## Testing
 
 ```bash
 cd vps_oracle/inspector
 ./tests/test-common.sh
 ./tests/test-stray-vscode-sessions.sh
 ./tests/test-vscode-server-versions.sh
-./tests/test-inspect.sh   # 最後一段會真的打 apprise inspector-tg，Telegram 群組要收得到
+./tests/test-inspect.sh   # the last part actually hits apprise inspector-tg; the Telegram group must be reachable
 ```
 
-`tests/test-common.sh` 是全案最重要的一份測試——它驗證的是「絕不誤殺自己」這條規則本身，不能只靠人工看一遍代碼，見 spec 的「自我保護規則」一節。
+`tests/test-common.sh` is the most important test in the whole project — it verifies the "never mistakenly kill yourself" rule itself, which can't be left to eyeballing the code; see the spec's "Self-protection rules" section.
 
-## 部署
+## Deploy
 
 ```bash
 sudo ln -sf $(pwd)/systemd/docker-gitops-inspector.service /etc/systemd/system/
@@ -1223,18 +1223,18 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now docker-gitops-inspector.timer
 ```
 
-用 symlink 不是複製——改代碼、`git pull`/`git commit` 完就是生效狀態，不用另外跑 install.sh（見 claude-code-notify 的教訓：獨立 install 步驟容易忘記跑）。改動 unit 檔案結構本身（不是 `inspect.sh` 內容）時才需要重新 `daemon-reload`。
+Use symlinks, not copies — after editing code and `git pull`/`git commit`, it's live without running a separate install.sh (see the claude-code-notify lesson: a separate install step is easy to forget to run). You only need to re-`daemon-reload` when the unit file structure itself changes (not the contents of `inspect.sh`).
 
-手動觸發一次：`sudo systemctl start docker-gitops-inspector.service`；看結果：`sudo systemctl status docker-gitops-inspector.service` / `journalctl -u docker-gitops-inspector.service -n 50`。
+Trigger once manually: `sudo systemctl start docker-gitops-inspector.service`; see the result: `sudo systemctl status docker-gitops-inspector.service` / `journalctl -u docker-gitops-inspector.service -n 50`.
 
 ## apprise target
 
-`inspector-tg` 已於 2026-08-16 註冊完成（沿用 vikunja 既有 bot token，指向 Telegram 群組 "OCI System inspection"）。apprise 現在是 k3s NodePort（`http://localhost:30085`），不是 docker 容器，見 spec 文件「通知格式」節的更新說明。
+`inspector-tg` was registered on 2026-08-16 (reusing vikunja's existing bot token, pointed at the Telegram group "OCI System inspection"). apprise is now a k3s NodePort (`http://localhost:30085`), not a docker container, see the spec doc's updated "Notification format" section.
 
-## 上線紀律
+## Go-live discipline
 
-1. `INSPECTOR_DRY_RUN=1` 先跑幾輪，核對報告跟實際狀態相符（尤其 `stray-vscode-sessions.sh` 不能把還在互動的 session 判定為游離）。
-2. 正式模式上線後先觀察幾天的 Telegram 報告，確認沒有誤殺才算穩定——不是一上線就信任自動 kill。
+1. Run `INSPECTOR_DRY_RUN=1` for a few rounds first, checking the report matches actual state (in particular, `stray-vscode-sessions.sh` must not misjudge a still-interactive session as stray).
+2. After going live in real mode, watch a few days of Telegram reports first — stability is confirmed only once there are no wrongful kills, not the moment it goes live trusting auto-kill.
 ```
 
 - [x] **Step 4: Manual deploy + smoke test**
@@ -1248,7 +1248,7 @@ sudo systemctl enable --now docker-gitops-inspector.timer
 sudo systemctl start docker-gitops-inspector.service
 sudo systemctl status docker-gitops-inspector.service --no-pager
 ```
-Expected: `status` shows the last run as `Succeeded` (`Type=oneshot`). Confirm a real report ("🔍 巡檢報告 vps_oracle · ...") landed in the "OCI System inspection" Telegram group — this run is **not** dry-run, so also confirm nothing unexpected got killed/deleted (`journalctl -u docker-gitops-inspector.service -n 50` shows what it did).
+Expected: `status` shows the last run as `Succeeded` (`Type=oneshot`). Confirm a real report ("🔍 Inspection report vps_oracle · ...") landed in the "OCI System inspection" Telegram group — this run is **not** dry-run, so also confirm nothing unexpected got killed/deleted (`journalctl -u docker-gitops-inspector.service -n 50` shows what it did).
 
 - [x] **Step 5: Commit**
 

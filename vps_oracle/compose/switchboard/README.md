@@ -1,59 +1,57 @@
 # vps_oracle/compose/switchboard
 
-通用的、配置驱动的开关 UI（stdlib，`app.py` + `config.py`）。挂在 `proxy` 网络上，NPM 反代成 `https://switchboard.jerome.cloudns.asia`（access list=self-only）。
+A generic, config-driven toggle UI (stdlib, `app.py` + `config.py`). Sits on the `proxy` network and is reverse-proxied via NPM to `https://switchboard.jerome.cloudns.asia` (access list=self-only).
 
-引擎本身不知道任何具体开关是什么——它只读 `switches.ini` 拿到开关清单，对每个开关的 `switches/<id>/{status,on,off}.sh` 三个脚本发号施令：`GET /` 现场跑一遍每个开关的 `status.sh`（不缓存），`POST /toggle` 按当前状态跑 `on.sh` 或 `off.sh`。新增/删除开关只需要加/删一个 `switches/<id>/` 目录 + 三个脚本 + `switches.ini` 里的一个 section，不需要改 `app.py`/`config.py`（但如果新开关要用到新的宿主机路径或密钥，还得改 `docker-compose.yml` 的 volumes/environment 并重建镜像——不是纯配置就够）。设计细节见 [`../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md`](../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md)。
+The engine itself knows nothing about what any specific toggle is — it only reads `switches.ini` for the list of toggles, then drives each toggle's three scripts `switches/<id>/{status,on,off}.sh`: `GET /` runs each toggle's `status.sh` live (no caching), and `POST /toggle` runs `on.sh` or `off.sh` depending on the current state. Adding/removing a toggle only requires adding/removing a `switches/<id>/` directory + three scripts + one section in `switches.ini`, with no change to `app.py`/`config.py` (though if a new toggle needs a new host path or secret you must also change `docker-compose.yml`'s volumes/environment and rebuild the image — config alone isn't enough). Design details in [`../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md`](../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md).
 
-`status.sh` 的退出码是三态契约：exit 0 = **on**；exit 2 = **error**（脚本自己发现的异常，比如读配置文件时的权限错误——跟超时/脚本不存在一样归入 ERROR，绝不能被误读成"安全地关闭了"）；其余非 0 = **off**。`on.sh`/`off.sh` 只有两态：exit 0 = 成功，非 0 = 失败。
+`status.sh`'s exit code is a three-state contract: exit 0 = **on**; exit 2 = **error** (an anomaly the script detected itself, e.g. a permission error reading a config file — treated as ERROR like a timeout or a missing script, never misread as "safely off"); any other non-zero = **off**. `on.sh`/`off.sh` have only two states: exit 0 = success, non-zero = failure.
 
-`status.sh` 的退出码是三态契约：exit 0 = **on**；exit 2 = **error**（脚本自己发现的异常，比如读配置文件时的权限错误——跟超时/脚本不存在一样归入 ERROR，绝不能被误读成"安全地关闭了"）；其余非 0 = **off**。`on.sh`/`off.sh` 只有两态：exit 0 = 成功，非 0 = 失败。
+`status.sh`'s exit code is a three-state contract: exit 0 = **on**; exit 2 = **error** (an anomaly the script detected itself, e.g. a permission error reading a config file — treated as ERROR like a timeout or a missing script, never misread as "safely off"); any other non-zero = **off**. `on.sh`/`off.sh` have only two states: exit 0 = success, non-zero = failure.
 
-当前登记的开关：
+Toggles currently registered:
 
-| id | 说明 |
+| id | description |
 |---|---|
-| `jerome-ccr` | jerome 组的 Claude provider 切换（Official ↔ CCR） |
-| `bridget-ccr` | bridget 组的 Claude provider 切换（Official ↔ CCR） |
-| `evidence-ccr` | evidence 组的 Claude provider 切换（Official ↔ CCR） |
+| `jerome-ccr` | Claude provider switch for the jerome group (Official ↔ CCR) |
+| `bridget-ccr` | Claude provider switch for the bridget group (Official ↔ CCR) |
+| `evidence-ccr` | Claude provider switch for the evidence group (Official ↔ CCR) |
 
-> CCR = [claude-code-router](https://github.com/musistudio/claude-code-router) 路由网关，可路由到**任意** OpenAI 兼容 provider（智谱 GLM、DeepSeek、Qwen……）。智谱只是当前的上游配置，不是 CCR 本身；换上游在 CCR 管理面板改 provider 即可，CCR 开关不用动（详见 [`../ccr/README.md`](../ccr/README.md)）。
-| `jerome-account` | jerome 组的 Claude 订阅账号切换（Jerome ↔ Charles，`CLAUDE_CONFIG_DIR` 指针；正交于 provider 切换） |
-| `bridget-account` | bridget 组的 Claude 订阅账号切换（Jerome ↔ Charles，`CLAUDE_CONFIG_DIR` 指针；正交于 provider 切换） |
-| `evidence-account` | evidence 组的 Claude 订阅账号切换（Jerome ↔ Charles，`CLAUDE_CONFIG_DIR` 指针；正交于 provider 切换） |
+> CCR = [claude-code-router](https://github.com/musistudio/claude-code-router), a routing gateway that can route to **any** OpenAI-compatible provider (Zhipu GLM, DeepSeek, Qwen, ...). Zhipu is only the current upstream config, not CCR itself; to change the upstream just change the provider in the CCR admin panel — the CCR toggles stay untouched (see [`../ccr/README.md`](../ccr/README.md)).
+| `jerome-account` | Claude subscription account switch for the jerome group (Jerome ↔ Charles, `CLAUDE_CONFIG_DIR` pointer; orthogonal to the provider switch) |
+| `bridget-account` | Claude subscription account switch for the bridget group (Jerome ↔ Charles, `CLAUDE_CONFIG_DIR` pointer; orthogonal to the provider switch) |
+| `evidence-account` | Claude subscription account switch for the evidence group (Jerome ↔ Charles, `CLAUDE_CONFIG_DIR` pointer; orthogonal to the provider switch) |
 
-这些开关所属的整个分组切换系统（direnv + 分组 env + CCR + 本 UI + NPM）的完整文档、加新分组的步骤、已知的坑、回滚等，见 [`../ccr/README.md`](../ccr/README.md)；多订阅账号切换（`<组>-account` 开关）的机制与一次性设定见 [`../ccr/ACCOUNTS.md`](../ccr/ACCOUNTS.md)。
+For the full documentation of the whole group-switching system these toggles belong to (direnv + group env + CCR + this UI + NPM), the steps for adding a new group, known gotchas, rollback, etc., see [`../ccr/README.md`](../ccr/README.md); for the mechanism and one-time setup of multi-subscription account switching (the `<group>-account` toggles), see [`../ccr/ACCOUNTS.md`](../ccr/ACCOUNTS.md).
 
-## 账号相关文件清单（Jerome ↔ Yin/Charles，2026-08-16 起 sub2 = 全盘镜像）
+## Account-related file inventory (Jerome ↔ Yin/Charles; as of 2026-08-16, sub2 = full mirror)
 
-两个账号的隔离锚点只剩登录 token。`~/.claude-configs/sub2/`（Charles/Yin 的 `CLAUDE_CONFIG_DIR`）
-里，除 `.credentials.json` 和 `.claude.json` 外的所有条目都软链到 `~/.claude`——**切账号 =
-只换 token**，环境/记忆/历史同一份。
+The only isolation anchor left between the two accounts is the login token. Inside `~/.claude-configs/sub2/` (Charles/Yin's `CLAUDE_CONFIG_DIR`), every entry except `.credentials.json` and `.claude.json` is symlinked to `~/.claude` — **switching accounts = just swapping the token**, with environment/memory/history all the same.
 
-> **维护规则**：`~/.claude` 每出现一个**顶层新条目**，都要补一条 `ln -s ~/.claude/<新条目> sub2/`，
-> 否则 Charles 侧读不到，镜像悄悄失同步（无报错）。`plugins/`、`hooks/`、`scripts/`、`CLAUDE.md`、
-> `settings.json` 的**内容**变化不需要动——它们是目录内内容，经已有软链自动同步。
+> **Maintenance rule**: every time a **new top-level entry** appears under `~/.claude`, add a `ln -s ~/.claude/<new entry> sub2/`,
+> otherwise the Charles side can't read it and the mirror silently falls out of sync (no error). Changes to the **contents** of `plugins/`, `hooks/`, `scripts/`, `CLAUDE.md`,
+> `settings.json` need no action — those are inside directories and sync automatically through the existing symlinks.
 
-### configDir 内（`~/.claude-configs/sub2/`）
+### Inside configDir (`~/.claude-configs/sub2/`)
 
-| 条目 | 类型 | 归属 | 说明 |
+| entry | type | owner | description |
 |---|---|---|---|
-| `.credentials.json` | 真文件 | **Yin 独享** | OAuth 登录 token，账号唯一身份锚点，永不软链 |
-| `.claude.json` | 真文件 | **Yin 独享** | 账号 profile 缓存（email/套餐 tier/rate-limit）+ `modelAccessCache`/eligibility 缓存。共享会让两个账号的准入缓存互相串号，故保留本地 |
-| `.oauth_refresh.lock` | 目录（CLI 内部 mutex） | **各自独享** | CLI 刷新 OAuth token 时的锁，紧挨 `.credentials.json`，按 `CLAUDE_CONFIG_DIR` 各自生成，需要时自己冒出来。软链会让两个账号在刷新彼此不相干的 token 时互相排队，故和 `.credentials.json` 一样永不软链 |
-| `CLAUDE.md` `settings.json` `hooks/` `plugins/` `scripts/` `rules/` | 软链 → `~/.claude` | 共享 | 全局配置/插件/钩子/规则 |
-| `projects/` | 软链 → `~/.claude` | 共享 | **memory**（`projects/<路径>/memory/`）+ 每会话转录 `.jsonl` |
-| `sessions/` `history.jsonl` `session-env/` `shell-snapshots/` `file-history/` | 软链 → `~/.claude` | 共享 | **会话索引/全局历史/环境快照/文件编辑历史** |
-| `cache/` `telemetry/` `stats-cache.json` `downloads/` `backups/` `auto-job-log/` `channels/` `plans/` `tasks/` `ide/` | 软链 → `~/.claude` | 共享 | 缓存/日志/应用状态，覆盖无害 |
-| `daemon/` `daemon.lock` `daemon.log` `daemon.status.json` `jobs/` | 软链 → `~/.claude` | 共享 | 后台 daemon（supervisor/worker 进程状态、`/tmp` socket 索引）+ 任务队列，单机唯一进程的运行时状态，不是账号身份 |
-| `.last-cleanup` `.last-update-result.json` `.claude-code-notify-hooks.json` | 软链 → `~/.claude` | 共享 | 清理/更新/notify 状态 |
-| `claude-direnv-wrapper.sh` `direnv-bash-env.sh` `direnv-load.sh` | 软链 → `~/.claude` | 共享 | 分组注入 wrapper 及 helper（实际按绝对路径引用，链了也不碍事） |
+| `.credentials.json` | real file | **Yin only** | OAuth login token, the single identity anchor for the account, never symlinked |
+| `.claude.json` | real file | **Yin only** | account profile cache (email/plan tier/rate-limit) + `modelAccessCache`/eligibility cache. Sharing would cross-contaminate the two accounts' eligibility caches, so it stays local |
+| `.oauth_refresh.lock` | directory (CLI internal mutex) | **own per account** | the lock the CLI holds while refreshing an OAuth token; sits right next to `.credentials.json`, generated per `CLAUDE_CONFIG_DIR`, appears on demand. Symlinking would make the two accounts queue behind each other while refreshing tokens that are unrelated, so like `.credentials.json` it is never symlinked |
+| `CLAUDE.md` `settings.json` `hooks/` `plugins/` `scripts/` `rules/` | symlink → `~/.claude` | shared | global config/plugins/hooks/rules |
+| `projects/` | symlink → `~/.claude` | shared | **memory** (`projects/<path>/memory/`) + per-session transcripts `.jsonl` |
+| `sessions/` `history.jsonl` `session-env/` `shell-snapshots/` `file-history/` | symlink → `~/.claude` | shared | **session index / global history / environment snapshots / file edit history** |
+| `cache/` `telemetry/` `stats-cache.json` `downloads/` `backups/` `auto-job-log/` `channels/` `plans/` `tasks/` `ide/` | symlink → `~/.claude` | shared | caches/logs/app state, safe to overwrite |
+| `daemon/` `daemon.lock` `daemon.log` `daemon.status.json` `jobs/` | symlink → `~/.claude` | shared | background daemon (supervisor/worker process state, `/tmp` socket index) + task queue; runtime state of a single-machine unique process, not account identity |
+| `.last-cleanup` `.last-update-result.json` `.claude-code-notify-hooks.json` | symlink → `~/.claude` | shared | cleanup/update/notify state |
+| `claude-direnv-wrapper.sh` `direnv-bash-env.sh` `direnv-load.sh` | symlink → `~/.claude` | shared | group-injection wrapper and helpers (actually referenced by absolute path, so symlinking them is harmless) |
 
-### configDir 外、账号切换相关
+### Outside configDir, account-switch related
 
-| 路径 | 类型 | 归属 | 说明 |
+| path | type | owner | description |
 |---|---|---|---|
-| `~/.claude.json`（HOME 根） | 真文件 | **Jerome 独享** | Jerome 的全局状态（默认 configDir 的状态文件在 HOME 根，不在 `~/.claude/` 内） |
-| `~/.claude-configs/sub2/.claude.json` | 真文件 | **Yin 独享** | 见上表 |
-| `~/.claude-account/<组>.env` | 真文件 | **switchboard 可写** | 账号指针：`export CLAUDE_CONFIG_DIR=…sub2` = Yin，空 = Jerome。容器只 mount 此目录 |
-| `~/.claude-provider/<组>.env` | 真文件 | **switchboard 可写** | provider 指针（CCR） |
-| `<组>/.envrc` | 真文件 | 组静态配置 | 只 `source_env_if_exists ~/.claude-account/<组>.env`，永不被 UI 改写 |
+| `~/.claude.json` (HOME root) | real file | **Jerome only** | Jerome's global state (the default configDir's state file sits in HOME root, not inside `~/.claude/`) |
+| `~/.claude-configs/sub2/.claude.json` | real file | **Yin only** | see table above |
+| `~/.claude-account/<group>.env` | real file | **writable by switchboard** | account pointer: `export CLAUDE_CONFIG_DIR=…sub2` = Yin, empty = Jerome. The container only mounts this directory |
+| `~/.claude-provider/<group>.env` | real file | **writable by switchboard** | provider pointer (CCR) |
+| `<group>/.envrc` | real file | group static config | only `source_env_if_exists ~/.claude-account/<group>.env`, never rewritten by the UI |

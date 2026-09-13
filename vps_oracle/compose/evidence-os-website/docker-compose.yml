@@ -15,7 +15,7 @@ services:
       TZ: "Asia/Hong_Kong"
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = evidence-os-website, Forward Port = 80（未发布到宿主机）
+    # NPM reverse proxy: Forward Hostname/IP = evidence-os-website, Forward Port = 80 (not published to the host)
 
 networks:
   proxy:

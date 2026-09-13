@@ -14,7 +14,7 @@
 
 - Image tags pinned to what compose already runs, unchanged: `ghcr.io/gethomepage/homepage:v1.13.2`, `triliumnext/trilium:v0.104.1`. No version bump during migration — isolates any problem to the platform change, not a version change.
 - No CI/Trivy pipeline for either service — both are third-party images with no Dockerfile in this repo to build. Same treatment as Cilium/ArgoCD's chart images in phases A/B: pin the tag in the manifest, let ArgoCD deploy it.
-- `trilium`'s container must NOT set `securityContext.runAsUser` (or any pod-level `runAsUser`). The image's entrypoint starts as root and self-drops privileges to uid 1000 via `su`; forcing a different startup UID breaks that `su` call. This is a deliberate exception — do not attempt to fix it in this phase, it's phase E's Kyverno/Pod-Security-Standard problem (documented in the spec's "已知限制").
+- `trilium`'s container must NOT set `securityContext.runAsUser` (or any pod-level `runAsUser`). The image's entrypoint starts as root and self-drops privileges to uid 1000 via `su`; forcing a different startup UID breaks that `su` call. This is a deliberate exception — do not attempt to fix it in this phase, it's phase E's Kyverno/Pod-Security-Standard problem (documented in the spec's "known limitations").
 - `trilium` storage is a standard dynamically-provisioned `PersistentVolumeClaim` against the `local-path` StorageClass (5Gi) — not a hostPath shortcut, per explicit design decision.
 - Fixed NodePorts: `homepage` → `30081`, `trilium` → `30082`. Confirmed unused as of this plan's writing (only `30090` is taken, by `argocd-server-nodeport`) — re-check with `kubectl get svc -A -o jsonpath='{range .items[*]}{.spec.ports[*].nodePort}{"\n"}{end}'` before applying either Service, in case something else claimed them since.
 - Resource requests/limits: `homepage` → `requests: {cpu: 100m, memory: 192Mi}`, `limits: {cpu: 300m, memory: 384Mi}`; `trilium` → `requests: {cpu: 100m, memory: 320Mi}`, `limits: {cpu: 500m, memory: 640Mi}`. Sized off real `docker stats` usage (110MiB / 246MiB) with headroom.
@@ -788,7 +788,7 @@ Phase C (homepage + trilium migrated) leaves phase D two reusable templates: `ap
 
 **Before starting phase D:** the `workloads` ResourceQuota is close to its `limits.cpu` cap (`<actual number from Task 6 Step 2>`m used of `1` — see phase C's verification). Raise it before deploying the next service, not after hitting the wall.
 
-Phase D's services introduce problems phase C deliberately didn't cover: multi-container stacks with inter-service dependencies (dify), database services where StatefulSet-vs-Deployment actually matters (vikunja+pg), the llm stack's much larger CPU/memory footprint, and 3x-ui's raw TCP passthrough on `39876` (can't go through an HTTP reverse proxy at all — see the roadmap's 現狀約束).
+Phase D's services introduce problems phase C deliberately didn't cover: multi-container stacks with inter-service dependencies (dify), database services where StatefulSet-vs-Deployment actually matters (vikunja+pg), the llm stack's much larger CPU/memory footprint, and 3x-ui's raw TCP passthrough on `39876` (can't go through an HTTP reverse proxy at all — see the roadmap's current-state constraints).
 ```
 
 Replace `<actual number from Task 6 Step 2>` with the real `limits.cpu` used value from Step 2.
@@ -800,7 +800,7 @@ git add vps_oracle/k3s/README.md
 git commit -m "Record phase C self-heal proof and quota headroom for phase D"
 ```
 
-- [ ] **Step 5: Final phase C checklist — confirm every item from the design doc's 驗證清單**
+- [ ] **Step 5: Final phase C checklist — confirm every item from the design doc's verification checklist**
 
 ```bash
 kubectl -n argocd get applications

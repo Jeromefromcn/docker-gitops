@@ -2,9 +2,9 @@
 # checks/docker-oversized-logs.sh
 #
 # Flags container json log files whose actual size exceeds
-# INSPECTOR_LOG_ALERT_BYTES (default 50MiB). Design spec's "容器日誌檔
-# 異常大" row (ALERT ONLY — an oversized log usually means the logging
-# config did not take effect, which needs a human to investigate, not a
+# INSPECTOR_LOG_ALERT_BYTES (default 50MiB). Design spec's "container log
+# files abnormally large" row (ALERT ONLY — an oversized log usually means
+# the logging config did not take effect, which needs a human to investigate, not a
 # truncate). /var/lib/docker/containers is root-only, so this is one of
 # the two spec-sanctioned narrowly-scoped sudo uses (the other is
 # crictl in k3s-containerd-images.sh). Threshold comparison happens in

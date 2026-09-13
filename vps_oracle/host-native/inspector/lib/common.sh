@@ -2,7 +2,7 @@
 # lib/common.sh — shared helpers for the vps_oracle inspector.
 # Sourced by inspect.sh and by each checks/*.sh script; never executed
 # directly. See docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md
-# "自我保護規則" for why these specific functions exist — this file is
+# "self-protection rules" section for why these specific functions exist — this file is
 # the highest-risk part of the whole inspector (it's what decides what's
 # safe to kill), so every function here has a matching case in
 # tests/test-common.sh. Don't add a kill/delete path anywhere in this

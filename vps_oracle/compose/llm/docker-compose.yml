@@ -1,6 +1,6 @@
 services:
   llama-cpp:
-    image: amperecomputingai/llama.cpp:3.4.2   # Ampere Altra 优化版，注意不是 -ampereone 后缀（那是另一颗芯片，在 A1 上跑不了）
+    image: amperecomputingai/llama.cpp:3.4.2   # Ampere Altra optimized build; note it's not the -ampereone suffix (that's a different chip and won't run on A1)
     container_name: llama-cpp
     hostname: llama-cpp
     restart: unless-stopped
@@ -56,8 +56,8 @@ services:
       - proxy
     depends_on:
       - llama-cpp
-    # NPM 反代配置: Forward Hostname/IP = open-webui, Forward Port = 8080（未发布到宿主机）
-    # 域名仍是 ollama.jerome.cloudns.asia（历史命名，后端早已换成 llama.cpp，未改域名）
+    # NPM reverse proxy: Forward Hostname/IP = open-webui, Forward Port = 8080 (not published to the host)
+    # The domain is still ollama.jerome.cloudns.asia (legacy naming — the backend was switched to llama.cpp long ago but the domain wasn't changed)
 
 networks:
   proxy:

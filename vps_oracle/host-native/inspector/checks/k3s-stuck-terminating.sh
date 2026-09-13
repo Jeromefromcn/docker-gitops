@@ -2,7 +2,7 @@
 # checks/k3s-stuck-terminating.sh
 #
 # Flags pods stuck in Terminating (deletionTimestamp set longer than
-# INSPECTOR_TERMINATING_STUCK_SECONDS ago). Design spec's "k3s 卡住的
+# INSPECTOR_TERMINATING_STUCK_SECONDS ago). Design spec's "k3s stuck
 # Terminating pod" row (ALERT ONLY — usually a finalizer/node problem;
 # force-deleting is a human decision).
 set -uo pipefail

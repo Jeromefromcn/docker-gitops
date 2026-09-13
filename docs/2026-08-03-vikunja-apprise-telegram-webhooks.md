@@ -1,84 +1,84 @@
-# 2026-08-03 Vikunja → Apprise → Telegram 通知打通
+# 2026-08-03 Vikunja → Apprise → Telegram notification plumbing
 
-> **[2026-08-12 更新]** 本文档写于"每个 Vikunja 账号各自路由 Telegram + 任务完成通知"这个功能之前，下面对架构/事件数量/Apprise target 的描述是当时（单一 `vikunja-tg` target、三个事件）的状态，已经过时。当前实现（四个事件、每账号各自的 `vikunja-tg-{username}` target）见 [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md)。本文档保留作为原始设计记录，下面标注了几处随之过时、已更新的内容。
+> **[2026-08-12 update]** This document was written *before* the "per-Vikunja-account Telegram routing + task-completion notification" feature. The architecture / event-count / Apprise-target descriptions below reflect the state at that time (a single `vikunja-tg` target, three events) and are now outdated. The current implementation (four events, a per-account `vikunja-tg-{username}` target) is in [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md). This document is kept as the original design record, with a few spots marked below as subsequently outdated and updated.
 
-把 Vikunja 的任务事件（指派给我、提醒到期、逾期）转发到 Telegram 群组 "Vikunja Notification"，消息里带项目名、任务标题、任务超链接。`vikunja-notify-relay` 是 `vps_oracle/compose/vikunja` 这个 compose 栈里的第二个 service（跟 `vikunja` 本体同一个 `docker-compose.yml`，代码在 `vps_oracle/compose/vikunja/notify-relay/`），另外还要有 `vps_oracle/compose/apprise` 这个独立栈。
+Forwards Vikunja's task events (assigned to me, reminder due, overdue) to the Telegram group "Vikunja Notification", with the message carrying the project name, task title, and a task hyperlink. `vikunja-notify-relay` is the second service in the `vps_oracle/compose/vikunja` compose stack (same `docker-compose.yml` as the `vikunja` app itself, code under `vps_oracle/compose/vikunja/notify-relay/`), and there is also the separate `vps_oracle/compose/apprise` stack.
 
-## 架构
+## Architecture
 
 ```
-Vikunja (webhook, 每个 project 4 条)
-  → POST http://vikunja-notify-relay:8080/         （proxy 网络内部，容器名直连，原始 payload 直发）
-    → relay 从 payload 里取 project.title / task.title / task.id，拼成 HTML 消息：
+Vikunja (webhook, 4 per project)
+  → POST http://vikunja-notify-relay:8080/         (inside the proxy network, direct by container name, raw payload forwarded as-is)
+    → relay reads project.title / task.title / task.id from the payload, assembles an HTML message:
       "Project: <b>xxx</b>\nTask: <a href=\"https://vikunja.jerome.cloudns.asia/tasks/{id}\">yyy</a>"
-      → POST http://apprise:8000/notify/vikunja-tg-{username}   （{title, body, format:"html"}，不用 remap；username 从 payload 里取，按账号各自路由——见文首更新说明）
-        → tgram:// 目标（存在 apprise 的持久化 store，key=vikunja-tg-{username}，每个 Vikunja 账号各一个）
-          → 该账号对应的 Telegram 群组（每人一个群组，任务标题渲染成可点的超链接）
+      → POST http://apprise:8000/notify/vikunja-tg-{username}   ({title, body, format:"html"}, no remap; username read from the payload, routed per account — see the update note at the top)
+        → tgram:// target (stored in apprise's persistent store, key=vikunja-tg-{username}, one per Vikunja account)
+          → that account's Telegram group (one group per person, task title rendered as a clickable hyperlink)
 ```
 
-**为什么多了一个 `vikunja-notify-relay` 容器**：最初想直接用 Apprise `/notify/<key>` 的字段重映射（query string 形式的 `:源路径=目标字段`）把 Vikunja 的原始字段搬到 `title`/`body` 上，不用额外写服务。但 remap 只能**一对一改名**，不能把多个字段拼成一个字符串——而"项目名 + 任务标题 + 任务链接"这个需求，天然需要拼接（尤其任务链接本身就是"固定前缀 + 动态 task id"拼出来的，remap 连这个都做不到）。评估过其他不加容器的路子：
+**Why the extra `vikunja-notify-relay` container exists**: the original idea was to use Apprise's `/notify/<key>` field remapping (`:source-path=target-field` in query-string form) to move Vikunja's raw fields onto `title`/`body`, without writing an extra service. But remap can only **rename one-to-one**, not join multiple fields into a single string — and the "project name + task title + task link" requirement inherently needs concatenation (especially the task link, which is itself "fixed prefix + dynamic task id" concatenated; remap can't even do that). Other container-free routes I evaluated:
 
-- 把自定义逻辑塞进 `apprise` 容器（用它的自定义 plugin 机制）——remap 在 Django 视图层就已经把 payload 转换成 `{title,body}` 了，自定义 plugin 根本拿不到原始的多字段 JSON，此路不通，而且绑定挂载脚本进第三方镜像本身也更脆弱。
-- host 上跑 cron 脚本轮询——脱离这个仓库"每个服务都是 docker-compose 栈"的约定，还要自己维护"轮询到哪了"的状态，比 webhook push 更麻烦。
+- stuffing the custom logic into the `apprise` container (via its custom-plugin mechanism) — remap converts the payload to `{title,body}` already at the Django view layer, so a custom plugin never sees the original multi-field JSON; this path is a dead end, and bind-mounting a script into a third-party image is also more fragile.
+- running an on-host cron script that polls — this departs from this repo's "every service is a docker-compose stack" convention and requires self-maintaining "where did the polling get to" state, more trouble than a webhook push.
 
-比较下来一个独立的小容器反而最简单：`python:3.12.7-alpine3.20` 基底，无外部依赖，标准库 `http.server` 写的 ~80 行单文件服务，没有数据库没有持久化，维护面很小。
+Comparing, a small independent container is actually simplest: `python:3.12.7-alpine3.20` base, no external dependencies, a ~80-line single-file service written with the stdlib `http.server`, no database, no persistence, a very small maintenance surface.
 
-## 已注册的四个事件
+## The four registered events
 
-> **[2026-08-12 更新]** 下表原本只有三个事件（不含 `task.updated`）；`task.updated` 后来重新注册用于"任务完成"通知，见表格最后一行和表格下方的更新说明。
+> **[2026-08-12 update]** The table below originally had only three events (no `task.updated`); `task.updated` was later re-registered for the "task completion" notification — see the last row and the update note below the table.
 
-| Vikunja event | 触发时机 | 备注 |
+| Vikunja event | Trigger timing | Notes |
 |---|---|---|
-| `task.assignee.created` | 任务被指派给某人 | 指派给谁就发给谁，按 payload 里的 `assignee.username` 路由（不再假定单用户实例） |
-| `task.reminder.fired` | 任务上设置的提醒时间到达 | 前提是任务本身设置了 reminder；Vikunja 没有"自动距 due date 还有 N 小时"的内建事件 |
-| `task.overdue` | 任务逾期（未完成且过了 due date） | 见下方"`task.overdue` 的触发时机"，不是逾期瞬间触发，是按用户账号设置的每日提醒时间点触发 |
-| `task.updated` | 任务被标记为完成（`done` 变为 `true`） | relay 自行过滤：只有 `done_at` 落在事件时间戳附近的才算"刚完成"，通知该任务全部 assignee；其余 `task.updated`（普通编辑、指派连带触发等）被忽略，见下方更新说明 |
+| `task.assignee.created` | a task is assigned to someone | sent to whoever it's assigned to, routed by `assignee.username` in the payload (no longer assumes a single-user instance) |
+| `task.reminder.fired` | the reminder time set on the task arrives | requires the task to have a reminder set; Vikunja has no built-in "N hours before due date" event |
+| `task.overdue` | the task is overdue (not done and past its due date) | see "`task.overdue` trigger timing" below; not fired the instant it goes overdue, but at the per-user-account daily reminder time |
+| `task.updated` | the task is marked done (`done` becomes `true`) | relay filters it itself: only when `done_at` falls near the event timestamp does it count as "just completed", notifying all assignees of that task; other `task.updated` (ordinary edits, assignee-triggered side effects, etc.) are ignored — see the update note below |
 
-统一发到 `vikunja-notify-relay`，relay 按 payload 里的 `event_name` 分流成不同的消息标题（emoji + 一句话），body 都是同一套"项目名/任务标题/链接"三行格式。
+All delivered to `vikunja-notify-relay`; the relay dispatches by the payload's `event_name` into different message titles (emoji + one line), with the body always the same three-line "project name / task title / link" format.
 
-**`task.updated`：从"没有注册"到"完成检测"（2026-08-12 更新）**：本节原来的结论是"没有注册 `task.updated`"——早期版本注册过，想用来做"任务完成"通知，但发现指派动作本身也会连带触发 `task.updated`（Vikunja 内部行为），两个事件一起注册会导致指派一次收到两条重复消息，于是当时改成只用 `task.assignee.created`，把 `task.updated` 整个拿掉了。这个顾虑本身没有错，但后来换了个解法：不是"整个不注册"，而是重新注册 `task.updated`，由 relay 自己做"完成检测"——只有 `data.task.done == true` 且 `done_at` 落在事件时间戳附近（`DONE_WINDOW_SECONDS`，默认 10 秒）才当作"刚完成"转发，其余情况（含指派连带触发的 `task.updated`）直接忽略，因此不会和 `task.assignee.created` 重复。调研细节、判断依据、已知限制（`repeat_after` 重复任务收不到完成通知）见 [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md)。
+**`task.updated`: from "not registered" to "completion detection" (2026-08-12 update)**: this section's original conclusion was "`task.updated` is not registered" — an early version had registered it, intending "task completion" notifications, but discovered that the assignment action itself also triggers `task.updated` as a side effect (Vikunja internal behavior), and registering both events would yield two duplicate messages for one assignment; so at the time it was changed to use only `task.assignee.created` and `task.updated` was dropped entirely. That concern itself was not wrong, but a different solution came later: instead of "don't register it at all", re-register `task.updated` and have the relay do its own "completion detection" — only when `data.task.done == true` and `done_at` falls near the event timestamp (`DONE_WINDOW_SECONDS`, default 10 seconds) does it count as "just done" and forward; everything else (including the assignee-triggered `task.updated`) is ignored outright, so it won't duplicate `task.assignee.created`. For the investigation details, decision rationale, and known limitations (`repeat_after` recurring tasks don't get completion notifications), see [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md).
 
-事件全集（`GET /api/v1/webhooks/events`）：`project.deleted`、`project.shared.team`、`project.shared.user`、`project.updated`、`task.assignee.created`、`task.assignee.deleted`、`task.attachment.created`、`task.attachment.deleted`、`task.comment.created`、`task.comment.deleted`、`task.comment.edited`、`task.created`、`task.deleted`、`task.overdue`、`task.relation.created`、`task.relation.deleted`、`task.reminder.fired`、`task.updated`、`tasks.overdue`。
+Full event set (`GET /api/v1/webhooks/events`): `project.deleted`, `project.shared.team`, `project.shared.user`, `project.updated`, `task.assignee.created`, `task.assignee.deleted`, `task.attachment.created`, `task.attachment.deleted`, `task.comment.created`, `task.comment.deleted`, `task.comment.edited`, `task.created`, `task.deleted`, `task.overdue`, `task.relation.created`, `task.relation.deleted`, `task.reminder.fired`, `task.updated`, `tasks.overdue`.
 
-## `task.overdue` 的触发时机
+## `task.overdue` trigger timing
 
-查了 Vikunja 源码（`pkg/models/task_overdue_reminder.go`）：`task.overdue`（每个逾期任务一条）和 `tasks.overdue`（一个用户当下所有逾期任务打包成一条）由同一个 cron job 触发，这个 job 每分钟跑一次扫描，但只有在"当前时间 = 这个用户账号设置里的 Overdue Tasks Reminder Time"（Vikunja 账号设置里可调，默认 9:00，按用户自己时区算）时才会真的 dispatch。效果上是**每个用户一天一次**，不是任务一变成逾期就立刻通知。我们只注册了 `task.overdue`（单数，一任务一条），没有注册 `tasks.overdue`——两个都注册会导致同一次触发收到重复信息（一条条 + 一条打包）。
+Checked the Vikunja source (`pkg/models/task_overdue_reminder.go`): `task.overdue` (one per overdue task) and `tasks.overdue` (all of a user's currently-overdue tasks packed into one) are triggered by the same cron job, which scans every minute but only actually dispatches when "current time = this user account's Overdue Tasks Reminder Time setting" (adjustable in Vikunja account settings, default 9:00, in the user's own timezone). In effect it's **once per day per user**, not the moment a task goes overdue. We registered only `task.overdue` (singular, one per task) and not `tasks.overdue` — registering both would produce duplicate messages on the same trigger (individually + one packed).
 
-## 已知限制
+## Known limitations
 
-1. **任务完成通知对重复任务（`repeat_after`）不生效**：2026-08-12 上线的"任务完成"通知（`task.updated` 完成检测，见上面更新说明）对设了 `repeat_after` 的重复任务有已知限制——标记完成后 Vikunja 会在同一次更新里自动重新打开（`done` 又变回 `false`），完成检测判断不到，收不到通知。实测结论和细节见 [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md) 的"错误处理与已知限制"一节。
-2. **没有真正的"全局 webhook"**：Vikunja 的 Settings 里有一个 "Webhook Notifications" 面板，UI 上写明 "receive events from all your projects"，是真正跨 project 生效的全局 webhook，但只能通过浏览器登录态（JWT）配置和调用——`PUT /api/v1/user/settings/webhooks` 这个 API 端点，个人 API Token（即使勾了全部权限）访问一律被拒绝。而且这个全局面板本身能选的事件也只有 `task.overdue`、`task.reminder.fired`、`tasks.overdue` 三个，`task.assignee.created` 不在全局层级开放，本来就只能逐 project 注册。评估后决定不用全局面板：反正 `task.assignee.created` 得靠脚本逐 project 维护，`task.reminder.fired`/`task.overdue` 单独搬去全局面板管理只会多一套配置入口、多一个"全局+project 重复发送"的风险点，所以三个事件统一留在 `register-telegram-webhooks.sh` 里逐 project 注册。
-3. **`VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS=true`**：Vikunja 自带 SSRF 防护，默认拒绝把 webhook（以及头像下载、迁移导入）发到私网 IP 段（`172.16.0.0/12` 等），而 `vikunja-notify-relay`/`apprise` 都在同一个 `proxy` 网络的私网段里，所以必须放开这个开关才能投递成功。这个开关是全局的，不止影响 webhook，是本仓库单用户自托管场景下可接受的取舍，已加到 `vps_oracle/compose/vikunja/docker-compose.yml`。
-4. **relay 和 vikunja 合并成一个 compose 栈**：最初 `vikunja-notify-relay` 是独立目录/独立栈，后来按要求合并进 `vps_oracle/compose/vikunja/docker-compose.yml` 当第二个 service（这个仓库的约定本来就允许"一个 compose 栈可以定义多个 service"），代码搬到 `vps_oracle/compose/vikunja/notify-relay/` 子目录，`build:` 指过去。容器名、网络行为都没变，只是文件位置从独立目录变成 vikunja 栈的一部分。
+1. **Task-completion notification doesn't apply to recurring tasks (`repeat_after`)**: the "task completion" notification shipped 2026-08-12 (`task.updated` completion detection, see the update note above) has a known limitation for recurring tasks with `repeat_after` set — after marking done, Vikunja automatically reopens the task in the same update (`done` flips back to `false`), so the completion detection misses it and no notification is sent. For the tested conclusion and details, see the "Error handling and known limitations" section of [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md).
+2. **There is no true "global webhook"**: Vikunja's Settings has a "Webhook Notifications" panel whose UI says "receive events from all your projects" — a genuinely cross-project global webhook — but it can only be configured and invoked through browser login state (JWT): the `PUT /api/v1/user/settings/webhooks` endpoint is denied outright to personal API Tokens (even with all permissions ticked). And that global panel itself only exposes three events to choose from — `task.overdue`, `task.reminder.fired`, `tasks.overdue` — while `task.assignee.created` is not exposed at the global level, so it could only ever be registered per-project anyway. After evaluation, we decided not to use the global panel: `task.assignee.created` must be maintained per-project by script anyway, and moving `task.reminder.fired`/`task.overdue` over to the global panel would only add another config entry point plus a "global + project duplicate sending" risk, so all three events stay registered per-project in `register-telegram-webhooks.sh`.
+3. **`VIKUNJA_OUTGOINGREQUESTS_ALLOWNONROUTABLEIPS=true`**: Vikunja ships SSRF protection that by default refuses to deliver webhooks (as well as avatar downloads and migration imports) to private IP ranges (`172.16.0.0/12` etc.), and `vikunja-notify-relay`/`apprise` are both in the same `proxy` network's private range, so this switch must be opened for delivery to succeed. The switch is global and affects more than webhooks; it's an acceptable trade-off for this repo's single-user self-hosted scenario, and has been added to `vps_oracle/compose/vikunja/docker-compose.yml`.
+4. **relay and vikunja merged into one compose stack**: `vikunja-notify-relay` was originally a separate directory/stack; later it was merged into `vps_oracle/compose/vikunja/docker-compose.yml` as a second service as requested (this repo's convention already allows "one compose stack can define multiple services"), the code moved to the `vps_oracle/compose/vikunja/notify-relay/` subdirectory with `build:` pointed at it. Container name and network behavior are unchanged — only the file location went from a standalone directory to part of the vikunja stack.
 
-## 复现 / 给新 project 补 webhook
+## Reproducing / adding a webhook for a new project
 
-> **[2026-08-12 更新]** 第 1 步原来是配一次共享的 `vikunja-tg` target；现在改成每个 Vikunja 账号各配一个 `vikunja-tg-<username>` target（见下）。第 3 步现在注册四个事件（新增 `task.updated`），且是按 project 注册、跟账号无关——新增账号只需要做第 1 步，不需要重跑第 3 步（除非同时也新建了 project）。
+> **[2026-08-12 update]** Step 1 originally configured a single shared `vikunja-tg` target; it's now changed to one `vikunja-tg-<username>` target per Vikunja account (see below). Step 3 now registers four events (newly added `task.updated`), and is done per-project, unrelated to accounts — a new account only needs step 1 and does not need to re-run step 3 (unless a new project was also created).
 
 ```bash
-# 1. apprise 侧：给每个 Vikunja 账号各自配一个 target（不是共用一个），
-#    key 按约定拼成 vikunja-tg-<username>（username 全小写）
+# 1. apprise side: configure one target per Vikunja account (not a shared one),
+#    key assembled by convention as vikunja-tg-<username> (username all lowercase)
 docker run --rm --network proxy curlimages/curl:8.10.1 -s -X POST \
   --data-urlencode "urls=tgram://<bot_token>/<chat_id>/" \
   http://apprise:8000/add/vikunja-tg-<username>
 
-# 2. vikunja 栈：构建并启动（vikunja 本体 + vikunja-notify-relay 两个 service）
+# 2. vikunja stack: build and start (the vikunja app + vikunja-notify-relay, two services)
 cd vps_oracle/compose/vikunja
 docker compose up -d --build
 
-# 3. 对指定 project（或不传参数=全部真实 project）注册四个事件的 webhook
-VIKUNJA_TOKEN=tk_xxx ./register-telegram-webhooks.sh          # 全部
-VIKUNJA_TOKEN=tk_xxx ./register-telegram-webhooks.sh 5 7      # 只对 project 5、7
+# 3. register the four-event webhook for the given project (or no arg = all real projects)
+VIKUNJA_TOKEN=tk_xxx ./register-telegram-webhooks.sh          # all
+VIKUNJA_TOKEN=tk_xxx ./register-telegram-webhooks.sh 5 7      # only projects 5 and 7
 ```
 
-第 1 步漏做（或 username 拼错）不会有任何可见报错——那个账号的通知会静默地全部丢失，relay 只在自己的日志里留一行 warning（`docker logs vikunja-notify-relay`），Apprise/Telegram 侧都看不出异常。命名约定、当前已配置的 target 列表见 [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md) 的"Apprise target 命名约定"一节。
+Missing step 1 (or a typoed username) produces no visible error — that account's notifications silently vanish, the relay only leaves a single warning line in its own log (`docker logs vikunja-notify-relay`), and nothing looks off on the Apprise/Telegram side. For the naming convention and the currently-configured target list, see the "Apprise target naming convention" section of [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md).
 
-`VIKUNJA_TOKEN` 从 Vikunja Settings → API Tokens 生成，不落盘、每次手动传入即可（用量很低，没必要为此在 `.env` 里常驻一个高权限 token）。Telegram bot token / chat id 也不进 git，只作为 apprise store 里的运行时数据存在（宿主机路径 `/etc/apprise/config/store`，不在本仓库范围内）。
+`VIKUNJA_TOKEN` is generated from Vikunja Settings → API Tokens, never written to disk, passed manually each time (usage is low enough that there's no point keeping a high-privilege token resident in `.env`). The Telegram bot token / chat id also never enters git, existing only as runtime data in the apprise store (host path `/etc/apprise/config/store`, outside this repo's scope).
 
-**重跑脚本前记得先删旧的 webhook**：Vikunja 的 `PUT .../webhooks` 是"新建"不是"更新"，改了 `register-telegram-webhooks.sh` 里的内容后如果不删旧记录直接重跑，会导致每个事件被注册两次、收到重复消息。删除方式：`GET /api/v1/projects/{id}/webhooks` 列出 id，再逐个 `DELETE /api/v1/projects/{id}/webhooks/{webhook_id}`。
+**Before re-running the script, remember to delete old webhooks first**: Vikunja's `PUT .../webhooks` is "create", not "update"; if you change the contents of `register-telegram-webhooks.sh` and re-run without deleting the old records, each event gets registered twice and you receive duplicate messages. To delete: `GET /api/v1/projects/{id}/webhooks` to list ids, then `DELETE /api/v1/projects/{id}/webhooks/{webhook_id}` one by one.
 
-**改 `notify-relay/app.py` 后要重新 build**：`docker compose up -d --build`（在 `vps_oracle/compose/vikunja/` 下跑），不加 `--build` compose 不会重新打包镜像，容器还是跑旧代码。`docker compose up -d --build` 只会重建有变化的 service，不会动 `vikunja` 本体。
+**After changing `notify-relay/app.py`, rebuild**: `docker compose up -d --build` (run under `vps_oracle/compose/vikunja/`); without `--build`, compose won't re-package the image and the container keeps running the old code. `docker compose up -d --build` only rebuilds changed services and won't touch the `vikunja` app itself.
 
-## 验证方法
+## Verification method
 
-改完代码后先直接 `curl -X POST` relay 的 `http://vikunja-notify-relay:8080/`，带一个手写的假 payload（`{"event_name":"task.assignee.created","data":{"task":{"id":1,"title":"..."},"project":{"title":"..."}}}`），看 `docker logs vikunja-notify-relay` 有没有 `forwarded task.assignee.created -> apprise (jerome): 200`（日志格式带 username，见 `app.py` 里的 `delivery_log_line`；2026-08-12 更新：早期版本日志里没有 username，格式是 `forwarded ... -> apprise: 200`），以及 Telegram 有没有收到消息；再在真实 project 里建一个任务、指派给自己，确认整条链路（`docker logs vikunja`、`docker logs vikunja-notify-relay`、`docker logs apprise` 都要看一遍有没有报错）。上线时两段都反复实测过，包括用临时 project + 临时 http-echo 容器抓过 `task.assignee.created`/`task.updated`/`task.reminder.fired`/`task.overdue` 的真实 payload 结构（用完即删）。
+After changing code, first `curl -X POST` the relay's `http://vikunja-notify-relay:8080/` directly with a hand-written fake payload (`{"event_name":"task.assignee.created","data":{"task":{"id":1,"title":"..."},"project":{"title":"..."}}}`), and check `docker logs vikunja-notify-relay` for `forwarded task.assignee.created -> apprise (jerome): 200` (the log format carries the username, see `delivery_log_line` in `app.py`; 2026-08-12 update: early versions had no username in the log, format was `forwarded ... -> apprise: 200`), and whether Telegram received the message; then create a task in a real project, assign it to yourself, and confirm the whole chain (`docker logs vikunja`, `docker logs vikunja-notify-relay`, `docker logs apprise` all need checking for errors). Both stages were tested repeatedly at rollout, including using temporary projects + a temporary http-echo container to capture the real payload structure of `task.assignee.created`/`task.updated`/`task.reminder.fired`/`task.overdue` (deleted immediately after use).

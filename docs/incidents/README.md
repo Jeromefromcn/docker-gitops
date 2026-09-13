@@ -1,18 +1,18 @@
 # Incidents
 
-按时间倒序记录服务器上服务出问题的排查过程和根因，方便以后同类问题复用经验。
+Reverse-chronological record of troubleshooting sessions and root causes for server-side service failures, so similar problems can reuse the experience later.
 
-新增记录时，文件名格式：`YYYY-MM-DD-<service>-<简短描述>.md`，模板见任意一篇现有记录。
+When adding a record, use the filename format: `YYYY-MM-DD-<service>-<short-description>.md`. Template: see any existing record.
 
-| 日期 | 服务 | 简述 | 记录 |
+| Date | Service | Summary | Record |
 |---|---|---|---|
-| 2026-08-24 | compose/k3s | 设计 K 阶段可观测性时验证 compose 的 prometheus/grafana 连 k3s NodePort，多网络容器预设网关解析到错的 docker network（非 proxy 网），落入防火墙默认 REJECT；compose 的 network priority 字段实测无效（compose 不转发给 engine），改把项目自己的 default 网络设成 internal 让 proxy 成为唯一出口 | [链接](2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md) |
-| 2026-08-24 | k3s/compose | 设计 K 阶段可观测性时验证 k3s pod 能否主动连 compose 容器网络，发现完全不通；根因是 Cilium/istio-cni 既有的 fwmark 0x200 重定向机制把封包导去 lo 黑洞，判定不修、改走反方向设计 | [链接](2026-08-24-k3s-pod-to-docker-bridge-blackhole.md) |
-| 2026-08-19 | npm/k3s | Cilium socket-LB 收窄到 host namespace（istio-cni 需要）意外拿掉 NPM 反代到 k3s NodePort 的隐性依赖，全部 NodePort 反代失联；host-firewall 补显式放行 + 新增 host-netns relay 补上无监听者的缺口 | [链接](2026-08-19-npm-to-k3s-nodeport-outage.md) |
-| 2026-08-17 | trivy-operator | 两处 Helm values 误放层级致扫描并发限制从未生效 + cilium 同 job 内多 container 自我抢锁 + 全部 arm64 单架构镜像扫描必败，叠加触发 IO PSI 告警；修正层级、关闭 initContainer 扫描、根治 arm64 扫描 | [链接](2026-08-17-trivy-operator-scan-concurrency-io-pressure.md) |
-| 2026-08-17 | k3s | 节点内存超卖 110%，jaeger/trivy 相继被 cgroup OOM Kill，页缓存抖动触发 IO PSI 告警；调高两处 limit + 补巡检 check + 收窄告警噪音 | [链接](2026-08-17-k3s-memory-overcommit-io-pressure.md) |
-| 2026-08-15 | vscode-server | 远程会话堆积引发资源尖峰（负载 38.7），根因链上游为 ccr 卡死 bug | [链接](2026-08-15-vscode-sessions-resource-spike.md) |
-| 2026-08-15 | ccr | VS Code 扩展经 ccr 走第三方 provider 逐 token SSE 致会话卡死，SSE 合并中间件修复；同日下午按 delta 类型调大合并窗口（合并率 3-5x→23x，见文末后记二） | [链接](2026-08-15-ccr-vscode-extension-stall.md) |
-| 2026-08-06 | npm | access list 误拦流量：daemon 重启后 proxy 网内容器 IP 漂移，与 xray DNS 覆写和放行规则错位，修复为钉静态 IP | [链接](2026-08-06-proxy-access-ip-mismatch.md) |
-| 2026-08-06 | k3s/docker | k3s 装载 br_netfilter 使 Docker 残留 raw 表规则生效，bridge 内容器互连失败 | [链接](2026-08-06-br-netfilter-stale-iptables-rules.md) |
-| 2026-07-24 | 3x-ui | VLESS 连不上，重启容器恢复，根因指向健康检查过浅 | [链接](2026-07-24-3x-ui-vless-unreachable.md) |
+| 2026-08-24 | compose/k3s | While designing K-phase observability, verified that compose's prometheus/grafana could reach k3s NodePort. A multi-network container's preconfigured gateway resolved to the wrong docker network (not the proxy network) and fell into the firewall default REJECT; compose's network `priority` field proved ineffective in practice (compose does not forward it to the engine), so the project's own default network was set to `internal` to make the proxy the only egress | [link](2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md) |
+| 2026-08-24 | k3s/compose | While designing K-phase observability, verified whether a k3s pod could actively reach the compose container network and found it was completely unreachable; root cause is the existing fwmark 0x200 redirect mechanism from Cilium/istio-cni, which diverts packets to the lo blackhole. Decided not to fix it and to design in the opposite direction instead | [link](2026-08-24-k3s-pod-to-docker-bridge-blackhole.md) |
+| 2026-08-19 | npm/k3s | Narrowing Cilium socket-LB to the host namespace (required by istio-cni) accidentally removed a hidden dependency NPM relied on to reverse-proxy to k3s NodePorts, cutting off all NodePort reverse proxies; host-firewall added explicit allows + a new host-netns relay to fill the gap where no listener existed | [link](2026-08-19-npm-to-k3s-nodeport-outage.md) |
+| 2026-08-17 | trivy-operator | Two Helm values were misplaced in the hierarchy so the scan concurrency limit never took effect + multiple containers in the same cilium job contended for the same lock + all arm64 single-arch image scans inevitably failed; combined, these triggered the IO PSI alert. Fixed the hierarchy, disabled initContainer scanning, and fixed arm64 scanning at the root | [link](2026-08-17-trivy-operator-scan-concurrency-io-pressure.md) |
+| 2026-08-17 | k3s | Node memory overcommitted at 110%, jaeger/trivy were OOM-killed by their cgroups in succession, and page-cache thrashing triggered the IO PSI alert; raised two limits + added an inspector check + reduced alert noise | [link](2026-08-17-k3s-memory-overcommit-io-pressure.md) |
+| 2026-08-15 | vscode-server | Accumulated remote sessions caused a resource spike (load 38.7); the upstream root-cause chain is the ccr stall bug | [link](2026-08-15-vscode-sessions-resource-spike.md) |
+| 2026-08-15 | ccr | VS Code extension going through ccr to a third-party provider with per-token SSE caused the session to stall; fixed with the SSE coalescing middleware; the same afternoon, tuned the coalescing window per delta type (coalescing rate 3-5x → 23x, see postscript 2 at the end) | [link](2026-08-15-ccr-vscode-extension-stall.md) |
+| 2026-08-06 | npm | access list incorrectly blocked traffic: after the daemon restart, container IPs on the proxy network drifted, misaligning with xray's DNS override and the allow rules; fixed by pinning static IPs | [link](2026-08-06-proxy-access-ip-mismatch.md) |
+| 2026-08-06 | k3s/docker | k3s loading `br_netfilter` activated Docker's stale raw-table rules, breaking inter-container connectivity inside a bridge | [link](2026-08-06-br-netfilter-stale-iptables-rules.md) |
+| 2026-07-24 | 3x-ui | VLESS unreachable, recovered by restarting the container, root cause points to the health check being too shallow | [link](2026-07-24-3x-ui-vless-unreachable.md) |

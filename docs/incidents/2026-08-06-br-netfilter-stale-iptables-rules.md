@@ -1,80 +1,80 @@
-# 事故記錄：br_netfilter 引爆 Docker 殘留 iptables 規則，導致 bridge 內部容器互連失敗
+# Incident: br_netfilter activated Docker's stale iptables rules, breaking inter-container connectivity inside a bridge
 
-日期：2026-08-06
-狀態：已解決
-本文件刻意不提交 git，純粹留作排查過程的忠實記錄。
+Date: 2026-08-06
+Status: resolved
+This file is deliberately not committed to git, kept purely as a faithful record of the investigation.
 
-## 背景：完整因果鏈的起點
+## Background: the start of the full causal chain
 
-這個問題的起點，是使用者為了給 k3s 騰出記憶體，手動 `docker compose down` 了 `programming-learning-platform` 這個不屬於本 repo 管理的專案（見 [container-topology.md](../container-topology/v1.md)「不受本仓库管理的其他项目」一節）。k3s 安裝過程中發現這個 compose 其實還有用，於是使用者又把它 `docker compose up` 回來——**這個 down/up 週期，就是後面一連串問題的真正起點**，跟這次 k3s 安裝工作本身交織在一起，缺一不可。
+The starting point of this problem is that the user, to free up memory for k3s, manually `docker compose down`'d `programming-learning-platform`, a project not managed by this repo (see the "projects not managed by this repo" section in [container-topology.md](../container-topology/v1.md)). During the k3s installation it turned out this compose was actually still needed, so the user `docker compose up`'d it again — **this down/up cycle is the true starting point of the chain of problems that followed**, intertwined with this k3s installation work itself, and both are necessary to explain what happened.
 
-## 完整時間線（使用者提供的關鍵背景 + 技術排查串起來）
+## Full timeline (key background from the user + technical investigation woven together)
 
-1. **使用者操作**：`docker compose down` 停掉 `programming-learning-platform`，釋放記憶體給 k3s 安裝用
-2. **這次任務**：Task 1 安裝 k3s，systemd unit 的 `ExecStartPre` 執行 `modprobe br_netfilter`——這是 Kubernetes 網路的標準前提條件，載入後連帶把全機共用的 `net.bridge.bridge-nf-call-iptables` 打開，效果是「連同一個 docker bridge 網路內部的容器互連流量，都要送去給 iptables 的 `raw`/`PREROUTING`、`FORWARD` 等 chain 評估」——這在此之前是不會發生的
-3. **使用者操作**：發現 `programming-learning-platform` 還有用，`docker compose up` 把它帶回來。這次 up 建立了一個全新的 bridge（`br-b951f3fb0958`），但 Docker 自己在稍早 `down` 掉舊網路時，沒有把它自己加在 `raw` table 裡的防 IP 偽造規則清乾淨——留下幾條指向已經不存在的舊 bridge 介面（`br-66885a1f7aad`）的殘留 `DROP` 規則。這些規則因為例外條件指向的介面已經不存在，「介面不等於一個不存在的東西」永遠成立，等於變成無條件擋掉所有送到這幾個容器 IP 的封包
-4. **使用者發現**：`up` 回來之後服務不可用——因為 `br_netfilter` 已經在第 2 步被打開了，第一次讓這批殘留規則真正發揮作用（在 `br_netfilter` 打開之前，這類殘留規則完全無害，純 bridge 內部流量根本不會被送進 `raw`/`PREROUTING` 去比對）
-5. **使用者操作**：嘗試重啟 docker daemon 來解決服務不可用的問題——**這個重啟沒有解決 `programming-learning-platform` 的問題**（殘留的 `raw` table 規則不會因為 daemon 重啟而被清掉，因為它們掛在已經不存在的介面名稱上，daemon 重啟不會主動去比對現存介面清單做這種清理），但**把 `npm`、`3x-ui` 等所有掛在 `proxy` 網路上的容器 IP 全部打亂重新分配了一次**——這正是後續一連串 NPM access list / 3x-ui 代理訪問不了問題的根因（詳見另一份文件 [2026-08-06-proxy-access-ip-mismatch.md](2026-08-06-proxy-access-ip-mismatch.md)，這裡不重複展開，只在因果鏈裡點出關聯）
-6. **後續排查**（本文重點）：使用者回報 `programming-learning-platform` 的 docker 網路內部，任何兩個容器之間都連不通，問是不是這次 k3s 相關的操作導致的
+1. **User action**: `docker compose down` stopped `programming-learning-platform` to free memory for the k3s installation
+2. **This task**: Task 1 installs k3s; the systemd unit's `ExecStartPre` runs `modprobe br_netfilter` — this is a standard Kubernetes network precondition. Loading it also turns on the host-wide `net.bridge.bridge-nf-call-iptables`, whose effect is that "even inter-container traffic within the same docker bridge network gets sent to iptables' `raw`/`PREROUTING`/`FORWARD` and other chains for evaluation" — which did not happen before
+3. **User action**: found `programming-learning-platform` was still needed, `docker compose up` brought it back. This up created a brand-new bridge (`br-b951f3fb0958`), but when Docker itself had `down`'d the old network earlier, it did not clean up the anti-IP-spoofing rules it had added to the `raw` table — leaving behind several stale `DROP` rules pointing at an old bridge interface (`br-66885a1f7aad`) that no longer existed. Because the exception condition's interface no longer exists, "interface is not equal to a nonexistent thing" is always true, effectively becoming an unconditional drop of all packets destined for these few container IPs
+4. **User found**: after `up`, the service was unreachable — because `br_netfilter` had already been turned on in step 2, this was the first time this batch of stale rules actually took effect (before `br_netfilter` was turned on, such stale rules were completely harmless, since pure bridge-internal traffic was never sent into `raw`/`PREROUTING` for matching)
+5. **User action**: tried restarting the docker daemon to fix the unreachability — **this restart did not fix `programming-learning-platform`** (the stale `raw` table rules are not cleared by a daemon restart, because they hang on interface names that no longer exist and the daemon restart does not proactively compare against the existing interface list to do that kind of cleanup), but it **reshuffled the IPs of all containers on the `proxy` network, including `npm` and `3x-ui`** — this is exactly the root cause of the subsequent chain of NPM access-list / 3x-ui proxy-unreachable problems (see the other record [2026-08-06-proxy-access-ip-mismatch.md](2026-08-06-proxy-access-ip-mismatch.md); not repeated here, only pointed out in the causal chain)
+6. **Follow-up investigation** (focus of this record): the user reported that within `programming-learning-platform`'s docker network, no two containers could reach each other, asking whether this was caused by the k3s-related operations
 
-## 技術排查過程
+## Technical investigation
 
-### 第一步：確認現象、排除表面原因
+### Step 1: confirm the symptom, rule out surface causes
 
-- `docker exec programming-learning-platform-nginx-1 nc -zv -w3 172.18.0.3 9090` 逾時（`Operation timed out`，不是「連線被拒絕」，代表封包在網路層被擋，不是應用程式沒在監聽）
-- 換好幾組容器互測（nginx→prometheus、nginx→mysql、api-server→mysql）全部一樣連不通，排除是單一 flow 或單一容器的問題
-- 對照組：我們自己的 monitoring stack（grafana→prometheus，同樣是 bridge 內部互連）完全正常——確認不是全機通殺，只有 `programming-learning-platform` 這個網路中招
+- `docker exec programming-learning-platform-nginx-1 nc -zv -w3 172.18.0.3 9090` timed out (`Operation timed out`, not "connection refused", meaning packets were dropped at the network layer, not that the application was not listening)
+- Tried several container pairs (nginx→prometheus, nginx→mysql, api-server→mysql) all unreachable the same way, ruling out a single flow or single container
+- Control group: our own monitoring stack (grafana→prometheus, also bridge-internal interconnect) worked perfectly — confirming it was not a host-wide block, only `programming-learning-platform`'s network was affected
 
-### 第二步：定位機制——確認是 br_netfilter
+### Step 2: locate the mechanism — confirm it is br_netfilter
 
-`lsmod | grep br_netfilter` 確認模組已載入，`sysctl net.bridge.bridge-nf-call-iptables` 顯示 `= 1`。做了一次決定性的對照測試：臨時把這個 sysctl 設回 `0`，`programming-learning-platform` 的容器互連立刻恢復正常；設回 `1`，問題立刻重現。這證實了**機制**（是這個開關在起作用），但還沒找到**具體是哪條規則**在擋。
+`lsmod | grep br_netfilter` confirmed the module was loaded, and `sysctl net.bridge.bridge-nf-call-iptables` showed `= 1`. Ran a decisive control test: temporarily set this sysctl back to `0`, and `programming-learning-platform`'s container interconnect recovered immediately; set it back to `1`, and the problem immediately reproduced. This confirmed the **mechanism** (this switch is at play), but had not yet found **which specific rule** is blocking.
 
-### 第三步：追蹤封包實際去向
+### Step 3: trace where packets actually go
 
-依序排除了以下幾種可能，逐一用實測證據排除：
-- **bridge port STP 狀態**：`bridge link show` 確認所有 port 都是 `forwarding`，不是 `blocking`
-- **tc/nftables/ethtool 層級過濾**：veth 上沒有 tc filter、沒有 XDP drop 計數、沒有額外的 nftables bridge family 表
-- **ebtables**：規則是空的，policy 全部 ACCEPT
-- **ARP 快取過期**：檢查來源容器的 ARP 表，目的地 MAC 位址是對的、跟目標容器現在的真實 MAC 一致
-- **conntrack 狀態**：（一開始這台機器沒裝 conntrack 工具，使用者授權後現場 `apt install conntrack` 裝上）即時監看 conntrack 事件，發現**這個特定 flow 從頭到尾沒有在 conntrack 裡建立任何紀錄**——代表封包在進入連線追蹤系統之前就已經被處理掉了，指向 `raw` table（`raw` table 在 conntrack 之前被評估，是唯一能讓封包完全不留下 conntrack 紀錄就被丟棄的地方）
+Ruled out the following possibilities in order, each with actual test evidence:
+- **bridge port STP state**: `bridge link show` confirmed all ports were `forwarding`, not `blocking`
+- **tc/nftables/ethtool-level filtering**: no tc filter on the veth, no XDP drop counter, no extra nftables bridge-family tables
+- **ebtables**: rules were empty, policy all ACCEPT
+- **ARP cache expiry**: checked the source container's ARP table, the destination MAC address was correct and matched the target container's current real MAC
+- **conntrack state**: (this machine initially did not have the conntrack tool installed; after the user authorized it, installed `apt install conntrack` on the spot) live-monitored conntrack events and found **this specific flow never created any record in conntrack from start to finish** — meaning the packets were already handled before entering the connection-tracking system, pointing to the `raw` table (the `raw` table is evaluated before conntrack and is the only place that can drop packets without leaving any conntrack record)
 
-### 第四步：在 raw table 找到真正的規則
+### Step 4: find the actual rules in the raw table
 
-`iptables -t raw -L PREROUTING -n -v -x --line-numbers` 列出完整規則，找到成對出現的兩組規則，同樣的目的地 IP（`172.18.0.2` 到 `172.18.0.8`），但引用了兩個不同的 bridge 介面：
+`iptables -t raw -L PREROUTING -n -v -x --line-numbers` listed the full rules and found two paired groups of rules pointing at the same destination IPs (`172.18.0.2` through `172.18.0.8`) but referencing two different bridge interfaces:
 
 ```
-DROP  !br-66885a1f7aad  ->  172.18.0.3   (4967 個封包命中過，持續在累加)
-...（172.18.0.2/4/5/6/7/8 同樣模式，共 7 條）
+DROP  !br-66885a1f7aad  ->  172.18.0.3   (4967 packets hit, still accumulating)
+...(same pattern for 172.18.0.2/4/5/6/7/8, 7 rules total)
 
-DROP  !br-b951f3fb0958  ->  172.18.0.3   (0 個封包命中過)
-...（同樣的 7 個 IP，共 7 條）
+DROP  !br-b951f3fb0958  ->  172.18.0.3   (0 packets hit)
+...(same 7 IPs, 7 rules total)
 ```
 
-`ip link show br-66885a1f7aad` 回報 `Device "br-66885a1f7aad" does not exist`——確認這是已經被刪除的舊 bridge。因為 iptables 由上而下評估、命中第一條就停止，所有流量都先撞上這組指向不存在介面的殘留規則被擋下，新規則（`br-b951f3fb0958` 那組）完全沒有機會被評估到，所以顯示 0 命中，不代表它們沒問題，只是輪不到它們。
+`ip link show br-66885a1f7aad` reported `Device "br-66885a1f7aad" does not exist` — confirming this is an already-deleted old bridge. Because iptables evaluates top-down and stops at the first hit, all traffic first hits this group of stale rules pointing at a nonexistent interface and gets dropped, and the new rules (the `br-b951f3fb0958` group) never get a chance to be evaluated — hence showing 0 hits, not because they are fine, but because they never get a turn.
 
-### 第五步：精準修復
+### Step 5: precise fix
 
-只刪掉那 7 條指向 `br-66885a1f7aad` 的殘留規則（`iptables -t raw -D PREROUTING <行號>`，從大到小刪以免行號位移錯亂），完全不動 `bridge-nf-call-iptables`（保持 `1`，k3s/Cilium 需要的行為原封不動）。刪完立刻重測，`172.18.0.3:9090` 從逾時變成 `open`。
+Only deleted those 7 stale rules pointing at `br-66885a1f7aad` (`iptables -t raw -D PREROUTING <line-number>`, deleting from largest to smallest to avoid line-number shift), completely leaving `bridge-nf-call-iptables` alone (keeping `1`, the behavior k3s/Cilium needs, untouched). Immediately retested after deletion, and `172.18.0.3:9090` changed from timeout to `open`.
 
-另外掃了一遍整個 `raw` table，比對規則裡引用的所有介面名稱跟目前 `ip link show type bridge` 真實存在的介面清單，確認沒有其他殘留（只剩引用現存介面的規則）。
+Also swept the entire `raw` table, compared every interface name referenced in rules against the currently-existing interface list from `ip link show type bridge`, and confirmed no other stale rules remained (only rules referencing existing interfaces).
 
-### 第六步：完整驗證
+### Step 6: full verification
 
-- `programming-learning-platform` 四組容器兩兩互連全部打通
-- 我們自己的 monitoring stack（grafana↔prometheus）沒受影響
-- k3s node 狀態 `Ready`、`cilium status` 顯示 `Cilium: OK`
-- 全機容器狀態總覽，沒有其他異常
+- All four container pairs in `programming-learning-platform` connect to each other
+- Our own monitoring stack (grafana↔prometheus) unaffected
+- k3s node status `Ready`, `cilium status` shows `Cilium: OK`
+- Full host container status overview, no other anomalies
 
-## 回答幾個直接的問題
+## Answering a few direct questions
 
-**這跟 k3s 有沒有關係？** 有，但關係是「觸發條件」，不是「k3s 本身有 bug」。`br_netfilter` + `bridge-nf-call-iptables=1` 是所有主流 Kubernetes 發行版/CNI 方案的標準前提條件，k3s 這樣做完全正常、照文件走。
+**Is this related to k3s?** Yes, but the relationship is "trigger condition", not "k3s itself has a bug". `br_netfilter` + `bridge-nf-call-iptables=1` is a standard precondition of all mainstream Kubernetes distributions/CNI solutions, and k3s doing this is completely normal and follows the docs.
 
-**這是真實的 bug 嗎？** 是，但 bug 在 **Docker 自己身上**：dockerd 在網路被 `down`/重建時，沒有把它自己加在 `raw` table 裡的防 IP 偽造規則清乾淨，留下指向已刪除介面的殘留規則。這個 bug 在純 Docker 環境（沒有任何 Kubernetes/CNI 組件）下永遠不會被察覺，因為純 bridge 內部流量根本不會被送進 `raw`/`PREROUTING` 去比對這些規則——k3s 沒有製造這個 bug，只是第一次打開了一扇會讓這個潛伏的殘留規則產生實際效果的門。
+**Is this a real bug?** Yes, but the bug is in **Docker itself**: when a network is `down`'d/rebuilt, dockerd does not clean up the anti-IP-spoofing rules it added to the `raw` table, leaving stale rules pointing at already-deleted interfaces. This bug is never noticed in a pure Docker environment (with no Kubernetes/CNI components), because pure bridge-internal traffic is never sent into `raw`/`PREROUTING` to be matched against these rules — k3s did not create this bug, it just opened a door for the first time that let this latent stale rule take actual effect.
 
-**有辦法避免嗎？** 沒辦法根除（不能不裝 `br_netfilter`，那是 k3s 網路能不能動的硬性前提；也沒辦法修 dockerd 自己的清理邏輯，那是上游程式碼）。能做的是**降低觸發機率**跟**提早發現**：
-- 避免不必要的 `docker compose down` + `up` 週期，尤其避免在記憶體緊張、需要臨時騰資源這種情境下頻繁對同一個網路做 down/up（這正是這次的起點）
-- 如果之後又遇到「同一個 docker bridge 內部容器突然互連不通」這個特定症狀，現在有完整可複製的排查路徑：`sysctl` 開關對照測試鎖定機制 → conntrack 有沒有留下紀錄判斷是不是卡在 `raw` table → 比對 `iptables -t raw -S PREROUTING` 引用的介面名稱跟 `ip link show type bridge` 目前真實存在的介面，抓出「引用不存在介面」的殘留規則
+**Is there a way to avoid it?** Cannot be eradicated (you cannot avoid installing `br_netfilter`, it is a hard precondition for k3s networking; and you cannot fix dockerd's own cleanup logic, that is upstream code). What can be done is **lower the trigger probability** and **detect it earlier**:
+- Avoid unnecessary `docker compose down` + `up` cycles, especially avoid frequently down/up'ing the same network in memory-tight situations where you need to temporarily free resources (this was exactly the starting point here)
+- If you later encounter the specific symptom of "containers in the same docker bridge suddenly can't reach each other", there is now a complete, reproducible investigation path: use the `sysctl` switch control test to lock down the mechanism → check whether conntrack left any record to judge whether it is stuck in the `raw` table → compare the interface names referenced by `iptables -t raw -S PREROUTING` against the currently-existing interfaces from `ip link show type bridge` to catch the stale rules "referencing a nonexistent interface"
 
-## 跟另一個事故的關聯
+## Relationship to another incident
 
-這次 daemon 重啟（第 5 步，使用者嘗試修復 `programming-learning-platform` 但沒修好）雖然沒解決本文要處理的問題，但把 `npm`、`3x-ui` 在 `proxy` 網路上的 IP 全部重新洗牌了一次，是另一份事故記錄（[2026-08-06-proxy-access-ip-mismatch.md](2026-08-06-proxy-access-ip-mismatch.md)）裡「NPM access list 訪問不了」問題的根因起點。兩份事故表面上看起來毫不相關（一個是 docker bridge 內部連不通，一個是 NPM 反代訪問不了），實際上是同一串操作鏈裡分岔出來的兩條後果，不是巧合。
+This daemon restart (step 5, the user tried to fix `programming-learning-platform` but did not succeed) — while it did not solve the problem this record addresses — reshuffled the IPs of `npm` and `3x-ui` on the `proxy` network, and is the starting-point root cause of the "NPM access list unreachable" problem in another incident record ([2026-08-06-proxy-access-ip-mismatch.md](2026-08-06-proxy-access-ip-mismatch.md)). The two incidents look completely unrelated on the surface (one is docker bridge-internal connectivity failure, the other is NPM reverse proxy unreachable), but they are actually two consequences forking out of the same chain of operations, not a coincidence.

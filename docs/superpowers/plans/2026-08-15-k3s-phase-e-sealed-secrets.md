@@ -386,7 +386,7 @@ Expected: `SealedSecret`; key list matches the six keys from Step 2.
 
 - [ ] **Step 6: Confirm every dify component that reads this Secret restarts cleanly**
 
-Dify has more pods than any other migrated service — restart them in dependency order (db/redis first, matching the phase D verification note "驗證要從底層往上"):
+Dify has more pods than any other migrated service — restart them in dependency order (db/redis first, matching the phase D verification note "verify bottom-up"):
 
 ```bash
 kubectl rollout restart statefulset db-postgres pgvector redis -n dify
@@ -589,9 +589,9 @@ git push origin main
 
 ## Self-Review
 
-- **Spec coverage**: 「裝 Sealed Secrets controller」→ Task 2；「私鑰備份」→ Task 3；4 個既有 Secret 遷移 → Task 4-7；「刪掉其中一個 Secret 確認自動重建」驗證清單第 3 條 → Task 8 Step 2；驗證清單第 1/2 條（Application Synced/Healthy、內容與遷移前一致）→ Task 2 Step 6、Task 4-7 各自 Step 2/5。
-- **Placeholder scan**：無 TBD；每個 kubeseal/kubectl/gpg 指令都是可直接執行的實際內容；README 更新（Task 8 Step 4）指定了具體要寫什麼（版本、namespace、指令 pattern），不是空泛的「補文件」。
-- **Type consistency**：`--controller-name sealed-secrets --controller-namespace sealed-secrets` 這組 flag 從 Task 2 Step 7 到 Task 7 全程一致；四個 Secret 的 key 集合（Task 4-7 各自 Step 2 的 assert）跟 Global Constraints 表列一致，來源是 2026-08-15 對活叢集的實測，不是憑印象。
+- **Spec coverage**: "install the Sealed Secrets controller" → Task 2; "private key backup" → Task 3; migrating the 4 existing Secrets → Task 4-7; verification checklist item 3 ("delete one Secret, confirm it auto-recreates") → Task 8 Step 2; checklist items 1/2 (Application Synced/Healthy, content matches pre-migration) → Task 2 Step 6, and Task 4-7's own Step 2/5.
+- **Placeholder scan**: no TBD; every kubeseal/kubectl/gpg command is directly runnable, concrete content; the README update (Task 8 Step 4) specifies exactly what to write (version, namespace, command pattern), not a vague "update the docs".
+- **Type consistency**: the `--controller-name sealed-secrets --controller-namespace sealed-secrets` flag pair stays consistent from Task 2 Step 7 through Task 7; the four Secrets' key sets (asserted in each of Task 4-7's Step 2) match the Global Constraints table, sourced from actual testing against the live cluster on 2026-08-15, not from memory.
 
 ---
 

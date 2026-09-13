@@ -1,4 +1,4 @@
-# switchboard 通用开关框架 Implementation Plan
+# switchboard Generic Toggle Framework Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -12,13 +12,13 @@
 
 ## Global Constraints
 
-- No third-party Python dependencies — stdlib only. This is why `switches.ini` uses `configparser` (INI), not YAML: the existing `provider-switch/README.md` documents "纯标准库无框架" as the pattern this service follows (matching `vikunja-notify-relay`), and the `Dockerfile` has no `pip install` step. Introducing PyYAML would break that.
+- No third-party Python dependencies — stdlib only. This is why `switches.ini` uses `configparser` (INI), not YAML: the existing `provider-switch/README.md` documents "pure stdlib, no framework" as the pattern this service follows (matching `vikunja-notify-relay`), and the `Dockerfile` has no `pip install` step. Introducing PyYAML would break that.
 - Pin image tags/digests, never `latest` (README, CLAUDE.md). Image stays `switchboard:1.0.0`.
 - `TZ: "Asia/Hong_Kong"`, `logging: {driver: json-file, options: {max-size: "10m", max-file: "5"}}`, `restart: unless-stopped`, `security_opt: [no-new-privileges:true]` — all already present in the current `docker-compose.yml`; preserve them through the rename (README).
 - No host-published ports; reached only via the `proxy` Docker network + NPM (README) — unchanged from today.
 - Never commit secrets. `CCR_TOKEN`/`CCR_CLIENT_TOKEN` stay in `.env` (gitignored) and are inherited by switch scripts via the container's environment — never written into `switches.ini` or any committed script.
 - One change per commit, scoped to one logical step (CLAUDE.md).
-- User-visible copy (homepage card description) in English; repo comments/docs/commit messages in Chinese, matching this repo's existing convention (root README "约定" section) and the existing code in this exact service.
+- User-visible copy (homepage card description) in English; repo comments/docs/commit messages in Chinese, matching this repo's existing convention (root README "Conventions" section) and the existing code in this exact service.
 - **Do not run `docker compose up -d` (or `--build`) for this stack during plan execution.** It replaces the live `provider-switch` container that real `claude` CLI sessions under `~/jerome/` and `~/bridget/` currently depend on for provider routing (CLAUDE.md: confirm before applying changes that recreate a container). Tasks in this plan stop at `docker compose build` (image build only, does not touch the running container). The actual cutover is called out separately in "Manual Follow-up" at the end of this plan and needs a human go-ahead at execution time.
 - **Never execute a committed switch script against its real hardcoded host path** (`/home/ubuntu/.claude-provider/jerome.env` / `bridget.env`) during testing/verification — those files are live and read by real `claude` sessions right now. Task 9/10's verification steps use `sed`-substituted scratch copies instead; follow them exactly.
 - Do not `git push` as part of this plan. All tasks end at a local commit on `main` (matching this repo's existing workflow of direct commits to `main`). Pushing is called out separately in "Manual Follow-up" because it triggers ArgoCD to auto-sync the homepage change onto the live k3s cluster.
@@ -1076,7 +1076,7 @@ import os
 
 env_path = "/home/ubuntu/.claude-provider/jerome.env"
 tmp_path = env_path + ".tmp"
-content = "# 空 = 走官方订阅 OAuth。switchboard 是唯一应该改写这个文件的东西。\n"
+content = "# empty = official subscription OAuth. switchboard is the only thing that should ever rewrite this file.\n"
 with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
@@ -1109,7 +1109,7 @@ sed "s#/home/ubuntu/.claude-provider/jerome.env#$tmp_env#" off.sh > "$tmp_script
 chmod +x "$tmp_script"
 "$tmp_script"
 cat "$tmp_env"
-# Expected: the "# 空 = ..." comment line
+# Expected: the "# empty = ..." comment line
 rm -f "$tmp_env" "$tmp_script"
 
 cd /home/ubuntu/jerome/docker-gitops
@@ -1216,7 +1216,7 @@ import os
 
 env_path = "/home/ubuntu/.claude-provider/bridget.env"
 tmp_path = env_path + ".tmp"
-content = "# 空 = 走官方订阅 OAuth。switchboard 是唯一应该改写这个文件的东西。\n"
+content = "# empty = official subscription OAuth. switchboard is the only thing that should ever rewrite this file.\n"
 with open(tmp_path, "w") as f:
     f.write(content)
 os.replace(tmp_path, env_path)
@@ -1256,7 +1256,7 @@ sed "s#/home/ubuntu/.claude-provider/bridget.env#$tmp_env#" off.sh > "$tmp_scrip
 chmod +x "$tmp_script"
 "$tmp_script"
 cat "$tmp_env"
-# Expected: the "# 空 = ..." comment line
+# Expected: the "# empty = ..." comment line
 rm -f "$tmp_env" "$tmp_script"
 
 cd /home/ubuntu/jerome/docker-gitops
@@ -1351,39 +1351,44 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-    user: "1001:1001"   # jerome-ccr/bridget-ccr 开关需要以宿主机 ubuntu 用户写 ~/.claude-provider/ 下的文件，不能用 nobody
-    # 挂在 proxy 网络上（和 grafana / vikunja / dify / ccr 等所有走 NPM 反代的
-    # 服务一致），NPM 直接用容器名 switchboard:8091 反代进来。不再用
-    # network_mode: host：那条路要为 NPM 单独在宿主机 INPUT 链开 iptables 规则
-    # （host 网络监听走 INPUT，会被默认的 REJECT 挡掉；只有 docker published 端口
-    # 靠 PREROUTING DNAT 绕过 INPUT），不可从 compose 复现。proxy 网络走 docker
-    # FORWARD，容器互访天然放行，零 iptables。
+    user: "1001:1001"   # the jerome-ccr/bridget-ccr toggles need to write files under the host user ubuntu's ~/.claude-provider/, so it can't run as nobody
+    # Attached to the proxy network (same as grafana / vikunja / dify / ccr and every
+    # other NPM reverse-proxied service); NPM reverse-proxies straight to the container
+    # name switchboard:8091. No longer uses network_mode: host: that path required
+    # opening iptables rules on the host's INPUT chain specifically for NPM (host-network
+    # listeners hit INPUT and get blocked by the default REJECT; only docker-published
+    # ports bypass INPUT via PREROUTING DNAT), which can't be reproduced from compose.
+    # The proxy network goes through docker FORWARD, where container-to-container traffic
+    # is natively allowed, zero iptables.
     networks:
       - proxy
     environment:
       TZ: "Asia/Hong_Kong"
       PORT: "8091"
-      # 容器只在 proxy 网络上、端口不发布到宿主机，绑 0.0.0.0 也只有 proxy 网络
-      # 里的容器（NPM）+ 宿主机自己能连，LAN/公网都打不到——NPM 的 access list
-      # 再做第二层把关。
+      # The container is only on the proxy network and publishes no port to the host;
+      # even binding 0.0.0.0 means only containers on the proxy network (NPM) + the host
+      # itself can reach it — LAN/pubnet can't. NPM's access list adds a second layer.
       BIND_HOST: "0.0.0.0"
-      # jerome-ccr/bridget-ccr 两个开关脚本要用的 CCR 地址，两个不同用途不能混用：
-      # - CCR_BASE_URL: 探测用，容器名（ccr 和本服务都在 proxy 网络上）。
-      #   跟各组 .env 里的 ANTHROPIC_BASE_URL 不同——那是宿主机上的 claude CLI
-      #   要用的地址，容器够不到；但 ccr:8080 是同一个 nginx→gateway，活着与否等价。
-      # - CCR_HOST_BASE_URL: 写入各组 .env 的 ANTHROPIC_BASE_URL 用，必须是宿主机
-      #   能连到的地址（CCR 的 127.0.0.1:3456:8080 端口发布），因为 .env 是给宿主机
-      #   上的 claude CLI 读的，不是给这个容器读的。写错成 CCR_BASE_URL 会让切换
-      #   后的 claude CLI 去连一个只在容器网络里存在的地址，直接连不上。
+      # The CCR address used by the jerome-ccr/bridget-ccr toggle scripts; the two have
+      # different purposes and must not be mixed up:
+      # - CCR_BASE_URL: used for probing, container name (ccr and this service are both
+      #   on the proxy network). This differs from the ANTHROPIC_BASE_URL in each group's
+      #   .env — that's the address the host-side claude CLI uses, which the container
+      #   can't reach; but ccr:8080 is the same nginx→gateway, so liveness is equivalent.
+      # - CCR_HOST_BASE_URL: used as the ANTHROPIC_BASE_URL written into each group's
+      #   .env; it must be an address the host can reach (CCR's 127.0.0.1:3456:8080
+      #   published port), because .env is read by the host-side claude CLI, not by this
+      #   container. Writing CCR_BASE_URL here by mistake would make the switched claude
+      #   CLI connect to an address that only exists on the container network — unreachable.
       CCR_BASE_URL: "http://ccr:8080"
       CCR_HOST_BASE_URL: "http://127.0.0.1:3456"
-      CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # CCR client key，走 .env
+      CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # CCR client key, sourced from .env
     env_file:
       - .env
     volumes:
       - /home/ubuntu/.claude-provider:/home/ubuntu/.claude-provider
-    # NPM 反代：switchboard.jerome.cloudns.asia → switchboard:8091，access list=self-only。
-    # 配置方法见 vps_oracle/compose/npm/README.md 的自动化 API 一节。
+    # NPM reverse proxy: switchboard.jerome.cloudns.asia → switchboard:8091, access list=self-only.
+    # For configuration see the automation API section of vps_oracle/compose/npm/README.md.
 
 networks:
   proxy:
@@ -1437,27 +1442,27 @@ Current content:
 ```markdown
 # vps_oracle/compose/provider-switch
 
-切 Claude Code 后端 provider 的小 HTTP UI（单文件 stdlib，`app.py` + `status.py`）。挂在 `proxy` 网络上，NPM 反代成 `https://provider.jerome.cloudns.asia`（access list=self-only）。每次打开都实时重扫两组的 `.env` 状态 + 探测 CCR 可达性，点按钮原子改写 `/home/ubuntu/.claude-provider/<组>.env`。
+A small HTTP UI for switching Claude Code's backend provider (single-file stdlib, `app.py` + `status.py`). Attached to the `proxy` network, reverse-proxied by NPM as `https://provider.jerome.cloudns.asia` (access list=self-only). Every time it's opened it re-scans in real time the two groups' `.env` state + probes CCR reachability; clicking a button atomically rewrites `/home/ubuntu/.claude-provider/<group>.env`.
 
-整个分组切换系统（direnv + 分组 env + CCR + 本 UI + NPM）的完整文档、加新分组的步骤、四个坑、回滚等，见 [`../ccr/README.md`](../ccr/README.md)。
+For the full documentation of the whole group-switching system (direnv + group env + CCR + this UI + NPM), the four gotchas, rollback, etc., see [`../ccr/README.md`](../ccr/README.md).
 ```
 
 ```bash
 cat > vps_oracle/compose/switchboard/README.md <<'EOF'
 # vps_oracle/compose/switchboard
 
-通用的、配置驱动的开关 UI（stdlib，`app.py` + `config.py`）。挂在 `proxy` 网络上，NPM 反代成 `https://switchboard.jerome.cloudns.asia`（access list=self-only）。
+A generic, config-driven toggle UI (stdlib, `app.py` + `config.py`). Attached to the `proxy` network, reverse-proxied by NPM as `https://switchboard.jerome.cloudns.asia` (access list=self-only).
 
-引擎本身不知道任何具体开关是什么——它只读 `switches.ini` 拿到开关清单，对每个开关的 `switches/<id>/{status,on,off}.sh` 三个脚本发号施令：`GET /` 现场跑一遍每个开关的 `status.sh`（不缓存），`POST /toggle` 按当前状态跑 `on.sh` 或 `off.sh`。新增/删除开关只需要加/删一个 `switches/<id>/` 目录 + 三个脚本 + `switches.ini` 里的一个 section，不需要改 `app.py`/`config.py`。设计细节见 [`../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md`](../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md)。
+The engine itself knows nothing about what any specific toggle is — it only reads `switches.ini` for the list of toggles, then drives each toggle's three scripts `switches/<id>/{status,on,off}.sh`: `GET /` runs each toggle's `status.sh` live (no caching), and `POST /toggle` runs `on.sh` or `off.sh` depending on the current state. Adding/removing a toggle only requires adding/removing a `switches/<id>/` directory + three scripts + one section in `switches.ini`, with no change to `app.py`/`config.py`. Design details in [`../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md`](../../../docs/superpowers/specs/2026-08-13-switchboard-generic-toggle-design.md).
 
-当前登记的开关：
+Toggles currently registered:
 
-| id | 说明 |
+| id | description |
 |---|---|
-| `jerome-ccr` | jerome 组的 Claude provider 切换（Official ↔ CCR/智谱） |
-| `bridget-ccr` | bridget 组的 Claude provider 切换（Official ↔ CCR/智谱） |
+| `jerome-ccr` | Claude provider switch for the jerome group (Official ↔ CCR/Zhipu) |
+| `bridget-ccr` | Claude provider switch for the bridget group (Official ↔ CCR/Zhipu) |
 
-这两个开关所属的整个分组切换系统（direnv + 分组 env + CCR + 本 UI + NPM）的完整文档、加新分组的步骤、已知的坑、回滚等，见 [`../ccr/README.md`](../ccr/README.md)。
+For the full documentation of the whole group-switching system these two toggles belong to (direnv + group env + CCR + this UI + NPM), the steps for adding a new group, known gotchas, rollback, etc., see [`../ccr/README.md`](../ccr/README.md).
 EOF
 ```
 
@@ -1484,13 +1489,13 @@ git commit -m "Rewrite switchboard README.md for the generic toggle framework"
 Current (line 32):
 
 ```
-| `ccr` / `provider-switch` | CCR 的消费者是跑在**宿主机本身**（不是容器）的 `claude` CLI 进程，走不了 docker 网络，所以 CCR 例外地要发布端口，且刻意绑 `127.0.0.1` 不对外暴露（见 `docs/superpowers/specs/2026-08-09-claude-provider-group-switch-design.md`）。这条逻辑在 k3s 下同样成立：k3s 的 pod network 对宿主机进程来说一样是「外部」，要嘛发 NodePort 放弃 `127.0.0.1`-only 的隔离，要嘛留在宿主机层——架构上就不适合迁，跟风险评估无关。provider-switch 是 CCR 的配套开关，同理 |
+| `ccr` / `provider-switch` | CCR's consumer is the `claude` CLI process running on **the host itself** (not a container), which can't use the docker network, so CCR exceptionally publishes its port and deliberately binds `127.0.0.1` to avoid external exposure (see `docs/superpowers/specs/2026-08-09-claude-provider-group-switch-design.md`). The same logic holds under k3s: k3s's pod network is equally "external" to a host process, so you'd either expose a NodePort and give up the `127.0.0.1`-only isolation or stay on the host layer — architecturally it doesn't suit migration, independent of any risk assessment. provider-switch is CCR's companion switch, same reasoning |
 ```
 
 New:
 
 ```
-| `ccr` / `switchboard` | CCR 的消费者是跑在**宿主机本身**（不是容器）的 `claude` CLI 进程，走不了 docker 网络，所以 CCR 例外地要发布端口，且刻意绑 `127.0.0.1` 不对外暴露（见 `docs/superpowers/specs/2026-08-09-claude-provider-group-switch-design.md`）。这条逻辑在 k3s 下同样成立：k3s 的 pod network 对宿主机进程来说一样是「外部」，要嘛发 NodePort 放弃 `127.0.0.1`-only 的隔离，要嘛留在宿主机层——架构上就不适合迁，跟风险评估无关。switchboard 是 CCR 的配套开关（现已通用化为配置驱动的开关框架，jerome-ccr/bridget-ccr 只是其中两个开关），同理 |
+| `ccr` / `switchboard` | CCR's consumer is the `claude` CLI process running on **the host itself** (not a container), which can't use the docker network, so CCR exceptionally publishes its port and deliberately binds `127.0.0.1` to avoid external exposure (see `docs/superpowers/specs/2026-08-09-claude-provider-group-switch-design.md`). The same logic holds under k3s: k3s's pod network is equally "external" to a host process, so you'd either expose a NodePort and give up the `127.0.0.1`-only isolation or stay on the host layer — architecturally it doesn't suit migration, independent of any risk assessment. switchboard is CCR's companion switch (now generalized into a config-driven switch framework, of which jerome-ccr/bridget-ccr are just two switches), same reasoning |
 ```
 
 Apply with a targeted string replacement (the row is unique in the file, safe to match on the leading cell text):
@@ -1503,8 +1508,8 @@ old = "| `ccr` / `provider-switch` |"
 new = "| `ccr` / `switchboard` |"
 assert src.count(old) == 1
 src = src.replace(old, new)
-old2 = "provider-switch 是 CCR 的配套开关，同理 |"
-new2 = "switchboard 是 CCR 的配套开关（现已通用化为配置驱动的开关框架，jerome-ccr/bridget-ccr 只是其中两个开关），同理 |"
+old2 = "provider-switch is CCR's companion switch, same reasoning |"
+new2 = "switchboard is CCR's companion switch (now generalized into a config-driven switch framework, of which jerome-ccr/bridget-ccr are just two switches), same reasoning |"
 assert src.count(old2) == 1
 src = src.replace(old2, new2)
 open(path, "w").write(src)
@@ -1528,96 +1533,97 @@ src = open(path).read()
 
 replacements = [
     (
-        "本目录放 CCR 本体；配套的切换 UI 在 `../provider-switch/`。这份 README 是整个分组切换系统的总文档。",
-        "本目录放 CCR 本体；配套的切换 UI 在 `../switchboard/`（一个通用的配置驱动开关框架，jerome-ccr/bridget-ccr 只是其中两个开关）。这份 README 是整个分组切换系统的总文档。",
+        "This directory holds CCR itself; the accompanying switching UI lives in `../provider-switch/`. This README is the master document for the whole group-switching system.",
+        "This directory holds CCR itself; the accompanying switching UI lives in `../switchboard/` (a generic config-driven toggle framework, of which jerome-ccr/bridget-ccr are just two toggles). This README is the master document for the whole group-switching system.",
     ),
     (
-        "2. **动态 `.claude-provider/<组名>.env`**：真正被改写的文件。空（或只有注释）= 走官方订阅；有两行 `export ANTHROPIC_BASE_URL=… / ANTHROPIC_AUTH_TOKEN=…` = 走 CCR。**provider-switch UI 是唯一应该改写这个文件的东西。**",
-        "2. **动态 `.claude-provider/<组名>.env`**：真正被改写的文件。空（或只有注释）= 走官方订阅；有两行 `export ANTHROPIC_BASE_URL=… / ANTHROPIC_AUTH_TOKEN=…` = 走 CCR。**switchboard 的 `jerome-ccr`/`bridget-ccr` 开关是唯一应该改写这个文件的东西。**",
+        "2. **Dynamic `.claude-provider/<group>.env`**: the file that actually gets rewritten. Empty (or comment-only) = use the official subscription; containing the two lines `export ANTHROPIC_BASE_URL=… / ANTHROPIC_AUTH_TOKEN=…` = use CCR. **The provider-switch UI is the only thing that should ever rewrite this file.**",
+        "2. **Dynamic `.claude-provider/<group>.env`**: the file that actually gets rewritten. Empty (or comment-only) = use the official subscription; containing the two lines `export ANTHROPIC_BASE_URL=… / ANTHROPIC_AUTH_TOKEN=…` = use CCR. **The switchboard `jerome-ccr`/`bridget-ccr` toggles are the only thing that should ever rewrite this file.**",
     ),
     (
-        "4. **provider-switch UI**（`../provider-switch/`）：挂在 `proxy` 网络上的小 HTTP 服务，通过 NPM 反代成 `https://provider.jerome.cloudns.asia`（access list=self-only）。每次打开页面都**实时重扫**（不缓存）各组的 `.env` 状态 + 探测 CCR 是否可达，点按钮就原子地改写对应 `.env`。",
-        "4. **switchboard UI**（`../switchboard/`）：挂在 `proxy` 网络上的通用配置驱动开关服务，通过 NPM 反代成 `https://switchboard.jerome.cloudns.asia`（access list=self-only）。jerome/bridget 的 CCR 切换是它登记的两个开关（`jerome-ccr`/`bridget-ccr`）。每次打开页面都**实时重扫**（不缓存）每个开关的状态；点按钮就跑对应开关的 `on.sh`/`off.sh` 原子改写对应 `.env`。",
+        "4. **provider-switch UI** (`../provider-switch/`): a small HTTP service attached to the `proxy` network, reverse-proxied by NPM as `https://provider.jerome.cloudns.asia` (access list=self-only). Every time the page opens it **re-scans in real time** (no caching) each group's `.env` state + probes whether CCR is reachable; clicking a button atomically rewrites the corresponding `.env`.",
+        "4. **switchboard UI** (`../switchboard/`): a generic config-driven toggle service attached to the `proxy` network, reverse-proxied by NPM as `https://switchboard.jerome.cloudns.asia` (access list=self-only). The jerome/bridget CCR switches are two toggles registered on it (`jerome-ccr`/`bridget-ccr`). Every time the page opens it **re-scans in real time** (no caching) the state of each toggle; clicking a button runs that toggle's `on.sh`/`off.sh` to atomically rewrite the corresponding `.env`.",
     ),
     (
-        '''# 3. 在 provider-switch 的 status.GROUPS 里登记这个组
-#    （编辑 vps_oracle/compose/provider-switch/status.py 的 GROUPS 字典，
-#     加 "alice": {"env_path": ".../alice.env"}）
+        '''# 3. Register this group in provider-switch's status.GROUPS
+#    (edit the GROUPS dict in vps_oracle/compose/provider-switch/status.py,
+#     add "alice": {"env_path": ".../alice.env"})
 
-# 4. 重建 provider-switch 让新组出现在 UI 里
+# 4. Rebuild provider-switch so the new group appears in the UI
 cd vps_oracle/compose/provider-switch && docker compose up -d --build''',
-        '''# 3. 在 switchboard 里登记一个新开关 alice-ccr：
-#    - 复制 vps_oracle/compose/switchboard/switches/jerome-ccr/ 整个目录为
-#      switches/alice-ccr/，把三个脚本里的 jerome.env 路径改成 alice.env
-#    - 在 switches.ini 里加一个 section：
+        '''# 3. Register a new alice-ccr toggle in switchboard:
+#    - Copy the whole vps_oracle/compose/switchboard/switches/jerome-ccr/ directory
+#      to switches/alice-ccr/, changing the jerome.env paths in the three scripts to
+#      alice.env
+#    - Add a section to switches.ini:
 #      [alice-ccr]
 #      group = Provider
 #      label = alice
 #      on_label = CCR
 #      off_label = Official
 
-# 4. 重建 switchboard 让新开关出现在 UI 里
+# 4. Rebuild switchboard so the new toggle appears in the UI
 cd vps_oracle/compose/switchboard && docker compose up -d --build''',
     ),
     (
-        "CCR client key（`ccr-profile-…`）在 CCR 管理面板生成；provider-switch 容器通过 `.env` 里的 `CCR_CLIENT_TOKEN` 拿到同一个 key 来写 `.env` 文件。",
-        "CCR client key（`ccr-profile-…`）在 CCR 管理面板生成；switchboard 容器通过 `.env` 里的 `CCR_CLIENT_TOKEN` 拿到同一个 key，`alice-ccr` 开关的 `on.sh` 用它写 `.env` 文件。",
+        "The CCR client key (`ccr-profile-…`) is generated in the CCR admin panel; the provider-switch container gets the same key via `CCR_CLIENT_TOKEN` in its `.env` to write the `.env` file.",
+        "The CCR client key (`ccr-profile-…`) is generated in the CCR admin panel; the switchboard container gets the same key via `CCR_CLIENT_TOKEN` in its `.env`, and the `alice-ccr` toggle's `on.sh` uses it to write the `.env` file.",
     ),
     (
-        '''3. **切换只对切换之后新开的 session 生效。** 已经在跑的 claude 进程环境变量已经定型，改 `.env` 不会回头改它。开新 session 才走新 provider。（UI 里那条「Switching only affects sessions started after the switch」就是提醒这个。）''',
-        '''3. **切换只对切换之后新开的 session 生效。** 已经在跑的 claude 进程环境变量已经定型，改 `.env` 不会回头改它。开新 session 才走新 provider。''',
+        '''3. **Switching only takes effect for sessions opened after the switch.** A claude process already running has its env vars fixed; changing `.env` won't retrospectively change it. Only new sessions pick up the new provider. (The line in the UI "Switching only affects sessions started after the switch" is exactly this reminder.)''',
+        '''3. **Switching only takes effect for sessions opened after the switch.** A claude process already running has its env vars fixed; changing `.env` won't retrospectively change it. Only new sessions pick up the new provider.''',
     ),
     (
         "curl -sS https://provider.jerome.cloudns.asia/ | grep -oE '<td>(jerome|bridget)</td>|<td>(Official|CCR \\(Zhipu\\))</td>'",
         "curl -sS https://switchboard.jerome.cloudns.asia/ | grep -oE '<td>(jerome|bridget)</td>|<td>(Official|CCR)</td>'",
     ),
     (
-        '''- **改名**：改 `status.GROUPS` 的 key、把 `~/<旧>/` 目录和 `~/<旧>/.envrc` 一起 `mv` 成新名、`mv /home/ubuntu/.claude-provider/<旧>.env <新>.env`、重建 provider-switch。注意上面第 4 个坑——移动目录会断旧 session 的 resume 历史。
-- **删除**：从 `status.GROUPS` 摘掉、删目录和 `.env`、重建 provider-switch。''',
-        '''- **改名**：把 `switches/<旧>-ccr/` 目录连同 `switches.ini` 里对应的 section 一起改名、把 `~/<旧>/` 目录和 `~/<旧>/.envrc` 一起 `mv` 成新名、`mv /home/ubuntu/.claude-provider/<旧>.env <新>.env`（脚本里硬编码的路径也要跟着改）、重建 switchboard。注意上面第 4 个坑——移动目录会断旧 session 的 resume 历史。
-- **删除**：从 `switches.ini` 摘掉对应 section、删 `switches/<组>-ccr/` 目录、删 `~/<组>/` 目录和 `.env`、重建 switchboard。''',
+        '''- **Rename**: change the key in `status.GROUPS`, `mv` the `~/<old>/` directory and `~/<old>/.envrc` together to the new name, `mv /home/ubuntu/.claude-provider/<old>.env <new>.env`, and rebuild provider-switch. Note gotcha #4 above — moving the directory breaks old sessions' resume history.
+- **Delete**: remove from `status.GROUPS`, delete the directory and `.env`, and rebuild provider-switch.''',
+        '''- **Rename**: rename the `switches/<old>-ccr/` directory together with the corresponding section in `switches.ini`, `mv` the `~/<old>/` directory and `~/<old>/.envrc` to the new name, `mv /home/ubuntu/.claude-provider/<old>.env <new>.env` (the paths hardcoded in the scripts must be updated too), and rebuild switchboard. Note gotcha #4 above — moving the directory breaks old sessions' resume history.
+- **Delete**: remove the corresponding section from `switches.ini`, delete the `switches/<group>-ccr/` directory, delete the `~/<group>/` directory and `.env`, and rebuild switchboard.''',
     ),
     (
-        "跟 provider-switch 一样的标准姿势：挂在 `proxy` 网络，NPM 用容器名 `ccr:8080` 反代",
-        "跟 switchboard 一样的标准姿势：挂在 `proxy` 网络，NPM 用容器名 `ccr:8080` 反代",
+        "Same standard setup as provider-switch: attach to the `proxy` network, and NPM reverse-proxies via the container name `ccr:8080`",
+        "Same standard setup as switchboard: attach to the `proxy` network, and NPM reverse-proxies via the container name `ccr:8080`",
     ),
     (
-        '''## provider-switch 的 NPM 反代（可复现）
+        '''## provider-switch's NPM reverse proxy (reproducible)
 
-provider-switch 走的是 repo 里所有 NPM 反代服务的标准姿势：挂在 `proxy` 网络，NPM 用容器名 `provider-switch:8091` 反代，access list=`self-only`，HTTPS 用 NPM 自己申请的 Let's Encrypt 证书。一次性创建（token 换取 + 建 proxy host 的完整模式见 `../npm/README.md`）：
+provider-switch uses the standard setup for every NPM-reverse-proxied service in the repo: attached to the `proxy` network, NPM reverse-proxies via the container name `provider-switch:8091`, access list=`self-only`, HTTPS uses a Let's Encrypt certificate obtained by NPM itself. One-time creation (the full pattern for token exchange + proxy host creation is in `../npm/README.md`):
 
 ```bash
 cd ../npm && source .npm-automation.env
 docker run --rm --network proxy curlimages/curl:latest sh -c "
 TOKEN=\\$(curl -sS -X POST http://npm:81/api/tokens -H 'Content-Type: application/json' -d '{\\"identity\\":\\"\\$NPM_AUTOMATION_EMAIL\\",\\"secret\\":\\"\\$NPM_AUTOMATION_PASSWORD\\"}' | sed -n 's/.*\\"token\\":\\"\\([^\\"]*\\)\\".*/\\1/p')
-# 1. 先建证书（HTTP-01 challenge，DNS 已有 *.jerome.cloudns.asia 通配）
+# 1. Create the certificate first (HTTP-01 challenge; DNS already has a *.jerome.cloudns.asia wildcard)
 curl -sS -X POST http://npm:81/api/nginx/certificates -H \\"Authorization: Bearer \\$TOKEN\\" -H 'Content-Type: application/json' -d '{\\"provider\\":\\"letsencrypt\\",\\"nice_name\\":\\"provider.jerome.cloudns.asia\\",\\"domain_names\\":[\\"provider.jerome.cloudns.asia\\"],\\"meta\\":{\\"letsencrypt_agree\\":true,\\"dns_challenge\\":false}}'
-# 记下返回的 id（下面 certificate_id 用）
-# 2. 再建 proxy host（certificate_id 换成上一步的 id，access_list_id=1 是 self-only）
+# Note the returned id (used as certificate_id below)
+# 2. Then create the proxy host (replace certificate_id with the id from the previous step; access_list_id=1 is self-only)
 curl -sS -X POST http://npm:81/api/nginx/proxy-hosts -H \\"Authorization: Bearer \\$TOKEN\\" -H 'Content-Type: application/json' -d '{\\"domain_names\\":[\\"provider.jerome.cloudns.asia\\"],\\"forward_scheme\\":\\"http\\",\\"forward_host\\":\\"provider-switch\\",\\"forward_port\\":8091,\\"certificate_id\\":<id>,\\"ssl_forced\\":true,\\"http2_support\\":true,\\"block_exploits\\":true,\\"allow_websocket_upgrade\\":true,\\"access_list_id\\":1,\\"caching_enabled\\":false,\\"locations\\":[],\\"meta\\":{\\"letsencrypt_agree\\":false,\\"dns_challenge\\":false}}'
 "
 ```
 
-> 为什么 `forward_host` 是容器名 `provider-switch` 而不是 IP：provider-switch 和 NPM 都在 `proxy` 网络上，docker 内嵌 DNS 解析容器名。只有 k3s NodePort 那类宿主机服务才需要填宿主机内网 IP `10.0.0.95`（见根 README 的「反代到 k3s NodePort」坑）。''',
-        '''## switchboard 的 NPM 反代（可复现）
+> Why `forward_host` is the container name `provider-switch` rather than an IP: provider-switch and NPM are both on the `proxy` network, and docker's built-in DNS resolves container names. Only host-level services like k3s NodePort need the host's internal IP `10.0.0.95` (see the "reverse-proxying to k3s NodePort" gotcha in the root README).''',
+        '''## switchboard's NPM reverse proxy (reproducible)
 
-switchboard 走的是 repo 里所有 NPM 反代服务的标准姿势：挂在 `proxy` 网络，NPM 用容器名 `switchboard:8091` 反代，access list=`self-only`，HTTPS 用 NPM 自己申请的 Let's Encrypt 证书。一次性创建（token 换取 + 建 proxy host 的完整模式见 `../npm/README.md`）：
+switchboard uses the standard setup for every NPM-reverse-proxied service in the repo: attached to the `proxy` network, NPM reverse-proxies via the container name `switchboard:8091`, access list=`self-only`, HTTPS uses a Let's Encrypt certificate obtained by NPM itself. One-time creation (the full pattern for token exchange + proxy host creation is in `../npm/README.md`):
 
 ```bash
 cd ../npm && source .npm-automation.env
 docker run --rm --network proxy curlimages/curl:latest sh -c "
 TOKEN=\\$(curl -sS -X POST http://npm:81/api/tokens -H 'Content-Type: application/json' -d '{\\"identity\\":\\"\\$NPM_AUTOMATION_EMAIL\\",\\"secret\\":\\"\\$NPM_AUTOMATION_PASSWORD\\"}' | sed -n 's/.*\\"token\\":\\"\\([^\\"]*\\)\\".*/\\1/p')
-# 1. 先建证书（HTTP-01 challenge，DNS 已有 *.jerome.cloudns.asia 通配）
+# 1. Create the certificate first (HTTP-01 challenge; DNS already has a *.jerome.cloudns.asia wildcard)
 curl -sS -X POST http://npm:81/api/nginx/certificates -H \\"Authorization: Bearer \\$TOKEN\\" -H 'Content-Type: application/json' -d '{\\"provider\\":\\"letsencrypt\\",\\"nice_name\\":\\"switchboard.jerome.cloudns.asia\\",\\"domain_names\\":[\\"switchboard.jerome.cloudns.asia\\"],\\"meta\\":{\\"letsencrypt_agree\\":true,\\"dns_challenge\\":false}}'
-# 记下返回的 id（下面 certificate_id 用）
-# 2. 再建 proxy host（certificate_id 换成上一步的 id，access_list_id=1 是 self-only）
+# Note the returned id (used as certificate_id below)
+# 2. Then create the proxy host (replace certificate_id with the id from the previous step; access_list_id=1 is self-only)
 curl -sS -X POST http://npm:81/api/nginx/proxy-hosts -H \\"Authorization: Bearer \\$TOKEN\\" -H 'Content-Type: application/json' -d '{\\"domain_names\\":[\\"switchboard.jerome.cloudns.asia\\"],\\"forward_scheme\\":\\"http\\",\\"forward_host\\":\\"switchboard\\",\\"forward_port\\":8091,\\"certificate_id\\":<id>,\\"ssl_forced\\":true,\\"http2_support\\":true,\\"block_exploits\\":true,\\"allow_websocket_upgrade\\":true,\\"access_list_id\\":1,\\"caching_enabled\\":false,\\"locations\\":[],\\"meta\\":{\\"letsencrypt_agree\\":false,\\"dns_challenge\\":false}}'
 "
 ```
 
-> 为什么 `forward_host` 是容器名 `switchboard` 而不是 IP：switchboard 和 NPM 都在 `proxy` 网络上，docker 内嵌 DNS 解析容器名。只有 k3s NodePort 那类宿主机服务才需要填宿主机内网 IP `10.0.0.95`（见根 README 的「反代到 k3s NodePort」坑）。
+> Why `forward_host` is the container name `switchboard` rather than an IP: switchboard and NPM are both on the `proxy` network, and docker's built-in DNS resolves container names. Only host-level services like k3s NodePort need the host's internal IP `10.0.0.95` (see the "reverse-proxying to k3s NodePort" gotcha in the root README).
 >
-> 旧的 `provider.jerome.cloudns.asia` proxy host 和证书在完成 Manual Follow-up 的 NPM 切换后需要在 NPM 里手动删除/停用（仓库里没有对应的删除 API 调用记录）。''',
+> The old `provider.jerome.cloudns.asia` proxy host and certificate need to be manually deleted/deactivated in NPM after the NPM reverse proxy switch to switchboard is complete (there's no record of the corresponding delete API call in the repo).''',
     ),
 ]
 
@@ -1718,8 +1724,8 @@ Everything above is safe to run unattended: it edits files and git-commits local
    docker compose up -d --build
    docker compose -p provider-switch down   # or however the old stack is identified; confirm container name first with `docker ps`
    ```
-   This is the moment jerome/bridget's real Claude Code sessions start being served by the new container instead of the old one. Verify immediately after with the `curl` command in `ccr/README.md`'s "验证" section (now pointed at `switchboard.jerome.cloudns.asia` — which won't resolve until step 3 below, so verify via `docker exec switchboard` / `curl` against the container's internal port first, then again externally after step 3).
+   This is the moment jerome/bridget's real Claude Code sessions start being served by the new container instead of the old one. Verify immediately after with the `curl` command in `ccr/README.md`'s "Verification" section (now pointed at `switchboard.jerome.cloudns.asia` — which won't resolve until step 3 below, so verify via `docker exec switchboard` / `curl` against the container's internal port first, then again externally after step 3).
 
-3. **NPM cutover:** run the "switchboard 的 NPM 反代" `curl` sequence from the updated `ccr/README.md` to create the new `switchboard.jerome.cloudns.asia` proxy host + certificate, then manually delete/disable the old `provider.jerome.cloudns.asia` proxy host and certificate in the NPM admin UI (no scripted delete exists for this yet). Recheck Force SSL / HTTP/2 after saving — the known "silently resets" gotcha from the root README applies here too.
+3. **NPM cutover:** run the "switchboard's NPM reverse proxy" `curl` sequence from the updated `ccr/README.md` to create the new `switchboard.jerome.cloudns.asia` proxy host + certificate, then manually delete/disable the old `provider.jerome.cloudns.asia` proxy host and certificate in the NPM admin UI (no scripted delete exists for this yet). Recheck Force SSL / HTTP/2 after saving — the known "silently resets" gotcha from the root README applies here too.
 
 4. **Push for the homepage card:** `git push` to `main` on the GitHub remote so ArgoCD's `homepage` Application picks up the card rename (`syncPolicy.automated` will apply it within one polling cycle, or trigger `argocd app sync homepage` manually).

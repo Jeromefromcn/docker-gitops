@@ -1,143 +1,143 @@
-# K3s Phase I — 流量彈性與路由治理設計
+# K3s Phase I — Traffic Resilience and Routing Governance Design
 
-日期：2026-08-22
+Date: 2026-08-22
 
-對應 [K3s 服務網格能力補完路線圖](2026-08-19-k3s-mesh-capabilities-roadmap.md) 的 I 階段：金絲雀權重路由、超時重試、熱斷（outlier detection）、故障注入。交付物：`pr-lanes` 具備完整的流量治理能力，可用於後續的漸進式發布與 chaos 測試。
+Corresponds to Phase I of the [K3s Service Mesh Capabilities Roadmap](2026-08-19-k3s-mesh-capabilities-roadmap.md): canary weight routing, timeout/retry, outlier detection, and fault injection. Deliverable: `pr-lanes` gains complete traffic governance capability, usable for subsequent progressive delivery and chaos testing.
 
-前置：[Phase F+G](2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md) 已完成並驗證通過，`pr-lanes` 命名空間裝好 Istio Ambient（istiod + ztunnel + istio-cni + waypoint）與 Gateway API，`hello-backend`/`hello-frontend` baseline 加上 PR 泳道的 header 路由都在跑。
+Precondition: [Phase F+G](2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md) is complete and verified; the `pr-lanes` namespace has Istio Ambient installed (istiod + ztunnel + istio-cni + waypoint) and Gateway API, and the `hello-backend`/`hello-frontend` baseline plus PR-lane header routing are all running.
 
-## 範圍
+## Scope
 
-**這階段要做的：**
-- 新增 `hello-backend-canary`（`lane: canary`）作為真實的第二版本，`k8s/backend-httproute.yaml` 的 `backendRefs` 改成 `hello-backend`(90%) / `hello-backend-canary`(10%) 權重分流，同時加上 `timeouts`（`request: 10s`, `backendRequest: 8s`）
-- `hello-backend`、`hello-backend-canary` 各自一份 `DestinationRule`，只放 `outlierDetection`（`consecutive5xxErrors: 3, interval: 30s, baseEjectionTime: 30s, maxEjectionPercent: 100`——原規劃 50，Task 4 實作時改為 100，因兩個 backend 都是 `replicas: 1`，50% 會無條件捨去成 0 個可踢出的 endpoint，等於整個功能靜默失效）
-- 一份 `VirtualService`，只匹配 `x-fault-test: "true"` header 才注入 delay/abort，平時零流量影響
-- 重試機制先在實作階段確認 Gateway API standard channel 的 `HTTPRoute` 是否原生支援 retry 欄位；若沒有，改用 `VirtualService.http[].retries`
+**What this phase does:**
+- Add `hello-backend-canary` (`lane: canary`) as a real second version; change `backendRefs` in `k8s/backend-httproute.yaml` to weight-split `hello-backend`(90%) / `hello-backend-canary`(10%), and add `timeouts` (`request: 10s`, `backendRequest: 8s`)
+- One `DestinationRule` each for `hello-backend` and `hello-backend-canary`, containing only `outlierDetection` (`consecutive5xxErrors: 3, interval: 30s, baseEjectionTime: 30s, maxEjectionPercent: 100` — the original plan was 50, changed to 100 during Task 4 implementation, because both backends are `replicas: 1`, and 50% unconditionally rounds down to 0 ejectable endpoints, which would make the whole feature silently fail)
+- One `VirtualService` that only matches the `x-fault-test: "true"` header to inject delay/abort, with zero impact on normal traffic
+- Confirm during implementation whether the Gateway API standard channel `HTTPRoute` natively supports a retry field; if not, use `VirtualService.http[].retries`
 
-**這階段不做的（留給後續階段或明確排除）：**
-- PR 泳道（`lane/` 底下的 kustomize 模板與 `pr-lanes-appset.yaml`）不套用本階段任何資源——只動 `k8s/` 下的靜態 baseline 資源，不碰動態產生的每個 PR namespace 資源，範圍收斂、風險最小
-- AuthorizationPolicy（細粒度存取控制）——路線圖已排到獨立的 J 階段，失敗模式與本階段完全不同（誤配置會直接斷流量），不混在一起
-- 指標/日誌/追蹤接 `lab-environment`——K 階段的範圍
-- 限流——L 階段的評估性範圍，且 Gateway API 目前裝的是 standard channel，不含限流需要的 experimental API
-- `hello-frontend` 不做任何金絲雀/熱斷/故障注入——它只是靜態頁面轉發 `/api` 到 `hello-backend`，本階段的流量治理只對 `hello-backend` 有意義
+**What this phase does NOT do (left to later phases or explicitly excluded):**
+- PR lanes (the kustomize templates under `lane/` and `pr-lanes-appset.yaml`) get no resources from this phase — only the static baseline resources under `k8s/` are touched, never the dynamically generated per-PR namespace resources, to keep scope tight and risk minimal
+- AuthorizationPolicy (fine-grained access control) — the roadmap already schedules it as a separate Phase J; its failure mode is entirely different from this phase's (misconfiguration directly cuts traffic), so they are not mixed together
+- Metrics/logs/tracing into `lab-environment` — that is Phase K's scope
+- Rate limiting — Phase L's evaluation scope, and Gateway API is currently installed on the standard channel, which lacks the experimental API that rate limiting requires
+- `hello-frontend` gets no canary/outlier-detection/fault-injection — it only forwards `/api` to `hello-backend` as a static page; this phase's traffic governance only matters for `hello-backend`
 
-## 現狀約束
+## Current-state constraints
 
-延續路線圖本身列出的三項：
-- 記憶體 headroom 比 F+G 當時更緊（2026-08-19 實測 available 6.2Gi，swap 用掉 85%），本階段新增 `hello-backend-canary` 這一個真實 Deployment 是唯一會消耗常駐資源的改動，其餘（`DestinationRule`、`VirtualService` 的權重/timeout/重試欄位）都是純控制面配置，零額外 pod
-- `pr-lanes-quota` 卡得緊（`limits.cpu: 1200m / limits.memory: 1536Mi`），新增資源要先確認不會撞上限（見下方「資源預算」）
-- Gateway API 是 standard channel，不含 experimental API——這點不影響本階段（金絲雀權重、timeout 都是 standard channel 已有的欄位），但直接限制了重試欄位是否可用，必須在實作階段查證
+Continuing the three items listed in the roadmap itself:
+- Memory headroom is tighter than at F+G time (measured 2026-08-19: 6.2Gi available, swap 85% used). The new `hello-backend-canary` real Deployment is this phase's only change that consumes resident resources; everything else (`DestinationRule`, `VirtualService` weight/timeout/retry fields) is pure control-plane config with zero extra pods
+- `pr-lanes-quota` is tight (`limits.cpu: 1200m / limits.memory: 1536Mi`), so new resources must first be confirmed not to hit the ceiling (see "Resource budget" below)
+- Gateway API is the standard channel, without experimental API — this does not affect this phase (canary weight and timeout are fields the standard channel already has), but it directly limits whether the retry field is available, which must be verified during implementation
 
-## 架構
+## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph client["用戶端請求"]
-        normal["一般請求"]
-        faulty["帶 x-fault-test 的請求"]
+    subgraph client["Client requests"]
+        normal["Normal requests"]
+        faulty["Requests carrying x-fault-test"]
     end
 
-    normal --> vs["Istio VirtualService\nbackend-virtualservice.yaml\n權重分流 + timeout + 重試 + 故障注入"]
+    normal --> vs["Istio VirtualService\nbackend-virtualservice.yaml\nweight split + timeout + retry + fault injection"]
     faulty --> vs
 
-    vs -->|90%（一般請求）| stable["hello-backend\nlane: baseline"]
-    vs -->|10%（一般請求）| canary["hello-backend-canary\nlane: canary"]
-    vs -->|x-fault-test → delay/abort，固定打 stable| stable
+    vs -->|90% (normal requests)| stable["hello-backend\nlane: baseline"]
+    vs -->|10% (normal requests)| canary["hello-backend-canary\nlane: canary"]
+    vs -->|x-fault-test → delay/abort, pinned to stable| stable
 
     stable -. outlierDetection .-> dr1["DestinationRule\nbackend-destinationrule.yaml"]
     canary -. outlierDetection .-> dr2["DestinationRule\nbackend-canary-destinationrule.yaml"]
 
-    waypoint["waypoint（既有）"] -. enforce L7 policy .-> vs
+    waypoint["waypoint (existing)"] -. enforce L7 policy .-> vs
 ```
 
-`VirtualService` 是 `hello-backend` host 唯一的路由設定來源：一般請求（無 header）走預設規則的權重分流（90/10）與 timeout/重試；帶 `x-fault-test` header 的請求另外匹配到 delay/abort 規則，注入故障後固定打 `hello-backend`（stable），不含權重分流的隨機性，讓 chaos 測試結果可預期、可重現。這不是原本的設計——原本規劃是 `HTTPRoute` 管一般流量的金絲雀分流、`VirtualService` 只管故障注入（見下方「元件與設定」表），但實作階段（Task 3）發現兩者無法在同一 host 上共存：`HTTPRoute` 的規則沒有任何 header 匹配條件，Istio 把它與 `VirtualService` 的規則合併進 waypoint 的同一張 Envoy 路由表時，這種「無條件」規則會整條覆蓋掉同 host 的 `VirtualService` 規則，導致故障注入的 header match 完全不會被評估到。問題根源是規則「無條件」，不是它的 weight/timeout 內容——所以最終處置是刪除整份 `backend-httproute.yaml`，讓 `VirtualService` 一次扛起金絲雀權重、timeout、重試、故障注入四種功能，而不是收窄 HTTPRoute 的匹配範圍去跟 VirtualService 分工。詳見「已知限制」。
+`VirtualService` is the single source of routing configuration for the `hello-backend` host: normal requests (no header) take the default rule's weight split (90/10) and timeout/retry; requests carrying the `x-fault-test` header additionally match the delay/abort rule, which injects the fault and then pins traffic to `hello-backend` (stable), without the randomness of the weight split, so chaos test results are predictable and reproducible. This was not the original design — the original plan had `HTTPRoute` managing the canary split for normal traffic and `VirtualService` handling only fault injection (see the "Components and configuration" table below) — but during implementation (Task 3) the two turned out to be unable to coexist on the same host: `HTTPRoute`'s rule has no header match condition, and when Istio merges it with the `VirtualService` rule into the waypoint's single Envoy route table, this "unconditional" rule overwrites the whole `VirtualService` rule for the same host, so the fault-injection header match is never evaluated. The root cause is the rule being "unconditional", not its weight/timeout content — so the final decision is to delete `backend-httproute.yaml` entirely and let `VirtualService` carry all four functions (canary weight, timeout, retry, fault injection) at once, rather than narrowing HTTPRoute's match scope to divide labor with VirtualService. See "Known limitations" for details.
 
-## 元件與設定
+## Components and configuration
 
-| 項目 | 決定 | 理由 |
+| Item | Decision | Rationale |
 |---|---|---|
-| 金絲雀權重機制 | `VirtualService.http[].route[].weight`（`backend-virtualservice.yaml` 的預設路由規則），兩個獨立 Service（`hello-backend` / `hello-backend-canary`），不用 Istio 傳統的 subset 機制 | 原規劃走 Gateway API `HTTPRoute.backendRefs[].weight`，Task 3 因 HTTPRoute 與 VirtualService 在同一 host 上衝突而刪除 HTTPRoute 後，權重分流併入 VirtualService（見「架構」段落與已知限制）。語意不變：一樣是在多個目的地之間切，不是在同一 Service 底下切 subset；用兩個 Service 仍是 Gateway API 推薦的金絲雀模式精神延續，讓兩個版本各自的 Deployment/label/資源配額完全獨立、互不干擾 |
-| DestinationRule 是否與金絲雀共用 | 不共用——`hello-backend`、`hello-backend-canary` 各一份，只放 outlier detection，不放 subset | 路線圖原本留的懸念（[待細化的設計取捨](2026-08-19-k3s-mesh-capabilities-roadmap.md)）。因為權重分流走的是雙 Service 模式（見上列「金絲雀權重機制」，現由 `VirtualService` 承載），`DestinationRule` 沒有 subset 可切，共用一份沒有意義，兩個獨立 host 天生就要兩份 |
-| 金絲雀比例 | 90/10 | demo 用途的示範值，之後要調整只是改一個數字，不影響機制本身 |
-| canary 版本的實際差異 | 沿用同一張 pinned image（`nginxinc/nginx-unprivileged`），用 ConfigMap 掛載不同的 `index.html`（沿用 `frontend-configmap.yaml` 的 checksum annotation 慣例），顯示文字含「canary」字樣 | 不用另外建 CI pipeline/新 image，驗證時用肉眼或 `curl` 就能分辨打到哪個版本；符合路線圖「零新元件」精神——這裡新增的是既有 app 的另一份 Deployment，不是新的基礎設施元件 |
-| Timeout 值 | `timeout: 10s`（`backend-virtualservice.yaml` 的 `VirtualService.http[].timeout`，套用在預設路由與 delay-match 規則上） | `hello-backend` 是靜態頁面回應應在毫秒等級，10s 是刻意寬鬆的示範值。原規劃走 Gateway API `HTTPRoute` 的兩層欄位（`timeouts.request: 10s`、`timeouts.backendRequest: 8s`），Task 3 改用 VirtualService 後只剩單一 `timeout` 欄位，沒有 request/backendRequest 的兩層區分。原始設計意圖是「用故障注入的 delay 測試驗證機制生效（預期被 timeout 擋下）」，但實測發現 `fault.delay` 與同規則 `timeout` 疊加時並不會生效（見「已知限制」）——這個驗證手段本身不成立，不代表 timeout 對真實的慢請求無效，只是無法用 fault injection 這樣測；不是為了保護真實延遲敏感的服務 |
-| Retry 實作方式 | 定案：`VirtualService.http[].retries`（`attempts: 2, perTryTimeout: 2s, retryOn: 5xx,reset,connect-failure`），與金絲雀權重、timeout、故障注入同一份 `backend-virtualservice.yaml` | 原規劃留待實作階段查證 Gateway API standard channel 的 `HTTPRoute` 是否原生支援 retry 欄位；但 Task 3 已因 HTTPRoute/VirtualService 衝突刪除 HTTPRoute，VirtualService 成為唯一路由來源後，retries 自然併入同一份 VirtualService，不再是需要另外決策的獨立問題 |
-| 熱斷（outlier detection）參數 | `consecutive5xxErrors: 3, interval: 30s, baseEjectionTime: 30s, maxEjectionPercent: 100`（原規劃 50，Task 4 實作時改為 100） | Istio 官方文件/範例的典型示範值是 50%，換算成人話：連續 3 次 5xx 就丟出輪詢池 30 秒；但兩個 backend 都是 `replicas: 1`，50% 會無條件捨去成 0 個可踢出的 endpoint，等於整個功能靜默失效，所以改成 100——單一副本場景下，被踢出的上限本來就只有那唯一一個 endpoint |
-| 故障注入觸發方式 | 只匹配 `x-fault-test: "true"` header，其餘規則不變 | 已跟你確認過——不常駐套用在正常流量上，平時零影響，要做 chaos 測試才手動加 header |
-| 故障注入的目標版本 | 固定打 `hello-backend`（stable），不經過金絲雀權重 | 簡化設計：故障測試要的是「這個特定版本在故障情境下的行為」，如果還疊加隨機的權重分流，同一次測試兩次結果可能打到不同版本，結果不可預期、難以比對 |
-| VirtualService 與 HTTPRoute 共存 | 不共存——`HTTPRoute`（`backend-httproute.yaml`）已在 Task 3 刪除，`VirtualService` 是 `hello-backend` host 唯一的路由設定來源，同時處理一般流量的權重分流、timeout、重試，以及 header 觸發的故障注入 | 路線圖原本預期兩者可以分工共存（「故障注入需要 VirtualService，CRD 已經在」），但實測發現 Istio 把 Gateway API 與傳統 API 的規則合併進同一張 Envoy 路由表時，`HTTPRoute` 的無條件規則（沒有 header 匹配條件）會整條覆蓋掉同 host 的 `VirtualService` 規則——故障注入的 header match 永遠不會被 Envoy 評估到。根源是規則「無條件」而非其 weight/timeout 內容，所以處置是刪除整份 HTTPRoute，不是收窄它，詳見已知限制 |
+| Canary weight mechanism | `VirtualService.http[].route[].weight` (the default route rule in `backend-virtualservice.yaml`), two independent Services (`hello-backend` / `hello-backend-canary`), not Istio's traditional subset mechanism | The original plan used Gateway API `HTTPRoute.backendRefs[].weight`; after Task 3 deleted HTTPRoute due to its conflict with VirtualService on the same host, the weight split was folded into VirtualService (see the "Architecture" section and "Known limitations"). The semantics are unchanged: it still splits across multiple destinations, not across subsets under one Service. Using two Services continues the spirit of Gateway API's recommended canary pattern, keeping the two versions' Deployment/labels/resource quotas fully independent and non-interfering |
+| Whether DestinationRule is shared with the canary | Not shared — `hello-backend` and `hello-backend-canary` each get their own, containing only outlier detection, no subset | The open question the roadmap left ([design trade-off to refine](2026-08-19-k3s-mesh-capabilities-roadmap.md)). Because the weight split uses the two-Service pattern (see "Canary weight mechanism" above, now carried by `VirtualService`), `DestinationRule` has no subset to switch, so sharing one is meaningless — two independent hosts naturally need two |
+| Canary ratio | 90/10 | A demo value; adjusting it later is just changing one number, it doesn't affect the mechanism itself |
+| Actual difference of the canary version | Reuses the same pinned image (`nginxinc/nginx-unprivileged`), mounting a different `index.html` via ConfigMap (following the checksum-annotation convention of `frontend-configmap.yaml`), with display text containing "canary" | No new CI pipeline/image needed; during verification, a glance or `curl` can distinguish which version was hit; consistent with the roadmap's "zero new components" spirit — this adds another Deployment of an existing app, not a new piece of infrastructure |
+| Timeout value | `timeout: 10s` (`VirtualService.http[].timeout` in `backend-virtualservice.yaml`, applied to the default rule and the delay-match rule) | `hello-backend` is a static page and should respond in the millisecond range, so 10s is a deliberately loose demo value. The original plan used Gateway API `HTTPRoute`'s two-level fields (`timeouts.request: 10s`, `timeouts.backendRequest: 8s`); after Task 3 switched to VirtualService there is only a single `timeout` field, with no request/backendRequest distinction. The original design intent was "use the fault-injection delay to verify the mechanism works (expected to be cut off by timeout)", but testing showed `fault.delay` combined with a `timeout` on the same rule does not take effect (see "Known limitations") — that verification approach itself doesn't hold, which does not mean timeout is ineffective against real slow requests, just that it cannot be tested that way via fault injection; it is not meant to protect a genuinely latency-sensitive service |
+| Retry implementation | Final: `VirtualService.http[].retries` (`attempts: 2, perTryTimeout: 2s, retryOn: 5xx,reset,connect-failure`), in the same `backend-virtualservice.yaml` as canary weight, timeout, and fault injection | The original plan left it to implementation time to check whether the Gateway API standard channel `HTTPRoute` natively supports a retry field; but Task 3 already deleted HTTPRoute due to the HTTPRoute/VirtualService conflict, and once VirtualService became the sole routing source, retries naturally fold into the same VirtualService — no longer a separate decision |
+| Outlier detection parameters | `consecutive5xxErrors: 3, interval: 30s, baseEjectionTime: 30s, maxEjectionPercent: 100` (original plan 50, changed to 100 during Task 4 implementation) | The typical demo value in Istio's official docs/examples is 50%, which in plain terms means: 3 consecutive 5xx ejects the endpoint from the pool for 30 seconds; but both backends are `replicas: 1`, so 50% unconditionally rounds down to 0 ejectable endpoints, making the whole feature silently fail — hence the change to 100. In a single-replica scenario, the ejectable ceiling is that one endpoint anyway |
+| Fault injection trigger | Only matches the `x-fault-test: "true"` header; other rules unchanged | Already confirmed with you — not applied to normal traffic permanently; zero impact at rest; only add the header manually to run a chaos test |
+| Fault injection target version | Pinned to `hello-backend` (stable), not subject to canary weight | Simpler design: a fault test wants "this specific version's behavior under failure". If random weight splitting is layered on top, two runs of the same test could hit different versions, making the result unpredictable and hard to compare |
+| VirtualService and HTTPRoute coexistence | They do not coexist — `HTTPRoute` (`backend-httproute.yaml`) was already deleted in Task 3, and `VirtualService` is the sole source of routing configuration for the `hello-backend` host, handling weight split, timeout, retry for normal traffic as well as header-triggered fault injection | The roadmap originally expected the two to divide labor and coexist ("fault injection needs VirtualService, the CRD is already there"), but testing showed that when Istio merges Gateway API and traditional API rules into the same Envoy route table, `HTTPRoute`'s unconditional rule (no header match condition) overwrites the whole `VirtualService` rule for the same host — the fault-injection header match is never evaluated by Envoy. The root cause is the rule being "unconditional" rather than its weight/timeout content, so the decision is to delete the whole HTTPRoute, not narrow it; see "Known limitations" |
 
-## Repo 佈局
+## Repo layout
 
 ```
 vps_oracle/k3s/apps/hello/k8s/
-  backend-canary-configmap.yaml       # 新增：canary 版本的 index.html 覆蓋內容
-  backend-canary-deployment.yaml      # 新增：hello-backend-canary，lane: canary
-  backend-canary-service.yaml         # 新增：hello-backend-canary Service
-  backend-destinationrule.yaml        # 新增：hello-backend 的 outlier detection
-  backend-canary-destinationrule.yaml # 新增：hello-backend-canary 的 outlier detection
-  backend-virtualservice.yaml         # 新增：權重分流 + timeout + 重試 + header 觸發式故障注入，
-                                       # 唯一路由設定來源。backend-httproute.yaml 曾短暫存在
-                                       # （Task 2）又在 Task 3 刪除——見「架構」與「已知限制」
+  backend-canary-configmap.yaml       # new: override content for the canary version's index.html
+  backend-canary-deployment.yaml      # new: hello-backend-canary, lane: canary
+  backend-canary-service.yaml         # new: hello-backend-canary Service
+  backend-destinationrule.yaml        # new: outlier detection for hello-backend
+  backend-canary-destinationrule.yaml # new: outlier detection for hello-backend-canary
+  backend-virtualservice.yaml         # new: weight split + timeout + retry + header-triggered fault injection,
+                                       # the sole source of routing configuration. backend-httproute.yaml briefly
+                                       # existed (Task 2) and was deleted in Task 3 — see "Architecture" and "Known limitations"
 ```
 
-全部落在既有的 `k8s/` 目錄，沿用 `backend-*` 命名慣例，ArgoCD 既有的 `hello` Application 會自動撿到新檔案，不需要新增 Application 或改 Kustomization 入口（`k8s/` 目前沒有 `kustomization.yaml`，是 ArgoCD 直接指向目錄，新檔案自動生效）。
+Everything lands in the existing `k8s/` directory, following the `backend-*` naming convention. ArgoCD's existing `hello` Application picks up the new files automatically; no new Application or Kustomization entry is needed (`k8s/` has no `kustomization.yaml` today — ArgoCD points directly at the directory, so new files take effect automatically).
 
-## 資源預算
+## Resource budget
 
-新增的唯一常駐 workload 是 `hello-backend-canary`（沿用 `lane/deployment.yaml` 的資源配置：`requests: 25m/64Mi`, `limits: 100m/128Mi`）。
+The only new resident workload is `hello-backend-canary` (reusing `lane/deployment.yaml`'s resource config: `requests: 25m/64Mi`, `limits: 100m/128Mi`).
 
 | | requests.cpu | requests.memory | limits.cpu | limits.memory |
 |---|---|---|---|---|
-| 既有靜態常駐（waypoint + frontend + backend baseline） | 100m | 256Mi | 400m | 512Mi |
+| Existing static residents (waypoint + frontend + backend baseline) | 100m | 256Mi | 400m | 512Mi |
 | + hello-backend-canary | 25m | 64Mi | 100m | 128Mi |
-| 小計 | 125m | 320Mi | 500m | 640Mi |
-| `pr-lanes-quota` 上限 | 400m | 768Mi | 1200m | 1536Mi |
-| 剩餘給 PR 泳道 | 275m | 448Mi | 700m | 896Mi |
+| Subtotal | 125m | 320Mi | 500m | 640Mi |
+| `pr-lanes-quota` ceiling | 400m | 768Mi | 1200m | 1536Mi |
+| Remaining for PR lanes | 275m | 448Mi | 700m | 896Mi |
 
-每條 PR 泳道的 `hello-backend-pr-N`（`lane/deployment.yaml`）用量是 `requests: 25m/64Mi`, `limits: 100m/128Mi`。用 limits 算（quota 卡的是 limits）：`700m / 100m = 7`，`896Mi / 128Mi = 7`——**可同時開啟的 PR 泳道數從約 8 條降到約 7 條**。這是選擇部署真實 canary Deployment 的直接代價，屬於預期內、算過的取捨，不是本階段實作中才發現的意外。
+Each PR lane's `hello-backend-pr-N` (`lane/deployment.yaml`) uses `requests: 25m/64Mi`, `limits: 100m/128Mi`. Counting by limits (quota caps limits): `700m / 100m = 7`, `896Mi / 128Mi = 7` — **the number of PR lanes that can be open at once drops from about 8 to about 7**. This is the direct cost of deploying a real canary Deployment, an expected and calculated trade-off, not a surprise discovered mid-implementation.
 
-`DestinationRule`、`VirtualService` 的權重/timeout/重試欄位都是純控制面配置，不佔用 quota。
+The `DestinationRule` and `VirtualService` weight/timeout/retry fields are pure control-plane config and do not consume quota.
 
-## 驗證清單（phase I 過關標準）
+## Verification checklist (phase I pass criteria)
 
-**金絲雀權重：**
+**Canary weight:**
 1. `kubectl -n pr-lanes get application hello` → `Synced` + `Healthy`
-2. 連續發送多次請求（不帶任何特殊 header），統計打到 stable vs canary 的比例接近 90/10（用回應內容裡的「canary」字樣區分）
-3. `hello-backend-canary` pod `Running`，不影響既有 PR 泳道路由（帶 `x-pr-lane` header 的請求仍 100% 打中對應泳道的 backend，不受權重分流影響）
+2. Send many requests (no special header) and confirm the stable vs canary ratio is near 90/10 (distinguish by the "canary" text in the response body)
+3. `hello-backend-canary` pod `Running`, without affecting existing PR lane routing (requests with the `x-pr-lane` header still hit the corresponding lane's backend 100%, unaffected by the weight split)
 
-**超時：**
-4. 用故障注入的 delay（`fixedDelay: 15s` > 同一條規則的 `timeout: 10s`）驗證 timeout 是否能截斷同規則上的 `fault.delay`——結果：不能。實測請求跑完整整 ~15s 才回應 `200`（Task 5 smoke test：`200 15.007575s`），不是預期中 timeout 對應的錯誤碼。這是 `fault.delay` 與 `timeout` 疊加在同一條 Envoy 規則上時的行為限制（推測是 route timeout 計時器要到 router filter 開始處理 upstream request 才起算，晚於 fault filter 的 decode-time delay），不是本階段的設定錯誤，詳見「已知限制」
+**Timeout:**
+4. Use fault-injection delay (`fixedDelay: 15s` > the same rule's `timeout: 10s`) to verify whether timeout can cut off `fault.delay` on the same rule — result: it cannot. Testing shows the request runs the full ~15s before responding `200` (Task 5 smoke test: `200 15.007575s`), not the timeout's expected error code. This is a behavior limitation of `fault.delay` and `timeout` stacked on the same Envoy rule (hypothesis: the route timeout timer only starts when the router filter begins processing the upstream request, later than the fault filter's decode-time delay), not a configuration error in this phase. See "Known limitations" for details
 
-**重試：**
-5. 重試機制定案為 `VirtualService.http[].retries`（見「元件與設定」），用暫時把某個 pod 故意調成不健康的方式驗證重試確實發生（觀察 waypoint/envoy 的 access log 有多次嘗試記錄）
+**Retry:**
+5. The retry mechanism is finalized as `VirtualService.http[].retries` (see "Components and configuration"). Verify retries actually happen by deliberately making some pod unhealthy and observing the waypoint/envoy access log showing multiple attempts
 
-**熱斷：**
-6. 結構驗證（可靠、本階段已完成）：用 `istioctl proxy-config cluster`/`istioctl proxy-config route` 或 Envoy config dump 確認兩份 `DestinationRule` 的 `outlierDetection` 設定（`consecutive5xxErrors`/`interval`/`baseEjectionTime`/`maxEjectionPercent`）確實下發到 waypoint 的 Envoy dataplane。行為驗證：**不要**用 `x-fault-test: abort` 測——已證實 fault injection 的 abort 是 local reply，根本不會派送到 upstream cluster，outlier detection 的 `consecutive5xxErrors` 永遠看不到（實測證據見「已知限制」）。真要驗證行為層級的 ejection，必須讓 upstream 真的收到請求並回傳 5xx（例如讓 pod 本身故障，而非用 fault injection 模擬），這超出本階段用 fault injection 做 chaos 測試的既定範圍，留給後續階段
-7. `baseEjectionTime` 過後該 endpoint 應自動恢復回輪詢池——同樣是行為層級驗證，依賴第 6 項所說「upstream 真的收到請求並回傳 5xx」才能實際觸發 ejection 進而觀察恢復，本階段未執行，與第 6 項一併留給後續階段
+**Outlier detection:**
+6. Structural verification (reliable, done this phase): use `istioctl proxy-config cluster`/`istioctl proxy-config route`, or an Envoy config dump, to confirm the two `DestinationRule` `outlierDetection` settings (`consecutive5xxErrors`/`interval`/`baseEjectionTime`/`maxEjectionPercent`) are actually delivered to the waypoint's Envoy dataplane. Behavioral verification: do **not** use `x-fault-test: abort` to test — it is confirmed that fault-injection abort is a local reply and never reaches the upstream cluster, so outlier detection's `consecutive5xxErrors` would never see anything (see "Known limitations" for the evidence). To truly verify behavior-level ejection, the upstream must actually receive the request and return 5xx (e.g. make the pod itself fail, not simulate via fault injection), which is beyond this phase's stated scope of chaos testing via fault injection — deferred to a later phase
+7. After `baseEjectionTime`, that endpoint should automatically return to the pool — again a behavior-level verification that depends on "the upstream actually receiving the request and returning 5xx" from item 6 to actually trigger ejection and observe recovery; not performed this phase, deferred together with item 6
 
-**故障注入：**
-8. 不帶 `x-fault-test` header 的正常請求完全不受影響，延遲/成功率與本階段改動前一致
-9. 帶 `x-fault-test: "true"` header 的請求確實被注入 delay/abort，且固定打中 `hello-backend`（stable），不會意外落到 canary
+**Fault injection:**
+8. Normal requests without the `x-fault-test` header are completely unaffected; latency/success rate match the pre-change baseline
+9. Requests carrying the `x-fault-test: "true"` header are indeed injected with delay/abort and pinned to `hello-backend` (stable), never accidentally landing on canary
 
-**共存驗證（本階段技術風險最高的一項，已在 Task 3 解決）：**
-10. 同時存在 `HTTPRoute`（金絲雀）與 `VirtualService`（故障注入）時，用 `istioctl proxy-config route` 檢查 waypoint 實際下發的 Envoy 路由表，確認兩者規則是否都生效、有沒有互相覆蓋——結果：確實衝突。`HTTPRoute` 的規則沒有 header 匹配條件，屬於「無條件」規則，Istio 把兩者合併進同一張路由表時，這種無條件規則會整條覆蓋掉同 host 的 `VirtualService` 規則，導致故障注入的 header match 從未被 Envoy 評估到。處置：刪除 `backend-httproute.yaml`，讓 `VirtualService` 成為 `hello-backend` 唯一的路由設定來源，一次扛起權重、timeout、重試、故障注入四種功能，而不是收窄 HTTPRoute 的匹配範圍去跟 VirtualService 分工。詳見「架構」段落與「已知限制」
+**Coexistence verification (the highest technical risk in this phase, resolved in Task 3):**
+10. With `HTTPRoute` (canary) and `VirtualService` (fault injection) present simultaneously, use `istioctl proxy-config route` to inspect the Envoy route table actually delivered to the waypoint, and confirm whether both rules take effect or overwrite each other — result: they do conflict. `HTTPRoute`'s rule has no header match condition, i.e. it is "unconditional"; when Istio merges the two into the same route table, this unconditional rule overwrites the whole `VirtualService` rule for the same host, so the fault-injection header match is never evaluated by Envoy. Decision: delete `backend-httproute.yaml`, let `VirtualService` become the sole source of routing configuration for `hello-backend`, carrying weight, timeout, retry, and fault injection all at once, rather than narrowing HTTPRoute's match scope to divide labor with VirtualService. See the "Architecture" section and "Known limitations"
 
-**資源：**
-11. `kubectl describe resourcequota pr-lanes-quota -n pr-lanes` 確認新增資源後 used 未超過 hard 上限
-12. 全部既有 Application 複查仍 `Synced` + `Healthy`，證明沒有誤傷任何現存服務（含正在跑的 PR 泳道，若當下有開啟中的 PR）
+**Resources:**
+11. `kubectl describe resourcequota pr-lanes-quota -n pr-lanes` confirms used has not exceeded the hard ceiling after adding resources
+12. Re-check all existing Applications still `Synced` + `Healthy`, proving no existing service was damaged (including running PR lanes, if any are open right now)
 
-## 已知限制 / 失敗模式
+## Known limitations / failure modes
 
-- **HTTPRoute 與 VirtualService 混用同一 host 確實衝突，已在 Task 3 解決**：驗證清單第 10 項的疑慮成真——用 `istioctl proxy-config route` 對照兩者規則內容與 waypoint 實際下發的 Envoy 路由表後確認，`HTTPRoute` 的無條件規則（沒有 header 匹配條件）整條覆蓋掉了同 host 的 `VirtualService` 規則，`VirtualService` 的 header match 完全不會被評估到。根源是規則「無條件」，不是 weight/timeout 的內容本身——收窄 HTTPRoute 的匹配範圍理論上也能解，但既然 `VirtualService` 已經能表達同樣的權重分流語意，沒有理由維持兩份設定互相打架的架構，所以處置是直接刪除 `backend-httproute.yaml`，讓 `VirtualService` 成為 `hello-backend` 唯一的路由設定來源。詳見「架構」段落與「元件與設定」表
-- **`x-fault-test: delay` 的 `timeout: 10s` 不會截斷 15s 的注入延遲**：實測請求跑完整整 ~15s 才回應，回應碼是 `200`，不是預期中 timeout 對應的錯誤碼。假說（現象已確認，根因尚未完全證實）：Envoy 的 route timeout 計時器似乎是從 router filter 開始處理 upstream request 才起算，而 fault filter 的 decode-time delay 是在 router filter 之前執行完的，所以延遲注入花掉的時間不算進 `route.timeout` 的計時窗口。透過 Envoy config dump 確認過設定本身編譯正確（欄位沒寫錯），這是 `fault.delay` 與 `timeout` 疊加使用時 Envoy 本身的行為限制，不是本階段的設定錯誤。不影響既有機制——Task 4 的熱斷驗證用的是 `abort`，不是 `delay`，沒有依賴這個組合生效
-- **`x-fault-test: abort` 不會觸發熱斷（outlier detection）的 ejection，且是架構性、非偶發的限制**：Envoy 的 fault-injection abort 會直接回傳 local reply，請求根本不會派送到 upstream cluster——outlier detection 的 `consecutive5xxErrors` 計數器讀的是 upstream cluster 自己的請求/失敗統計，永遠看不到被 fault filter 短路掉的請求。實測用一個乾淨的自然實驗直接證明：連續發送 6 次帶 `x-fault-test: abort` 的請求後，upstream cluster 的 `rq_total` 計數器維持在 `0`；緊接著發一次不帶 header 的正常請求，`rq_total` 立刻跳到 `1`。這代表 fault-injected 的請求從頭到尾沒有被算進 upstream 的任何統計——這是 Envoy fault filter 在 router filter 之前短路的設計本身決定的，不是本階段配置錯誤，也不是「這次剛好沒測到」的偶發結果，換成任何用同樣方式配置的其他服務都會是一樣的結果。要真的驗證熱斷生效，需要讓 upstream 真的收到請求並回傳 5xx（例如讓 pod 本身故障，而非用 fault injection 模擬），這超出本階段用 fault injection 做 chaos 測試的既定範圍，留給後續階段視需要再處理
-- **金絲雀權重降低了 PR 泳道並發容量**（8→7 條），如果之後同時開的 PR 數經常逼近這個上限，需要重新評估是否要把 canary 拆成非常駐（例如只在驗證金絲雀機制時才臨時開啟），但目前沒有跡象顯示會撞到，先不處理
-- **故障注入固定打 stable，不會測試 canary 版本在故障情境下的行為**：如果之後需要測 canary 版本的故障恢復能力，本階段的 VirtualService 設計需要擴充成可選目標，目前刻意簡化
-- **canary 版本目前沒有獨立的健康檢查/liveness probe 設定**：沿用最簡設定即可，因為 canary 只是同一個 nginx 靜態頁面換內容，跟 baseline 的 `backend-deployment.yaml` 一樣沒有特殊健康邏輯需要照顧
+- **Mixing HTTPRoute and VirtualService on the same host does conflict, resolved in Task 3**: the concern in checklist item 10 materialized — cross-checking the rule contents of both against the Envoy route table actually delivered to the waypoint via `istioctl proxy-config route` confirmed that `HTTPRoute`'s unconditional rule (no header match condition) overwrites the whole `VirtualService` rule for the same host, and `VirtualService`'s header match is never evaluated. The root cause is the rule being "unconditional", not the weight/timeout content — narrowing HTTPRoute's match scope would theoretically also work, but since `VirtualService` can already express the same weight-split semantics, there is no reason to keep two configurations fighting each other, so the decision is to delete `backend-httproute.yaml` and let `VirtualService` be the sole source of routing configuration for `hello-backend`. See the "Architecture" section and the "Components and configuration" table
+- **`x-fault-test: delay` with `timeout: 10s` does not cut off the 15s injected delay**: testing shows the request runs the full ~15s before responding, with code `200`, not the timeout's expected error code. Hypothesis (phenomenon confirmed, root cause not fully proven): Envoy's route timeout timer appears to start only when the router filter begins processing the upstream request, while the fault filter's decode-time delay finishes before the router filter, so the time consumed by the delay injection is not counted in the `route.timeout` window. It was confirmed via Envoy config dump that the configuration itself compiled correctly (fields written correctly); this is an Envoy behavior limitation when `fault.delay` and `timeout` are stacked, not a configuration error in this phase. It does not affect existing mechanisms — Task 4's outlier detection verification used `abort`, not `delay`, so it did not depend on this combination working
+- **`x-fault-test: abort` does not trigger outlier detection ejection, and this is an architectural, not incidental, limitation**: Envoy's fault-injection abort returns a local reply directly, so the request never reaches the upstream cluster — outlier detection's `consecutive5xxErrors` counter reads the upstream cluster's own request/failure stats and never sees requests short-circuited by the fault filter. A natural experiment proved this directly: after sending 6 requests with `x-fault-test: abort`, the upstream cluster's `rq_total` counter stayed at `0`; immediately sending one normal request without the header made `rq_total` jump to `1`. This means fault-injected requests are never counted in any upstream stats — determined by Envoy's design of short-circuiting in the fault filter before the router filter, not a configuration error in this phase, nor an incidental "didn't happen to catch it this time" result; any other service configured the same way would behave identically. To truly verify outlier detection works, the upstream must actually receive the request and return 5xx (e.g. make the pod itself fail, not simulate via fault injection), which is beyond this phase's stated scope of chaos testing via fault injection — deferred to a later phase as needed
+- **The canary weight lowering PR-lane concurrency capacity** (8→7 lanes): if the number of concurrently open PRs routinely approaches this ceiling, reconsider whether to make the canary non-resident (e.g. only spin it up when verifying the canary mechanism), but there is currently no sign of hitting it, so leave as-is for now
+- **Fault injection is pinned to stable, so the canary version's behavior under failure is never tested**: if testing the canary version's fault recovery is needed later, this phase's VirtualService design must be extended to an optional target; deliberately simplified for now
+- **The canary version currently has no dedicated health check / liveness probe config**: the minimal config suffices, since the canary is just the same nginx static page with different content, with no special health logic to handle — same as baseline's `backend-deployment.yaml`
 
-## 交棒給 phase J
+## Handoff to Phase J
 
-Phase J（AuthorizationPolicy）會在同一個 `hello-backend`/`hello-backend-canary` 之上加東西向存取控制，需要確認本階段新增的 `hello-backend-canary` Service 也要被涵蓋進授權範圍（不能只授權 `hello-backend`，漏掉 canary 導致金絲雀流量被意外擋下）。J 階段設計時應該重新讀一次本文件的「元件與設定」表，把 canary 加進涵蓋清單。
+Phase J (AuthorizationPolicy) will add east-west access control on top of the same `hello-backend`/`hello-backend-canary`. It must confirm that this phase's new `hello-backend-canary` Service is also covered by the authorization scope (authorizing only `hello-backend` and missing the canary would unexpectedly block canary traffic). Phase J's design should re-read this document's "Components and configuration" table and add the canary to the coverage list.
 
-本階段驗證出的「Gateway API 與傳統 Istio API 混用同一 host」的實際行為（驗證清單第 10 項）——確實有衝突，無條件的 Gateway API 規則會覆蓋掉同 host 的傳統 API 規則——也是後續 K/L 階段若要用 `EnvoyFilter` 或其他傳統 Istio 機制時的重要參考，L 階段評估 `EnvoyFilter` 限流路徑時務必把這個風險納入考量。
+The actual behavior verified this phase — "mixing Gateway API and traditional Istio API on the same host" (checklist item 10) — that they do conflict, and an unconditional Gateway API rule overwrites a traditional API rule on the same host — is also an important reference for later Phases K/L if they use `EnvoyFilter` or other traditional Istio mechanisms; Phase L's evaluation of the `EnvoyFilter` rate-limiting path must factor this risk in.

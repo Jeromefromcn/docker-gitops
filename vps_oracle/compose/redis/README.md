@@ -1,61 +1,61 @@
 # vps_oracle/compose/redis
 
-统一 Redis 实例,给用户自己搭的服务用。**第三方自带 Redis 的服务(如 dify 的 `dify-redis`)保持各自独立实例,不迁移到这里**——和统一 Postgres 的取舍一致(见 `../postgres/README.md`)。
+A unified Redis instance for the user's own services. **Third-party services that bundle their own Redis (e.g. dify's `dify-redis`) keep their own separate instances and are not migrated here** — the same tradeoff as the unified Postgres (see `../postgres/README.md`).
 
-## 隔离模型:一个共享实例 + 每应用一个 ACL 用户
+## Isolation model: one shared instance + one ACL user per app
 
-用 **Redis ACL 用户 + key 前缀命名空间** 做隔离,而不是每个应用起一个实例:
+Isolation uses **Redis ACL users + key-prefix namespaces** rather than one instance per app:
 
-- 每个应用一个 ACL 用户,形如 `user notes on ><password> ~notes:* +@all`
-- `~<prefix>:*` 限定该用户**只能访问** `<prefix>:` 前缀下的 key
-- 应用 A 的进程**在权限层面**读写不了应用 B 的 key——不是靠"约定各自别用对方前缀",而是 Redis 强制
-- 一个实例、一份数据目录、一个管理界面,资源开销最小
-- 若某应用需要完全隔离(独立内存上限、要 `FLUSHALL` 等),再给它单独起一个实例
+- One ACL user per app, of the form `user notes on ><password> ~notes:* +@all`
+- `~<prefix>:*` limits the user to **only** the keys under the `<prefix>:` prefix
+- App A's process **cannot** read/write App B's keys **at the permission level** — this isn't "just don't use each other's prefix" by convention, it's enforced by Redis
+- One instance, one data directory, one admin UI — minimal resource overhead
+- If an app needs full isolation (its own memory limit, needs `FLUSHALL`, etc.), give it its own instance
 
-## 结构
+## Layout
 
 ```
 redis/
-├── docker-compose.yml        # redis + redisinsight 两个服务
-├── .env.example              # 模板(复制成 .env 填真实值)
+├── docker-compose.yml        # redis + redisinsight, two services
+├── .env.example              # template (copy to .env and fill in real values)
 ├── redis/
-│   ├── redis.conf            # 共享实例配置(persistence / maxmemory)
-│   └── users.acl             # 【生成物,gitignored】每应用一个 ACL 用户
+│   ├── redis.conf            # shared instance config (persistence / maxmemory)
+│   └── users.acl             # [generated, gitignored] one ACL user per app
 └── scripts/
-    └── gen-users-acl.sh      # 从 .env 生成 users.acl
+    └── gen-users-acl.sh      # generates users.acl from .env
 ```
 
-- `redis` :统一实例。`default` 网络纯后端,无发布端口、不挂 proxy。应用容器加入 `default` 网络,连 `redis:6379`。
-- `redisinsight`:管理界面(Redis 官方 GUI)。挂 `proxy` 网络走 NPM,无内建鉴权 → 挂 `self-only-and-auth`(Basic Auth)。未发布宿主端口。
+- `redis`: the unified instance. Pure backend on the `default` network — no published port, not on proxy. App containers join the `default` network and connect to `redis:6379`.
+- `redisinsight`: admin UI (Redis's official GUI). On the `proxy` network via NPM; no built-in auth → behind the `self-only-and-auth` access list (Basic Auth). No host port published.
 
-## 首次部署顺序
+## First-deploy order
 
 ```bash
 cd vps_oracle/compose/redis
-cp .env.example .env          # 填 REDIS_PASSWORD / REDISINSIGHT_PASSWORD / 各 APP_*_PASSWORD
-./scripts/gen-users-acl.sh    # 生成 redis/users.acl(含真实密码,gitignored)
+cp .env.example .env          # fill in REDIS_PASSWORD / REDISINSIGHT_PASSWORD / each APP_*_PASSWORD
+./scripts/gen-users-acl.sh    # generates redis/users.acl (with real passwords, gitignored)
 docker compose up -d
 ```
 
-> 必须先跑 `gen-users-acl.sh` 再 `up -d`——compose 把 `./redis/users.acl` 只读挂载进容器,文件不存在会导致 redis 启动失败。
+> You must run `gen-users-acl.sh` before `up -d` — compose mounts `./redis/users.acl` read-only into the container, and redis fails to start if the file doesn't exist.
 
-## 怎么加一个新应用
+## How to add a new app
 
-1. `.env` 加两块:
+1. Add two blocks to `.env`:
    ```
    APP_<NAME>_PASSWORD=...
-   APP_<NAME>_KEY_PREFIX=<prefix>   # 建议用应用名,如 notes / todo
+   APP_<NAME>_KEY_PREFIX=<prefix>   # suggest the app name, e.g. notes / todo
    ```
-2. `./scripts/gen-users-acl.sh` 重新生成 `users.acl`
+2. Re-run `./scripts/gen-users-acl.sh` to regenerate `users.acl`
 3. `docker compose restart redis`
-4. 把应用容器加入 redis 栈的 `default` 网络,连 `redis:6379`,用 `<name>` 用户 + 对应密码,key 统一加 `<prefix>:` 前缀
+4. Join the app container to the redis stack's `default` network, connect to `redis:6379` with the `<name>` user + matching password, and give every key the `<prefix>:` prefix
 
-## 管理界面
+## Admin UI
 
-`https://redisinsight.jerome.cloudns.asia`(NPM 反代,`self-only-and-auth` 访问列表 + Basic Auth)。连 redis 时用对应应用的 ACL 用户,选 **Add Redis Database** → Host: `redis`,Port: `6379`,Username: 应用名,Password: 对应密码。
+`https://redisinsight.jerome.cloudns.asia` (NPM reverse proxy, `self-only-and-auth` access list + Basic Auth). When connecting to redis use the matching app's ACL user: select **Add Redis Database** → Host: `redis`, Port: `6379`, Username: the app name, Password: the matching password.
 
-## 运维
+## Operations
 
-- 数据:bind mount `/etc/redis/data`(AOF + RDB,见 `redis.conf`)
-- 备份:redis 不单列备份脚本;依赖实例数据 + 现有备份流程(如需纳入,见 `../postgres/scripts/` 的备份模式)
-- 应用侧用哪个用户连,就只能看见/操作哪个 `~<prefix>:` 下的 key
+- Data: bind mount `/etc/redis/data` (AOF + RDB, see `redis.conf`)
+- Backups: redis has no dedicated backup script; it relies on the instance data + the existing backup flow (to fold it in, see the backup pattern in `../postgres/scripts/`)
+- Whichever user the app connects as, that app can only see/operate on the keys under that one `~<prefix>:`

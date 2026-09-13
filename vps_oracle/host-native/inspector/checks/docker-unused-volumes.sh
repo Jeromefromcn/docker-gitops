@@ -2,7 +2,7 @@
 # checks/docker-unused-volumes.sh
 #
 # Flags volumes not referenced by any container (docker's dangling
-# filter). Design spec's "Docker 未用 volume" row (ALERT ONLY — a volume
+# filter). Design spec's "Docker unused volume" row (ALERT ONLY — a volume
 # may hold the only copy of data; the cost of a wrong removal is
 # asymmetric). Anonymous volumes (64-hex names, created implicitly by
 # compose recreation) are aggregated into one summary line; named

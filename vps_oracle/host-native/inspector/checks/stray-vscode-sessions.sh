@@ -95,7 +95,7 @@ check_claude_sessions() {
         2)
           # Self-chain overlap: kill_tree aborted the whole batch per the
           # design's self-protection rule 4. This must surface, not be
-          # swallowed -- spec's "只告警" table has an explicit row for it.
+          # swallowed -- spec's "alert-only" table has an explicit row for it.
           emit_result "alert" "flagged" "claude PID $pid" \
             "skipped: self-chain overlap -- session $session_id (cwd=$cwd) target PID overlapped the inspector's own process chain, entire kill aborted"
           ;;

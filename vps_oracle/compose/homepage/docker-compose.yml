@@ -13,12 +13,12 @@ services:
         max-file: "5"
     environment:
       TZ: "Asia/Hong_Kong"
-      HOMEPAGE_ALLOWED_HOSTS: "homepage.jerome.cloudns.asia"  # 需与访问用的域名一致，不然 403
+      HOMEPAGE_ALLOWED_HOSTS: "homepage.jerome.cloudns.asia"  # must match the domain used to access it, otherwise 403
     volumes:
       - ./config:/app/config
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = homepage, Forward Port = 3000（未发布到宿主机）
+    # NPM reverse proxy: Forward Hostname/IP = homepage, Forward Port = 3000 (not published to the host)
 
 networks:
   proxy:

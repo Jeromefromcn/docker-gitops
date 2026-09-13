@@ -1310,7 +1310,7 @@ spec:
                       url: https://rekor.sigstore.dev
 ```
 
-Two separate `ClusterPolicy` objects both match every `pr-lanes` Pod — the first's `exclude` skips it entirely there, so only the second (with the widened regex) actually evaluates `pr-lanes` Pods. Both `Enforce`; deliberately not one policy with a widened regex, which would accept PR-branch signatures cluster-wide (see design doc's "Kyverno 政策調整" section for why that's rejected).
+Two separate `ClusterPolicy` objects both match every `pr-lanes` Pod — the first's `exclude` skips it entirely there, so only the second (with the widened regex) actually evaluates `pr-lanes` Pods. Both `Enforce`; deliberately not one policy with a widened regex, which would accept PR-branch signatures cluster-wide (see design doc's "Kyverno Policy Adjustments" section for why that's rejected).
 
 - [ ] **Step 3: Validate YAML and commit**
 
@@ -1740,13 +1740,13 @@ Insert as new rows in `vps_oracle/k3s/README.md`'s `## Installed versions` table
 
 - [ ] **Step 2: Add a new section documenting the mesh, following the file's existing per-component pattern (see `## Sealed Secrets`, `## Kyverno / Trivy Operator / PSA baseline` for the expected shape and level of detail)**
 
-Write `## Istio Ambient / PR Lanes` covering: what's meshed (`pr-lanes` only) and why, the waypoint/HTTPRoute mechanism, how to open a test PR (needs the `pr-lane` label), the `hello-pr-<N>` Application naming, the manual GitHub PAT rotation step (link back to Task 12 Step 1's instructions since that step can't be automated the same way `kubeseal` migrations can), and the Cilium `cni.exclusive` change's rollback path (from the design doc's "已知限制" section — remove the 4 Istio Applications, drop `pr-lanes`' ambient label; the Cilium flag itself is safe to leave set).
+Write `## Istio Ambient / PR Lanes` covering: what's meshed (`pr-lanes` only) and why, the waypoint/HTTPRoute mechanism, how to open a test PR (needs the `pr-lane` label), the `hello-pr-<N>` Application naming, the manual GitHub PAT rotation step (link back to Task 12 Step 1's instructions since that step can't be automated the same way `kubeseal` migrations can), and the Cilium `cni.exclusive` change's rollback path (from the design doc's "Known Limitations" section — remove the 4 Istio Applications, drop `pr-lanes`' ambient label; the Cilium flag itself is safe to leave set).
 
 - [ ] **Step 3: Update the root `README.md`'s k3s summary paragraph**
 
 Find the sentence listing what's migrated (same one the same-day k3s-to-compose reversal commit already touched — re-read it fresh, don't assume the pre-reversal wording) and add: PR-lane mesh (`pr-lanes` namespace, `hello-frontend`/`hello-backend`) now running alongside the existing k8s-resident services.
 
-- [ ] **Step 4: Flip the roadmap's F+G row from "in progress" framing to done, and fill in the "各階段設計文檔" link status if not already done**
+- [ ] **Step 4: Flip the roadmap's F+G row from "in progress" framing to done, and fill in the "Per-Phase Design Docs" link status if not already done**
 
 ```bash
 grep -n "F+G" docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md
@@ -1912,6 +1912,6 @@ Expected: both empty. If either isn't, this is the plan's final gate — do not 
 
 ## Self-Review Notes
 
-- **Spec coverage:** every numbered item in the design doc's 驗證清單 (12 items) maps to a step above — items 1/6 land early (Task 1 Step 6-8, Task 8 Step 6) rather than being saved for Task 14, deliberately, so a broken baseline or a broken Cilium change is caught before more work is built on top of it; items 2-5, 7-12 are Task 14 (or the relevant earlier task's own verify step, e.g. item 3's CRD check is Task 2 Step 5).
+- **Spec coverage:** every numbered item in the design doc's verification checklist (12 items) maps to a step above — items 1/6 land early (Task 1 Step 6-8, Task 8 Step 6) rather than being saved for Task 14, deliberately, so a broken baseline or a broken Cilium change is caught before more work is built on top of it; items 2-5, 7-12 are Task 14 (or the relevant earlier task's own verify step, e.g. item 3's CRD check is Task 2 Step 5).
 - **Placeholder scan:** no TBD/TODO markers; every YAML block is complete and copy-pasteable except the two explicitly-marked substitution points (`<DIGEST>` in Tasks 6 and 8, filled from a command run earlier in the same task; `<PASTE THE PAT HERE>` in Task 12, inherently manual since GitHub token creation isn't scriptable from this environment).
 - **Type/name consistency:** `hello-backend`/`hello-frontend` label values match between the Kyverno policy edit (Task 6), the Deployments/Services (Tasks 6, 8), and the lane base (Task 11) throughout. The waypoint name `waypoint` (Task 7) matches the `istio.io/use-waypoint` label value (Task 7 Step 2). The lane base's placeholder resource names (`hello-backend-lane`, `hello-backend-lane-route`) match the `patches[].target.name` values in Task 12's `ApplicationSet` exactly — this pairing is the plan's single most failure-prone point (a typo here fails silently, not loudly), so it's worth a final manual diff between Task 11's three files and Task 12 Step 4's `patches` targets before executing.

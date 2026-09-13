@@ -8,7 +8,7 @@
 # counter is effectively global. PR-lane traffic (HTTPRoute parentRefs ->
 # hello-backend Service) flows through this waypoint and IS rate-limited;
 # direct waypoint-bypassing calls to hello-backend-pr-N.svc are NOT (accepted
-# boundary, see spec "已知限制").
+# boundary, see spec "Known limitations / risks to verify").
 #
 # Scope is narrower than "the whole waypoint": targetRefs attaches only to
 # hello-backend's own inbound filter chain. Traffic through the existing

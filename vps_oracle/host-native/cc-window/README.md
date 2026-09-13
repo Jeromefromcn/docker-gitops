@@ -1,112 +1,112 @@
 # vps_oracle/host-native/cc-window
 
-Host-native 服務，非 docker compose 管理（跟 `vps_oracle/host-native/inspector/`、`vps_oracle/host-native/host-firewall/` 一樣是 `<host>/host-native/` 下直接跑在宿主機的 systemd 服務，見 repo 根 README「目錄結構」一節）。
+Host-native service, not managed by docker compose (like `vps_oracle/host-native/inspector/` and `vps_oracle/host-native/host-firewall/`, it's a systemd service that runs directly on the host under `<host>/host-native/`; see the repo root README's "Directory structure" section).
 
-## 這是什麼
+## What this is
 
-[cc-window](https://github.com/pickjason/cc-windows)（npm 包名 `cc-window`）是第三方本地網頁版 Claude Code 多會話管理台：一屏監控全機所有 `claude` CLI 會話、網頁裡新建會話、操作每個會話的交互式終端。原始碼不 vendor 進這個 repo，只用 `npm install -g` 裝固定版本，這裡只管 systemd 常駐 + 部署設定。
+[cc-window](https://github.com/pickjason/cc-windows) (npm package name `cc-window`) is a third-party local web dashboard for Claude Code multi-session management: monitor every `claude` CLI session on the machine from one screen, create new sessions from the web UI, and operate each session's interactive terminal. The source is not vendored into this repo — only a pinned version is installed via `npm install -g`; this directory only manages the systemd residency + deployment config.
 
-## 為什麼不用 docker
+## Why not docker
 
-它的核心機制決定了容器化會直接跟自己的設計打架，不只是「能不能包」的問題：
+Its core mechanism means containerizing it fights its own design directly, not just a "can we package it" question:
 
-- 靠輪詢 `claude agents --json` 拿全機會話名冊，`claude` CLI 必須裝在同一個環境的 `PATH` 上並且已登入
-- 會話狀態來自 `~/.claude/projects/**/*.jsonl`、`~/.claude/monitor/events.jsonl`（hooks 寫入）、`~/.claude/settings.json`，都在宿主機使用者 home 下
-- 會話本身用 `node-pty` 起、橋接到專用 tmux socket（`ccwindow`）——如果要管住你在宿主機 shell 裡直接開的會話，就得跟宿主機共用同一個 tmux socket，等於放棄容器隔離
+- It polls `claude agents --json` to get the whole-machine session roster, so the `claude` CLI must be installed on the same environment's `PATH` and already logged in
+- Session state comes from `~/.claude/projects/**/*.jsonl`, `~/.claude/monitor/events.jsonl` (written by hooks), and `~/.claude/settings.json`, all under the host user's home
+- Sessions themselves are launched via `node-pty` and bridged to a dedicated tmux socket (`ccwindow`) — if you want to manage sessions you open directly in the host shell, it must share the same tmux socket as the host, which means giving up container isolation
 
-所以整套跑在宿主機原生環境裡：`node`/`npm`、`tmux`、已登入的 `claude` CLI 都已經在這台機器上（見下面「環境確認」）。
+So the whole thing runs in the host's native environment: `node`/`npm`, `tmux`, and the logged-in `claude` CLI are all already on this machine (see "Environment check" below).
 
-## 安全：無內建鑑權，必須鎖在 access list 後面
+## Security: no built-in auth, must sit behind an access list
 
-cc-window 自己在文件裡就寫明：**沒有內建鑑權 token，能連上該端口的任何進程都能控制你的會話**。因此：
+cc-window states this plainly in its own docs: **there is no built-in auth token — any process that can reach the port can control your sessions**. Therefore:
 
-- `CC_HOST` 沒有釘死在官方預設的 `127.0.0.1`，理由見下面「為什麼 `CC_HOST` 是 `172.19.0.1` 不是 `127.0.0.1`」——但同樣**只**監聽一個非公網可達的位址，不對外
-- 對外只能透過 NPM 反代，且反代記錄的 Access List 選 **`self-only-and-auth`**（id 2，跟 `self-only` 放行同樣的來源 IP，額外要求過 Basic Auth——這個 repo 現有的四個「無內建鑑權的管理面板」都用這條），不是預設的 `self-only`
-- 絕對不要把 `CC_HOST` 改成 `0.0.0.0` 或宿主機的公網介面（`10.0.0.95`）
+- `CC_HOST` is not pinned to the official default `127.0.0.1`, for the reason in "Why `CC_HOST` is `172.19.0.1` not `127.0.0.1`" below — but it similarly **only** listens on an address unreachable from the public internet, never exposed externally
+- External access goes only through NPM reverse proxy, and the proxy host's Access List is **`self-only-and-auth`** (id 2, which allows the same source IPs as `self-only` while additionally requiring Basic Auth — the four existing "no-built-in-auth management panels" in this repo all use it), not the default `self-only`
+- Never set `CC_HOST` to `0.0.0.0` or the host's public network interface (`10.0.0.95`)
 
-### 為什麼 `CC_HOST` 是 `172.19.0.1` 不是 `127.0.0.1`
+### Why `CC_HOST` is `172.19.0.1` not `127.0.0.1`
 
-cc-window 跑在宿主機原生環境，`127.0.0.1` 是宿主機自己的 loopback；NPM 是跑在 `proxy` 這個 docker bridge 網路裡的容器，它的網路命名空間**沒有**宿主機的 loopback，連不到綁在 `127.0.0.1` 上的服務——跟 `vps_oracle/host-native/npm-nodeport-relay/README.md` 記錄的那次「容器連不到宿主機服務」是同一類問題。
+cc-window runs in the host's native environment, where `127.0.0.1` is the host's own loopback. NPM runs as a container on the `proxy` docker bridge network; its network namespace **does not have** the host's loopback, so it can't reach a service bound to `127.0.0.1` — the same class of problem as the "container can't reach a host service" case recorded in `vps_oracle/host-native/npm-nodeport-relay/README.md`.
 
-`proxy` 網路是手動建立的 `external: true` 網路（`docker network create proxy`，見 `vps_oracle/compose/npm/docker-compose.yml`），網關固定是 `172.19.0.1`（`docker network inspect proxy` 查得到，綁在宿主機的 `br-99f461e27ed6` 介面上，是宿主機自己真實擁有的位址，不是哪個容器的 IP）。cc-window 直接綁這個位址：
+The `proxy` network is a manually created `external: true` network (`docker network create proxy`, see `vps_oracle/compose/npm/docker-compose.yml`), with a gateway fixed at `172.19.0.1` (verifiable via `docker network inspect proxy`; it's bound to the host's `br-99f461e27ed6` interface — an address the host itself really owns, not some container's IP). cc-window binds this address directly:
 
-- NPM 容器本身就在 `proxy` 網路裡，網關位址天生可達，不用額外加 relay
-- 這個位址不是公網介面，Oracle 的公網流量到不了這裡，跟綁 `127.0.0.1` 的暴露面實質上等價，只是換了一個「僅內部可達」的地址而已
-- 跟 `3x-ui`（`172.19.0.2`）、`npm`（`172.19.0.3`）用同一個手動建立、不會隨 compose 重建的網路，穩定性有先例
+- The NPM container is itself on the `proxy` network, so the gateway address is natively reachable, no extra relay needed
+- This address is not a public interface; Oracle's public traffic can't reach it, so the exposure surface is effectively equivalent to binding `127.0.0.1` — just a different address that's "internal-only reachable"
+- It uses the same manually created network (which doesn't get recreated by any single compose run) as `3x-ui` (`172.19.0.2`) and `npm` (`172.19.0.3`), so stability has precedent
 
-風險提示跟 npm README 裡 3x-ui/npm 那兩個釘死 IP 一樣：如果哪天 `proxy` 網路被刪掉重建，網關位址理論上可能變（一般不會，因為它是手動建的 `external` 網路，不會被任何單一 compose 的 `up`/`down` 影響），要留意。
+The risk note is the same as the two pinned-IP entries (3x-ui/npm) in the npm README: if the `proxy` network is ever deleted and recreated, the gateway address could in theory change (usually it won't, because it's a manually created `external` network unaffected by any single compose's `up`/`down`) — keep it in mind.
 
-## 環境確認（2026-08-24）
+## Environment check (2026-08-24)
 
-| 依賴 | 版本 | 說明 |
+| Dependency | Version | Notes |
 |---|---|---|
-| Node.js | v20.20.2 | 滿足 `cc-window` 要求的 `>=20` |
-| tmux | 3.4 | 支援本地終端交接、服務重啟會話不丟；沒有會降級成直連 `node-pty`（關服務即結束會話） |
-| `claude` CLI | `/home/ubuntu/.local/bin/claude`，已登入 | `claude agents --json` 已驗證可跑 |
-| npm 全域 prefix | `/usr` | `npm install -g` 需要 `sudo`，二進位落在 `/usr/bin/cc-window` |
+| Node.js | v20.20.2 | Meets cc-window's `>=20` requirement |
+| tmux | 3.4 | Supports local terminal handoff and sessions surviving service restarts; without it, it degrades to direct `node-pty` (stopping the service ends the session) |
+| `claude` CLI | `/home/ubuntu/.local/bin/claude`, logged in | `claude agents --json` verified working |
+| npm global prefix | `/usr` | `npm install -g` needs `sudo`; the binary lands at `/usr/bin/cc-window` |
 
-「一鍵打開本地終端」交接功能靠 `osascript` + Terminal.app，僅 macOS；這台是 Linux VPS，該功能自動降級成複製 `tmux attach` 指令，其餘功能不受影響。
+The "open local terminal in one click" handoff depends on `osascript` + Terminal.app, macOS-only; this is a Linux VPS, so that feature degrades to copying a `tmux attach` command, with everything else unaffected.
 
-## 安裝
+## Install
 
-固定版本，不用 `npx`/`latest`，理由跟本 repo「鏡像版本鎖定」的約定一致——避免上游發新版時，systemd 重啟服務就悄悄換了行為。
+Pin a version, don't use `npx`/`latest` — same rationale as this repo's "image version pinning" convention: avoid the systemd service silently changing behavior because upstream shipped a new version.
 
 ```bash
 sudo npm install -g cc-window@0.2.1
 ```
 
-升級版本：改這份 README 的版本號 + 上面指令重跑一次，`sudo systemctl restart cc-window.service`，跑幾輪確認正常再收尾。
+To upgrade: change the version number in this README + rerun the command above, then `sudo systemctl restart cc-window.service`, run a few rounds and confirm it's healthy before considering it done.
 
-## 部署
+## Deploy
 
-兩個 unit：`cc-window.service`（服務本體）+ `cc-window-tmux.service`（獨立的 tmux server，PTY 後端）。`ExecStart` 指向全域安裝的二進位路徑（`/usr/bin/cc-window`），不是這個 repo 裡的檔案，所以用複製、不是軟連結：
+Two units: `cc-window.service` (the service itself) + `cc-window-tmux.service` (a separate tmux server, the PTY backend). `ExecStart` points at the globally installed binary path (`/usr/bin/cc-window`), not a file in this repo, so copy rather than symlink:
 
 ```bash
 sudo cp cc-window.service cc-window-tmux.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now cc-window-tmux.service   # 先起 tmux server
+sudo systemctl enable --now cc-window-tmux.service   # start the tmux server first
 sudo systemctl enable --now cc-window.service
 ```
 
-**為什麼 tmux 要獨立成一個 service（2026-08-24 修復）**：cc-window 的 tmux backend 需要 `ccwindow` socket 上有常駐的 tmux server。若用 `ExecStartPre` 在 `cc-window.service` 裡起 tmux，systemd 會把 `ExecStartPre` 的 tmux server 當成主服務的 cgroup 遺留進程在 `ExecStart` 啟動後清掉（實測日誌 `Found left-over process (tmux: server)`，重啟後 server 即消失）——導致網頁「新建 session」時 `tmux new-session` 建不出交互終端、無法審批/回答。獨立 `cc-window-tmux.service` 讓 tmux server 住在自己的 cgroup，不受 cc-window 重啟影響；裡面的 `cc-window-guard` session 撐住 server 讓它不因空閒自殺。`cc-window.service` 用 `After/Wants=cc-window-tmux.service` 保證順序。
+**Why tmux has to be its own service (fixed 2026-08-24)**: cc-window's tmux backend needs a persistent tmux server on the `ccwindow` socket. If tmux is started via `ExecStartPre` inside `cc-window.service`, systemd treats the `ExecStartPre` tmux server as a left-over process of the main service's cgroup and cleans it up after `ExecStart` runs (observed in logs as `Found left-over process (tmux: server)`, the server vanishing after restart) — so when the web UI "new session" tries `tmux new-session`, it can't create an interactive terminal and can't approve/answer. A separate `cc-window-tmux.service` lets the tmux server live in its own cgroup, unaffected by cc-window restarts; the `cc-window-guard` session inside keeps the server alive so it doesn't self-terminate when idle. `cc-window.service` uses `After/Wants=cc-window-tmux.service` to guarantee ordering.
 
-## 驗證
+## Verify
 
 ```bash
 systemctl status cc-window.service cc-window-tmux.service
-tmux -L ccwindow ls                                    # 期望見到 cc-window-guard（server 常駐）
-curl -sS -o /dev/null -w '%{http_code}\n' http://172.19.0.1:4317/   # 期望 200
-# 網頁「新建 session」後，應見到 ccw_<uuid> 的 tmux session 且 pane 內跑著 claude
+tmux -L ccwindow ls                                    # expect to see cc-window-guard (the resident server)
+curl -sS -o /dev/null -w '%{http_code}\n' http://172.19.0.1:4317/   # expect 200
+# after a web "new session", you should see a ccw_<uuid> tmux session with claude running in its pane
 tmux -L ccwindow ls
 ```
 
-## NPM 反代 + homepage
+## NPM reverse proxy + homepage
 
-反代設定按 repo 根 README「給服務接入 NPM 反代」一節的標準欄位，Access List 選 `self-only-and-auth`（見上面「安全」一節，不是預設的 `self-only`）：
+Use the standard fields from the repo root README's "Connect a service to the NPM reverse proxy" section for the proxy config, with Access List `self-only-and-auth` (see the "Security" section above, not the default `self-only`):
 
-| 字段 | 值 |
+| Field | Value |
 |---|---|
 | Domain Names | `cc-window.jerome.cloudns.asia` |
-| Forward Hostname / IP | `172.19.0.1`（cc-window 綁定的 `proxy` 網路網關位址，見上面「為什麼 `CC_HOST` 是 `172.19.0.1`」；不是容器，不能填服務名靠 Docker DNS 解析） |
+| Forward Hostname / IP | `172.19.0.1` (the `proxy` network gateway address cc-window binds, see "Why `CC_HOST` is `172.19.0.1`" above; it's not a container, so you can't fill in a service name and rely on Docker DNS) |
 | Forward Port | `4317` |
 | Access List | `self-only-and-auth` |
 
-homepage 卡片見 `vps_oracle/compose/homepage/config/services.yaml`。
+The homepage card is in `vps_oracle/compose/homepage/config/services.yaml`.
 
-## 上線狀態（2026-08-24）
+## Live status (2026-08-24)
 
-| 項目 | 值 |
+| Item | Value |
 |---|---|
-| NPM proxy host | id **32**，`cc-window.jerome.cloudns.asia` |
-| 證書 | Let's Encrypt（HTTP-01），id **35**，`/etc/letsencrypt/live/npm-35/`，2026-11-22 到期 |
-| Access List | `self-only-and-auth`（id 2，含 Basic Auth 帳號 `jerome`） |
-| host firewall | `-s 172.19.0.3/32 -p tcp --dport 4317 -j ACCEPT`（見 [`host-firewall.sh`](../host-firewall/host-firewall.sh)，2026-08-24 加入） |
+| NPM proxy host | id **32**, `cc-window.jerome.cloudns.asia` |
+| Certificate | Let's Encrypt (HTTP-01), id **35**, `/etc/letsencrypt/live/npm-35/`, expires 2026-11-22 |
+| Access List | `self-only-and-auth` (id 2, includes Basic Auth account `jerome`) |
+| host firewall | `-s 172.19.0.3/32 -p tcp --dport 4317 -j ACCEPT` (see [`host-firewall.sh`](../host-firewall/host-firewall.sh), added 2026-08-24) |
 
-**驗證**（全鏈路，從 NPM 容器視角）：
+**Verification** (full chain, from the NPM container's perspective):
 
 ```bash
-docker exec npm curl -sS -o /dev/null -w '%{http_code}\n' https://cc-window.jerome.cloudns.asia/        # 401（無 Basic Auth → access list 擋下）
-docker exec npm curl -sS -o /dev/null -w '%{http_code}\n' -u jerome:<密碼> https://cc-window.jerome.cloudns.asia/   # 200（HTTP/2，x-powered-by: Express）
+docker exec npm curl -sS -o /dev/null -w '%{http_code}\n' https://cc-window.jerome.cloudns.asia/        # 401 (no Basic Auth -> blocked by access list)
+docker exec npm curl -sS -o /dev/null -w '%{http_code}\n' -u jerome:<password> https://cc-window.jerome.cloudns.asia/   # 200 (HTTP/2, x-powered-by: Express)
 ```
 
-新域名憑證：進 NPM 面板 → SSL Certificates → Add → Let's Encrypt，Domain Names 填 `cc-window.jerome.cloudns.asia`（wildcard DNS 已覆蓋，不需新增 A 記錄；自動續期由 NPM 的 certbot 跑）。
+New-domain certificate: in the NPM panel → SSL Certificates → Add → Let's Encrypt, fill Domain Names with `cc-window.jerome.cloudns.asia` (wildcard DNS already covers it, no new A record needed; auto-renewal runs via NPM's certbot).

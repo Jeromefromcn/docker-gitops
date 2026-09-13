@@ -16,16 +16,23 @@
       "Read(//home/ubuntu/.claude/claude-code-notify/**)",
       "Read(//home/ubuntu/jerome/oss-devrel/**)",
       "Skill(claude-api:*)",
-      "Bash(echo \"=== ~/.claude \\(主账号\\) ===\" && ls -la ~/.claude/ 2>/dev/null | head -40; echo; echo \"=== ~/.claude-configs/sub2 \\(副账号\\) ===\" && ls -la ~/.claude-configs/sub2/ 2>/dev/null | head -40)",
+      "Bash(echo \"=== ~/.claude \\(primary account\\) ===\" && ls -la ~/.claude/ 2>/dev/null | head -40; echo; echo \"=== ~/.claude-configs/sub2 \\(secondary account\\) ===\" && ls -la ~/.claude-configs/sub2/ 2>/dev/null | head -40)",
       "Read(//home/ubuntu/.claude-configs/sub2/**)",
       "Bash(xargs ls -la)",
       "Read(//home/ubuntu/jerome/programming-learning-platform/**)",
       "Bash(docker network *)",
-      "Bash(curl -s 'http://localhost:9090/api/v1/query?query=claude_config_mirror_drift')"
+      "Bash(curl -s 'http://localhost:9090/api/v1/query?query=claude_config_mirror_drift')",
+      "Bash(sudo tailscale status)",
+      "Bash(ip addr *)",
+      "Bash(curl -sS -m 5 -o /dev/null -w \"http_code=%{http_code}\\\\n\" http://100.96.184.44:8080/)",
+      "Bash(curl -sS -m 5 http://localhost:9091/api/v1/targets)",
+      "Bash(python3 -c ' *)",
+      "Bash(docker run *)",
+      "Bash(python3 -m json.tool)"
     ],
     "defaultMode": "auto"
   },
-  "model": "sonnet",
+  "model": "opus",
   "hooks": {
     "Stop": [
       {

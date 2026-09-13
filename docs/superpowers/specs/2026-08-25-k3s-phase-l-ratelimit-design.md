@@ -1,120 +1,120 @@
-# K3s Phase L — 限流設計（TrafficExtension + Lua）
+# K3s Phase L — Rate Limiting Design (TrafficExtension + Lua)
 
-日期：2026-08-25
+Date: 2026-08-25
 
-對應 [K3s 服務網格能力補完路線圖](2026-08-19-k3s-mesh-capabilities-roadmap.md) 的 L 階段。路線圖原把 L 定義為「評估性」——評估 Gateway API experimental channel 升級 vs. Istio EnvoyFilter 兩條路徑的成本，**不預設一定要交付**。本文件記錄評估結果：兩條原定路徑一條不存在（experimental channel 沒有原生限流）、一條官方不背書（ambient 下 EnvoyFilter），但**查證過程中發現了第四條真正可落地的路——Istio 1.30 的 `TrafficExtension` API + Lua 令牌桶，附加在 waypoint 上**。本設計就是這條路。
+Corresponds to Phase L of the [K3s Service Mesh Capabilities Roadmap](2026-08-19-k3s-mesh-capabilities-roadmap.md). The roadmap originally defined L as "evaluation" — evaluating the cost of two paths, Gateway API experimental-channel upgrade vs. Istio EnvoyFilter, **without presupposing a deliverable**. This document records the evaluation result: of the two original paths, one does not exist (the experimental channel has no native rate limiting) and one is not officially endorsed (EnvoyFilter under ambient), but **the verification process turned up a fourth, actually-landable path — Istio 1.30's `TrafficExtension` API + Lua token bucket, attached to the waypoint**. This design is that path.
 
-## 評估過程摘要（為何兩條原定路徑不可行，為何新增第四條）
+## Evaluation summary (why the two original paths are infeasible, why a fourth was added)
 
-完整查證過程見 [L 階段評估筆記](./2026-08-25-k3s-phase-l-ratelimit-evaluation.md)。這裡只記錄結論：
+See the [Phase L evaluation notes](./2026-08-25-k3s-phase-l-ratelimit-evaluation.md) for the full verification process. Only the conclusions are recorded here:
 
-| 路徑 | 結論 | 關鍵證據 |
+| Path | Conclusion | Key evidence |
 |---|---|---|
-| ~~升級 Gateway API 到 experimental channel 拿原生限流~~ | **不存在** | 路線圖原文寫「原生限流（GEP-2257）」，但 GEP-2257 其實是 [Duration 字符串格式標準](https://gateway-api.sigs.k8s.io/geps/gep-2257/)，與限流無關。Gateway API 官方 [GEP 列表](https://gateway-api.sigs.k8s.io/geps/list/)沒有任何 rate limiting GEP；集群已裝的 v1.6.1 是當前最新版，其 experimental channel（`XBackendTrafficPolicy` 等）也無 rate limit 字段 |
-| ~~Istio EnvoyFilter 塞 `local_ratelimit` filter~~ | **ambient 下官方不背書、維護風險高** | [Istio 官方限流任務頁](https://istio.io/latest/docs/tasks/policy-enforcement/rate-limit/)完全基於 sidecar 模式（把 filter 塞進 sidecar inbound chain）；ambient 官方文檔列出的 waypoint 擴展機制只有 [Wasm](https://istio.io/latest/docs/ambient/usage/extend-waypoint-wasm/) 與 [Lua](https://istio.io/latest/docs/ambient/usage/extend-waypoint-lua/)，EnvoyFilter 不在其中。Istio maintainer howardjohn 在 [istio/istio#54391](https://github.com/istio/istio/issues/54391) 明說「EnvoyFilter very very limited support in ambient」。實測坑：[#57350](https://github.com/istio/istio/issues/57350)（ambient 限流不生效，實為 context 用錯）、[#57609](https://github.com/istio/istio/pull/57609)（修 envoyfilter+virtualservice 衝突的 PR 被棄） |
-| ~~外部 rate limit 服務（Envoy gRPC + Redis）~~ | **新增兩個元件，違反約束** | 路線圖硬約束「優先複用已運行元件、不新增 Deployment」；且為不存在的流量問題加基礎設施 |
-| **TrafficExtension + Lua 令牌桶（本方案）** | ✅ **可落地** | `TrafficExtension`（`extensions.istio.io/v1alpha1`）是 Istio 1.30 正式 API，CRD 已隨 istio-base 裝在集群；istiod 1.30.3 源碼確認 waypoint HTTP chain 注入 TrafficExtension 生成的 Lua filter。**純 CRD、零新增元件** |
+| ~~Upgrade Gateway API to experimental channel for native rate limiting~~ | **Does not exist** | The roadmap's original text wrote "native rate limiting (GEP-2257)", but GEP-2257 is actually the [Duration string format standard](https://gateway-api.sigs.k8s.io/geps/gep-2257/), unrelated to rate limiting. The Gateway API official [GEP list](https://gateway-api.sigs.k8s.io/geps/list/) has no rate-limiting GEP; the cluster's installed v1.6.1 is the current latest version, and its experimental channel (`XBackendTrafficPolicy` etc.) has no rate limit field either |
+| ~~Istio EnvoyFilter injecting the `local_ratelimit` filter~~ | **Not officially endorsed under ambient; high maintenance risk** | [Istio's official rate-limiting task page](https://istio.io/latest/docs/tasks/policy-enforcement/rate-limit/) is entirely based on sidecar mode (injecting the filter into the sidecar inbound chain); the waypoint extension mechanisms the ambient official docs list are only [Wasm](https://istio.io/latest/docs/ambient/usage/extend-waypoint-wasm/) and [Lua](https://istio.io/latest/docs/ambient/usage/extend-waypoint-lua/), EnvoyFilter not among them. Istio maintainer howardjohn said outright in [istio/istio#54391](https://github.com/istio/istio/issues/54391): "EnvoyFilter very very limited support in ambient". Real-world gotchas: [#57350](https://github.com/istio/istio/issues/57350) (ambient rate limiting not working, actually a wrong context) and [#57609](https://github.com/istio/istio/pull/57609) (the PR fixing envoyfilter+virtualservice conflict was abandoned) |
+| ~~External rate limit service (Envoy gRPC + Redis)~~ | **Adds two components, violating constraints** | The roadmap's hard constraint "prefer reusing already-running components, no new Deployments"; and it adds infrastructure for a nonexistent traffic problem |
+| **TrafficExtension + Lua token bucket (this design)** | ✅ **Landable** | `TrafficExtension` (`extensions.istio.io/v1alpha1`) is a formal Istio 1.30 API, its CRD already installed in the cluster with istio-base; istiod 1.30.3 source confirms the waypoint HTTP chain injects the Lua filter generated by TrafficExtension. **Pure CRD, zero new components** |
 
-一個重要的查證副產物：EnvoyFilter 路線其實**沒有徹底死透**——1.30.3 源碼證明 waypoint 的 EnvoyFilter 用 `context: SIDECAR_INBOUND` + `targetRefs`（kind Service/Gateway）其實可以 attach 並塞 filter（[#57350](https://github.com/istio/istio/issues/57350) 的失敗實為用了 `context: GATEWAY`，是配置錯誤）。但官方 maintainer 明言支持極有限、官方測試零覆蓋、且 `local_ratelimit` 的 token bucket 是 per-process 共享（語義比 Lua per-worker 精確），所以若未來需要「精確全局限流」語義，EnvoyFilter + `local_ratelimit` 可作為 v2 候選——但那是官方不背書的逃生艙口，本階段不採用，見「已知限制」。
+One important verification by-product: the EnvoyFilter path is actually **not completely dead** — 1.30.3 source proves the waypoint's EnvoyFilter using `context: SIDECAR_INBOUND` + `targetRefs` (kind Service/Gateway) can actually attach and inject filters ([#57350](https://github.com/istio/istio/issues/57350)'s failure was actually using `context: GATEWAY`, a configuration error). But the official maintainer says support is extremely limited, official test coverage is zero, and `local_ratelimit`'s token bucket is per-process shared (semantically less precise than Lua's per-worker), so if "precise global rate limiting" semantics are needed in the future, EnvoyFilter + `local_ratelimit` could be a v2 candidate — but that is an officially unendorsed escape hatch, not adopted this phase; see "Known limitations".
 
-## 範圍
+## Scope
 
-**這階段要做的：**
-- 在 `pr-lanes` 新增一個 `TrafficExtension` CRD，用 Lua 在 waypoint 上實作**固定窗口令牌桶限流**。`targetRefs: kind: Service, name: hello-backend` 只掛在 `hello-backend` 這個 Service 自己的入站 filter chain 上，不是整個 waypoint（見「已知限制」）。這條 chain 涵蓋所有解析到 `hello-backend` VIP 之後才路由的流量——含既有 90/10 `VirtualService` 權重內部轉發到 `hello-backend-canary` 的那一部分，以及 PR 泳道 backend（`hello-backend-pr-N`）的 HTTPRoute（`parentRefs: Service/hello-backend`）——後者流量同樣經這條 chain 導流，因此**同一個 Lua filter 也會處理它們**（與 J 階段 Policy 1 掛在 waypoint 涵蓋所有下游的機制相同）。但**不涵蓋**直接呼叫 `hello-backend-canary.pr-lanes.svc.cluster.local`（該 Service 有自己獨立的入站 chain，不經 `hello-backend` VIP）的流量，也不是「PR 泳道 Service 本身有 waypoint label」——PR 泳道 Service 沒有 `use-waypoint` label（見「已知限制」）
-- 超限請求返回 HTTP 429 + `x-envoy-ratelimited: true` header
-- 限流參數可調：初始以寬鬆閾值（如 60 req/min/worker）落地並驗證 429 行為，確認無誤攔後再視需要調整
+**What this phase does:**
+- Add a `TrafficExtension` CRD in `pr-lanes`, implementing **fixed-window token-bucket rate limiting** with Lua on the waypoint. `targetRefs: kind: Service, name: hello-backend` attaches only to the `hello-backend` Service's own inbound filter chain, not the whole waypoint (see "Known limitations"). This chain covers all traffic routed after resolving to the `hello-backend` VIP — including the portion internally forwarded to `hello-backend-canary` by the existing 90/10 `VirtualService` weight, and the PR-lane backends (`hello-backend-pr-N`) via HTTPRoute (`parentRefs: Service/hello-backend`) — the latter traffic also flows through this chain, so **the same Lua filter also processes them** (same mechanism as Phase J's Policy 1 attaching to the waypoint covering all downstreams). But it does **not cover** directly calling `hello-backend-canary.pr-lanes.svc.cluster.local` (that Service has its own independent inbound chain, not going through the `hello-backend` VIP), nor is it "the PR-lane Service itself having a waypoint label" — PR-lane Services have no `use-waypoint` label (see "Known limitations")
+- Over-limit requests return HTTP 429 + the `x-envoy-ratelimited: true` header
+- Rate-limit parameters are tunable: initially land with a loose threshold (e.g. 60 req/min/worker) and verify 429 behavior, then adjust as needed once false positives are ruled out
 
-**這階段不做的（留給後續或明確排除）：**
-- 不做「精確全局限流」——Lua filter 的計數狀態是 per-worker 的（見「已知限制」），waypoint 在 200m CPU limit 下大概率只有 1 個 worker，即等同全局限流；若有 2 個 worker 則是近似語義。這對 `pr-lanes` 的 demo 場景（無真實用戶流量、保護性限流）足夠。若未來需要精確語義，改評估 EnvoyFilter + `local_ratelimit`（見上）
-- 不新增外部 rate limit 服務（Redis + ratelimit server）——違反路線圖「不加新元件」約束
-- 不升級 Gateway API / Istio——無更新版本，且本方案不依賴升級
-- 不碰 waypoint 上既有的兩疊層（J 階段 `AuthorizationPolicy`、K 階段 `mesh-tracing` Telemetry）——`TrafficExtension` 的 `phase: STATS` 注入位置與它們獨立（見「架構」）
-- 不修改 I 階段的 `VirtualService`/`DestinationRule`/`httproute.yaml`
+**What this phase does NOT do (left to later phases or explicitly excluded):**
+- No "precise global rate limiting" — the Lua filter's counter state is per-worker (see "Known limitations"). Under a 200m CPU limit the waypoint most likely has only 1 worker, i.e. equal to global rate limiting; with 2 workers it is approximate semantics. This suffices for `pr-lanes`'s demo scenario (no real user traffic, protective rate limiting). If precise semantics are needed later, re-evaluate EnvoyFilter + `local_ratelimit` (see above)
+- No external rate-limit service (Redis + ratelimit server) — violates the roadmap's "no new components" constraint
+- No Gateway API / Istio upgrade — no newer version, and this design does not depend on upgrading
+- Not touching the waypoint's two existing layers (Phase J's `AuthorizationPolicy`, Phase K's `mesh-tracing` Telemetry) — `TrafficExtension`'s `phase: STATS` injection point is independent of them (see "Architecture")
+- Not modifying Phase I's `VirtualService`/`DestinationRule`/`httproute.yaml`
 
-## 現狀約束
+## Current-state constraints
 
-- 集群：k3s v1.36.2+k3s1 單節點，Cilium CNI，Istio 1.30.3 ambient（istiod/ztunnel/istio-cni），Gateway API v1.6.1 standard channel
-- `pr-lanes`：4 個 Deployment（hello-backend、hello-backend-canary、hello-frontend、waypoint），0 條活躍 PR 泳道，無真實用戶流量
-- `pr-lanes-quota`：requests 125m/320Mi（hard 400m/768Mi）、limits 500m/640Mi（hard 1200m/1536Mi）——`TrafficExtension` 是純控制面資源，**不佔 quota**
-- waypoint pod：requests 50m/128Mi、limits 200m/256Mi，已跑 J（RBAC）+ K（tracing）兩疊層
-- 宿主机 swap 85% 用掉，資源緊張——本方案零新增元件、Lua 內聯在 waypoint 進程內，無額外內存開銷
+- Cluster: k3s v1.36.2+k3s1 single node, Cilium CNI, Istio 1.30.3 ambient (istiod/ztunnel/istio-cni), Gateway API v1.6.1 standard channel
+- `pr-lanes`: 4 Deployments (hello-backend, hello-backend-canary, hello-frontend, waypoint), 0 active PR lanes, no real user traffic
+- `pr-lanes-quota`: requests 125m/320Mi (hard 400m/768Mi), limits 500m/640Mi (hard 1200m/1536Mi) — `TrafficExtension` is pure control-plane resource, **consumes no quota**
+- waypoint pod: requests 50m/128Mi, limits 200m/256Mi, already running J (RBAC) + K (tracing) two layers
+- Host swap 85% used, resources tight — this design adds zero components; Lua is inlined in the waypoint process, no extra memory overhead
 
-## 架構
+## Architecture
 
 ```mermaid
 flowchart LR
-    fe["hello-frontend"] -->|"經 waypoint 的 hello-backend Service"| waypoint["waypoint\n(Envoy, 200m/256Mi)"]
-    waypoint --> filters{"TrafficExtension Lua (STATS)\nJ: AuthorizationPolicy (AUTHZ)\nK: Telemetry tracing\n——已查證確認：RBAC 在 Lua 之前（詳見下方說明）"}
-    filters -->|"Lua 未超限"| route["依 I 路由\n→ backend / canary / pr-N"]
-    filters -->|"Lua 超限 → 429 + x-envoy-ratelimited"| resp["直接回應，不轉發"]
+    fe["hello-frontend"] -->|"via waypoint's hello-backend Service"| waypoint["waypoint\n(Envoy, 200m/256Mi)"]
+    waypoint --> filters{"TrafficExtension Lua (STATS)\nJ: AuthorizationPolicy (AUTHZ)\nK: Telemetry tracing\n— verified: RBAC before Lua (see note below)"}
+    filters -->|"Lua not over limit"| route["per Phase I routing\n→ backend / canary / pr-N"]
+    filters -->|"Lua over limit → 429 + x-envoy-ratelimited"| resp["respond directly, no forwarding"]
 
     style resp fill:#fee,stroke:#c00
 ```
 
-注入位置說明：`TrafficExtension` 的 `phase: STATS` 會在 waypoint 的 Envoy HTTP filter chain 中、`STATS` 階段注入一個 Lua filter（istiod 源碼 `listener_waypoint.go` → `extensionfilter.go` → `extension/lua.go` 確認此機制）。該 filter 可以用 `handle:respond()` 直接返回 429 而不轉發到上游。與 J 階段 `AuthorizationPolicy`（走 Envoy RBAC filter，`AUTHZ` phase）和 K 階段 tracing（`Telemetry` CR）處在不同 filter/階段，理論上互相獨立、不衝突——**已查證確認**：`inbound-vip|80|http|hello-backend.pr-lanes.svc.cluster.local` 這條真正的 filter chain 裡，實際順序是 `rbac → grpc_stats → fault → cors → extensions.istio.io/trafficextension/pr-lanes.hello-backend-ratelimit → waypoint_upstream_peer_metadata → istio.stats → router`——**J 階段的 RBAC 在本階段的 Lua 限流之前**，未授權呼叫在抵達限流器之前就已經被 RBAC 拒絕，限流額度不會被未授權流量消耗（查證方法與完整細節見「已知限制」）。與 K 階段 tracing 的相對順序未特別查證。
+Injection-point note: `TrafficExtension`'s `phase: STATS` injects a Lua filter at the `STATS` stage of the waypoint's Envoy HTTP filter chain (mechanism confirmed in the istiod source `listener_waypoint.go` → `extensionfilter.go` → `extension/lua.go`). This filter can use `handle:respond()` to return 429 directly without forwarding upstream. It is in a different filter/stage from Phase J's `AuthorizationPolicy` (Envoy RBAC filter, `AUTHZ` phase) and Phase K's tracing (`Telemetry` CR), so in theory they are mutually independent and non-conflicting — **verified**: in the actual filter chain `inbound-vip|80|http|hello-backend.pr-lanes.svc.cluster.local`, the real order is `rbac → grpc_stats → fault → cors → extensions.istio.io/trafficextension/pr-lanes.hello-backend-ratelimit → waypoint_upstream_peer_metadata → istio.stats → router` — **Phase J's RBAC is before this phase's Lua rate limiting**, so unauthorized calls are already rejected by RBAC before reaching the rate limiter, and rate-limit quota is not consumed by unauthorized traffic (verification method and full details in "Known limitations"). The relative order with Phase K's tracing was not specifically verified.
 
-## 元件與設定
+## Components and configuration
 
-| 項目 | 決定 | 理由 |
+| Item | Decision | Rationale |
 |---|---|---|
-| API | `TrafficExtension`（`extensions.istio.io/v1alpha1`） | Istio 1.30 正式 API（替代 WasmPlugin 的新 API 家族），CRD 已隨 istio-base 裝在集群（`kubectl get crd trafficextensions.extensions.istio.io` 確認）。官方文檔列為 waypoint 的支援擴展機制之一，比 EnvoyFilter 這個「逃生艙口」有官方設計意圖 |
-| 附加目標 | `targetRefs: [{kind: Service, name: hello-backend}]` + `match: [{mode: SERVER}]` | `kind: Service` 附加到 `hello-backend` Service（該 Service 有 `istio.io/use-waypoint: waypoint` label，流量經 waypoint）。`mode: SERVER` 限定只處理入站（service 收到）的請求，不影響出站。**已查證確認**：`targetRefs: Service/hello-backend` 實際掛的是 `hello-backend` 這個 Service 自己在 waypoint 上的入站 filter chain（`inbound-vip|80|http|hello-backend.pr-lanes.svc.cluster.local`），不是整個 waypoint——跟 J 階段 Policy 1 掛 `targetRefs: Gateway/waypoint`（附加到整個 waypoint Gateway 資源，涵蓋它承接的全部流量）不是同一個涵蓋範圍，只是兩者都用 `targetRefs` 這個機制。baseline/canary 的 90/10 權重、PR 泳道（HTTPRoute `parentRefs: Service/hello-backend`）都是解析到 `hello-backend` 這個 VIP 之後才路由，所以這條 chain 涵蓋它們；但 `hello-backend-canary` 自己的 Service 有獨立的入站 chain，直接呼叫它不經過本 filter（見「已知限制」）。**注意：也不涵蓋「繞過 waypoint 直連 Pod」的流量**（見「已知限制」） |
-| 注入位置 | `phase: STATS` | 在 Envoy filter chain 的 STATS 階段注入，位於 router 之前，可用 `respond()` 直接返回 429 |
-| 限流演算法 | 固定窗口令牌桶，Lua 實作 | 每 worker 每窗口（初始 60 秒）允許 N 個請求（初始 60）。簡單、可讀、無依賴。固定窗口 vs. 滑動窗口：demo 場景固定窗口足夠 |
-| 超限回應 | HTTP 429 + `x-envoy-ratelimited: true` | 標準限流回應，語意明確，方便後續接入可觀測性 |
-| 閾值 | 初始 60 req/min/worker，驗證後再調 | 寬鬆閾值先驗證「429 行為真的生效」，避免誤攔正常流量；確認無誤後再視需要收緊 |
-| 部署 | ArgoCD git-first，放 `vps_oracle/k3s/apps/hello/k8s/` | 該目錄由既有 `hello` Application（`path: vps_oracle/k3s/apps/hello/k8s`）管理，新增 YAML 自動被 ArgoCD 撿到，不需改 Application 或 kustomization |
+| API | `TrafficExtension` (`extensions.istio.io/v1alpha1`) | A formal Istio 1.30 API (the new API family replacing WasmPlugin), CRD already installed in the cluster with istio-base (confirmed via `kubectl get crd trafficextensions.extensions.istio.io`). Listed in the official docs as one of the waypoint's supported extension mechanisms; has more official design intent than the "escape hatch" EnvoyFilter |
+| Attachment target | `targetRefs: [{kind: Service, name: hello-backend}]` + `match: [{mode: SERVER}]` | `kind: Service` attaches to the `hello-backend` Service (which has the `istio.io/use-waypoint: waypoint` label, so traffic flows through the waypoint). `mode: SERVER` limits processing to inbound (service-received) requests, not affecting outbound. **Verified**: `targetRefs: Service/hello-backend` actually attaches to the `hello-backend` Service's own inbound filter chain on the waypoint (`inbound-vip|80|http|hello-backend.pr-lanes.svc.cluster.local`), not the whole waypoint — not the same coverage scope as Phase J's Policy 1 attaching `targetRefs: Gateway/waypoint` (attaching to the whole waypoint Gateway resource, covering all traffic it carries); both just use the `targetRefs` mechanism. baseline/canary's 90/10 weight and PR lanes (HTTPRoute `parentRefs: Service/hello-backend`) all route after resolving to the `hello-backend` VIP, so this chain covers them; but `hello-backend-canary`'s own Service has an independent inbound chain, and directly calling it does not go through this filter (see "Known limitations"). **Note: also does not cover traffic "bypassing the waypoint and directly connecting to Pods"** (see "Known limitations") |
+| Injection point | `phase: STATS` | Injected at the STATS stage of the Envoy filter chain, before the router, can use `respond()` to return 429 directly |
+| Rate-limiting algorithm | Fixed-window token bucket, Lua implementation | Each worker each window (initial 60 seconds) allows N requests (initial 60). Simple, readable, no dependencies. Fixed window vs. sliding window: fixed window suffices for the demo scenario |
+| Over-limit response | HTTP 429 + `x-envoy-ratelimited: true` | Standard rate-limiting response, unambiguous semantics, convenient for later observability integration |
+| Threshold | Initial 60 req/min/worker, adjusted after verification | A loose threshold first verifies "the 429 behavior really works", avoiding false-positives on normal traffic; tighten as needed once confirmed |
+| Deployment | ArgoCD git-first, placed in `vps_oracle/k3s/apps/hello/k8s/` | This directory is managed by the existing `hello` Application (`path: vps_oracle/k3s/apps/hello/k8s`); new YAML is auto-discovered by ArgoCD, no Application or kustomization change needed |
 
-## Repo 佈局
+## Repo layout
 
 ```
 vps_oracle/k3s/apps/hello/k8s/
-  hello-backend-ratelimit-trafficextension.yaml   # 新增：TrafficExtension + Lua 令牌桶
+  hello-backend-ratelimit-trafficextension.yaml   # new: TrafficExtension + Lua token bucket
 ```
 
-落在既有的 `k8s/` 目錄，沿用 `backend-*` 命名慣例。ArgoCD `hello` Application 自動撿到，不需新增 Application。
+Lands in the existing `k8s/` directory, following the `backend-*` naming convention. ArgoCD's `hello` Application auto-discovers it; no new Application needed.
 
-## 上線節奏
+## Rollout rhythm
 
-1. 合入 `hello-backend-ratelimit-trafficextension.yaml`（單 commit）
-2. 等 ArgoCD 同步（`kubectl -n argocd get application hello` → `Synced`）
-3. 驗證限流行為（見「驗證清單」）：以寬鬆閾值（60 req/min）灌請求，確認超限後返回 429 + `x-envoy-ratelimited: true`
-4. 確認正常流量不受影響（J 的 RBAC、K 的 tracing 都還正常）
-5. 若需要，調整閾值（改 YAML、再 commit）
+1. Merge `hello-backend-ratelimit-trafficextension.yaml` (single commit)
+2. Wait for ArgoCD sync (`kubectl -n argocd get application hello` → `Synced`)
+3. Verify rate-limiting behavior (see "Verification checklist"): flood requests at the loose threshold (60 req/min), confirm 429 + `x-envoy-ratelimited: true` once over the limit
+4. Confirm normal traffic is unaffected (J's RBAC and K's tracing both still working)
+5. If needed, adjust the threshold (edit YAML, commit again)
 
-## 驗證清單（phase L 過關標準）
+## Verification checklist (phase L pass criteria)
 
-**上線前置：**
+**Pre-rollout:**
 1. `kubectl -n argocd get application hello` → `Synced` + `Healthy`
-2. `kubectl -n pr-lanes get trafficextension hello-backend-ratelimit` → 存在
+2. `kubectl -n pr-lanes get trafficextension hello-backend-ratelimit` → exists
 
-**限流行為：**
-3. 從 `hello-frontend` pod（有 curl）連續灌請求（`curl http://127.0.0.1:8080/api/`，流量經 waypoint 到 backend）：前 N 個（< 閾值）返回 200
-4. 超過閾值後，後續請求返回 **429** + `x-envoy-ratelimited: true`
-5. 等待窗口重置（60s）後，請求恢復 200
+**Rate-limiting behavior:**
+3. From the `hello-frontend` pod (has curl), flood requests continuously (`curl http://127.0.0.1:8080/api/`, traffic flows through the waypoint to the backend): the first N (below the threshold) return 200
+4. Beyond the threshold, subsequent requests return **429** + `x-envoy-ratelimited: true`
+5. After the window resets (60s), requests return 200 again
 
-**與既有疊層共存：**
-6. J 階段 RBAC 仍正常：不具備 `hello-frontend-sa` 身份的呼叫（臨時 debug pod）仍被拒絕（403/拒絕）
-7. K 階段 tracing 仍正常：`kubectl -n pr-lanes get telemetry mesh-tracing` 存在，waypoint 仍正常發 span（若有 Jaeger UI 可查）
-8. `kubectl describe resourcequota pr-lanes-quota -n pr-lanes` 確認 quota 無變化（`TrafficExtension` 不計入）
-9. 全部既有 Application 複查仍 `Synced` + `Healthy`
+**Coexistence with existing layers:**
+6. Phase J's RBAC still working: a caller lacking the `hello-frontend-sa` identity (a temporary debug pod) is still rejected (403/denied)
+7. Phase K's tracing still working: `kubectl -n pr-lanes get telemetry mesh-tracing` exists, and the waypoint still emits spans normally (queryable if a Jaeger UI is available)
+8. `kubectl describe resourcequota pr-lanes-quota -n pr-lanes` confirms quota unchanged (`TrafficExtension` is not counted)
+9. Re-check all existing Applications still `Synced` + `Healthy`
 
-**限流語義確認：**
-10. 從 waypoint 的 config_dump 確認 `phase: STATS` 的 Lua filter 實際注入位置，與 J 的 RBAC filter 誰先誰後（記錄實測結果，回填「已知限制」）
-11. 確認 waypoint 的 worker 數（Envoy `--concurrency` 或 stats）：若 >1，記錄「實際限流上限 ≈ 配置 × worker 數」的近似語義
-12. 若有活躍 PR 泳道：向 `hello-backend-pr-N` 灌請求，確認其經 waypoint 的流量同樣被限流（HTTPRoute parentRefs 到 hello-backend → 經 waypoint）；並確認**直連** `hello-backend-pr-N.pr-lanes.svc.cluster.local`（不經 hello-backend Service）的流量不被限流——驗證「已知限制」的覆蓋邊界描述與實際一致
+**Rate-limit semantics confirmation:**
+10. From the waypoint's config_dump, confirm the Lua filter's actual injection point at `phase: STATS`, and its order relative to J's RBAC filter (record the measured result, back-fill "Known limitations")
+11. Confirm the waypoint's worker count (Envoy `--concurrency` or stats): if >1, record the approximate semantic "actual rate-limit ceiling ≈ config × worker count"
+12. If any PR lane is active: flood requests to `hello-backend-pr-N`, confirming its waypoint-routed traffic is likewise rate-limited (HTTPRoute parentRefs to hello-backend → via waypoint); and confirm that traffic **directly** reaching `hello-backend-pr-N.pr-lanes.svc.cluster.local` (not via the hello-backend Service) is not rate-limited — verifying that the "Known limitations" coverage-boundary description matches reality
 
-## 已知限制 / 待查證風險
+## Known limitations / risks to verify
 
-- **Lua filter 是 per-worker 狀態，不是進程級共享——已查證確認，風險未發生**：Envoy 官方文檔明示「所有 Lua 環境都是 per-worker thread」，本設計原先評估 waypoint pod 的 200m CPU limit 在 4 核主機上大概率只有 1 個 worker（精確語義），但也保留了 2 個 worker（≈2 倍近似限流）的可能性。實作 Task 2 落地後查證 waypoint 的 Envoy `concurrency` 設定，確認為 `concurrency: 1`——單 worker，Lua 令牌桶狀態確實是全域的，不是進程內近似值。「≈2 倍近似限流」這個當初擔心的風險在這個叢集上沒有發生，不需要額外的近似語義註記
-- **TrafficExtension 是 Alpha API**：升級 Istio 版本時 API 可能變動。本方案不升級 Istio，短期風險低；但這是未來升級時要記住的成本
-- **Lua 代碼 bug 可能誤攔**：先以寬鬆閾值灰度，確認無誤攔再收緊。若 Lua 有語法錯誤，TrafficExtension 應被 istiod 拒絕（不會下發），但行為需實測
-- **覆蓋邊界：不涵蓋繞過 waypoint 的直連**——TrafficExtension 掛在 waypoint 上，只涵蓋「經 waypoint 的流量」。PR 泳道 backend 的 Service（`hello-backend-pr-N`）本身沒有 `use-waypoint` label，若有人直接呼叫 `hello-backend-pr-N.pr-lanes.svc.cluster.local`（不經 `hello-backend` Service 的 HTTPRoute），ztunnel 不會把流量導去 waypoint，該流量**不受本限流管制**。這與 J 階段 Policy 2 面對的繞過路徑相同——J 用 Policy 2（selector 掛在每個 backend Pod 上）堵住直連，但**限流沒有對應的「堵繞過」機制**，直連流量不會被限。對 demo 場景（防濫用）可接受，但要明記：本限流是「經 waypoint 的流量」層級，不是「所有到達 backend 的流量」層級。**已查證確認，且發現一個更精確、先前未記錄的第二個邊界**：實作 Task 2 落地後用 `kubectl exec` 對 waypoint 執行 `pilot-agent request GET config_dump` 進一步查證，`targetRefs: kind: Service, name: hello-backend` 實際只把 Lua filter 掛到 `hello-backend` 這個 Service 自己的入站 filter chain（`inbound-vip|80|http|hello-backend.pr-lanes.svc.cluster.local`）上，不是整個 waypoint——該 chain 確認有掛 TrafficExtension filter（✅ 涵蓋），但 `hello-backend-canary` 自己的 VIP chain（`inbound-vip|80|http|hello-backend-canary.pr-lanes.svc.cluster.local`）與 waypoint 的 `direct-http` chain 都沒有掛（❌ 不涵蓋）。經由既有 90/10 `VirtualService` 權重、從 `hello-backend` VIP 內部轉發到 canary 的流量仍然算在限流內——waypoint 的 429 counter 同時帶有 `destination_service_name=hello-backend` 與 `destination_service_name=hello-backend-canary` 兩種標籤、比例貼近 90/10，證實這條路徑有被限流管制；但直接呼叫 `hello-backend-canary.pr-lanes.svc.cluster.local`（不經 `hello-backend` VIP / `VirtualService` 分流）完全繞過限流——這是繼上述「繞過 waypoint 直連 Pod」之後第二個先前未記錄過的繞過邊界。本限流的準確範圍是「`hello-backend` Service 自己的入站 filter chain」層級，不是「整個 waypoint」層級
-- **`phase: STATS` 與 J 階段 RBAC 的實際 filter 順序——已查證確認，且先前一次查證方法有誤已更正**：實作 Task 2 第一次查證時用 `grep -oE 'envoy\.filters\.http\.(lua|rbac)'` 對整份 waypoint config_dump 做全文比對，命中的其實是 Envoy bootstrap 能力宣告清單（`node.extensions`，按字母排序）裡的條目，不是真正 filter chain 的順序——`lua` 字母序排在 `rbac` 之前，恰好巧合產生「Lua 在 RBAC 之前」這個看似合理但錯誤的結論，一度誤記錄成「未授權呼叫者的請求會先消耗限流額度才被 RBAC 拒絕」。正確的查證方法是讀真正的 filter chain 的 `http_filters` 陣列本身（例如 `istioctl proxy-config listener <waypoint-pod> -n pr-lanes -o json`，檢視 `filter_chains[].filters[].typed_config.http_filters[].name`），不是對整份 config_dump 做盲目 grep。重新以這個方法查證 `inbound-vip|80|http|hello-backend.pr-lanes.svc.cluster.local` 這條真正的 chain，確認實際順序是 `rbac → grpc_stats → fault → cors → extensions.istio.io/trafficextension/pr-lanes.hello-backend-ratelimit → waypoint_upstream_peer_metadata → istio.stats → router`——**RBAC 在 Lua 限流之前**，與先前記錄的方向相反。真實語意是「先授權、再限流」：未授權呼叫（被 J 階段 AuthorizationPolicy 拒絕）根本不會抵達限流器，比原先設想的兩種可能性都更安全，不是更危險
-- **與 waypoint 上既有疊層的共存——已查證確認**：J 的 `AuthorizationPolicy`（AUTHZ phase）、K 的 `mesh-tracing`（Telemetry CR）與本方案的 Lua filter（STATS phase）原本只是「理論上處在不同 filter/階段，互相獨立」的推論——I 階段就踩過「Gateway API 與 VirtualService 混用同 host 互相覆蓋」的坑，理論獨立不保證實際共存不衝突。驗證清單第 6、7 項落地後查證：J 階段的 RBAC 仍正常運作（不具備 `hello-frontend-sa` 身份的呼叫仍收到 403，且如上「filter chain 順序」已查證確認 RBAC 在 Lua 之前執行）；K 階段 `mesh-tracing` Telemetry 也確認未受影響，waypoint 追蹤功能正常。三疊層共存沒有出現非預期的互相覆蓋或衝突
-- **`local_ratelimit`（EnvoyFilter）語義更精確但官方不背書**：若未來需要「精確全局限流」語義（例如接入真實 workloads 流量、有準確的限流上限需求），EnvoyFilter + `local_ratelimit`（token bucket per-process 共享）是 v2 候選——1.30.3 源碼證明 `context: SIDECAR_INBOUND` + `targetRefs` 可 attach 到 waypoint，但需接受官方不背書（howardjohn：「very very limited support in ambient」）+ 升級風險。本階段不採用，記錄為未來選項
-- **限流要解決的問題（濫用/過載）目前不存在**：`pr-lanes` 無真實用戶流量。本方案的價值是「低成本提前準備」——一個 CRD + 一段 Lua，為路線圖「未來接入 workloads 形態真實流量」做好機制。成本比評估時預想（升級 Gateway API / 外部 ratelimit 服務）低一個數量級
+- **Lua filter state is per-worker, not process-wide shared — verified, risk did not materialize**: the Envoy official docs state "all Lua environments are per worker thread". This design originally judged the waypoint pod's 200m CPU limit on a 4-core host most likely yields 1 worker (precise semantics), but kept the possibility of 2 workers (≈2x approximate rate limiting). After implementation Task 2 landed, checking the waypoint's Envoy `concurrency` setting confirmed `concurrency: 1` — single worker, so the Lua token-bucket state is indeed global, not an in-process approximation. The "≈2x approximate rate limiting" risk originally worried about did not materialize on this cluster; no extra approximate-semantics annotation needed
+- **TrafficExtension is an Alpha API**: the API may change when upgrading Istio. This design does not upgrade Istio, so short-term risk is low; but this is a cost to remember at future upgrade time
+- **Lua code bugs may cause false positives**: first go live with a loose threshold, tighten only after no false positives are confirmed. If Lua has a syntax error, TrafficExtension should be rejected by istiod (not pushed down), but the behavior needs actual testing
+- **Coverage boundary: does not cover waypoint-bypassing direct connections** — TrafficExtension attaches to the waypoint, covering only "traffic through the waypoint". The PR-lane backend's Service (`hello-backend-pr-N`) itself has no `use-waypoint` label; if someone directly calls `hello-backend-pr-N.pr-lanes.svc.cluster.local` (not via the `hello-backend` Service's HTTPRoute), ztunnel won't route the traffic to the waypoint, and that traffic is **not subject to this rate limiting**. This is the same bypass path Phase J's Policy 2 faces — J uses Policy 2 (selector attached to each backend Pod) to block direct connections, but **rate limiting has no corresponding "block the bypass" mechanism**, so direct-connect traffic is not rate-limited. Acceptable for the demo scenario (anti-abuse), but must be clear: this rate limiting is at the "traffic through the waypoint" level, not the "all traffic reaching backends" level. **Verified, and a second, more precise, previously unrecorded boundary was found**: after implementation Task 2 landed, a further check via `kubectl exec` running `pilot-agent request GET config_dump` on the waypoint confirmed that `targetRefs: kind: Service, name: hello-backend` actually only attaches the Lua filter to the `hello-backend` Service's own inbound filter chain (`inbound-vip|80|http|hello-backend.pr-lanes.svc.cluster.local`), not the whole waypoint — that chain is confirmed to have the TrafficExtension filter attached (✅ covered), but `hello-backend-canary`'s own VIP chain (`inbound-vip|80|http|hello-backend-canary.pr-lanes.svc.cluster.local`) and the waypoint's `direct-http` chain do not (❌ not covered). Traffic internally forwarded to canary from the `hello-backend` VIP via the existing 90/10 `VirtualService` weight is still counted within rate limiting — the waypoint's 429 counter carries both `destination_service_name=hello-backend` and `destination_service_name=hello-backend-canary` labels at a ratio near 90/10, confirming this path is rate-limited; but directly calling `hello-backend-canary.pr-lanes.svc.cluster.local` (not via the `hello-backend` VIP / `VirtualService` split) completely bypasses rate limiting — this is a second bypass boundary, previously unrecorded, on top of "bypassing the waypoint and directly connecting to Pods" above. The precise scope of this rate limiting is "`hello-backend` Service's own inbound filter chain" level, not "the whole waypoint" level
+- **The actual filter order of `phase: STATS` vs. Phase J's RBAC — verified, and a previously erroneous verification method has been corrected**: implementation Task 2's first verification used `grep -oE 'envoy\.filters\.http\.(lua|rbac)'` to do a full-text match over the whole waypoint config_dump, but what it matched was entries in Envoy's bootstrap capability declaration list (`node.extensions`, sorted alphabetically), not the real filter-chain order — `lua` sorts before `rbac` alphabetically, coincidentally producing the seemingly plausible but wrong conclusion "Lua before RBAC", once wrongly recorded as "requests from unauthorized callers first consume rate-limit quota before being rejected by RBAC". The correct verification method is to read the real filter chain's `http_filters` array itself (e.g. `istioctl proxy-config listener <waypoint-pod> -n pr-lanes -o json`, inspecting `filter_chains[].filters[].typed_config.http_filters[].name`), not a blind grep over the whole config_dump. Re-verifying with this method on the real chain `inbound-vip|80|http|hello-backend.pr-lanes.svc.cluster.local` confirmed the actual order is `rbac → grpc_stats → fault → cors → extensions.istio.io/trafficextension/pr-lanes.hello-backend-ratelimit → waypoint_upstream_peer_metadata → istio.stats → router` — **RBAC is before Lua rate limiting**, opposite to the earlier recording. The true semantics are "authorize first, then rate limit": unauthorized calls (rejected by Phase J's AuthorizationPolicy) never reach the rate limiter at all, safer than both possibilities originally envisioned, not more dangerous
+- **Coexistence with the waypoint's existing layers — verified**: J's `AuthorizationPolicy` (AUTHZ phase), K's `mesh-tracing` (Telemetry CR), and this design's Lua filter (STATS phase) were originally just the inference "in different filters/stages, in theory mutually independent" — Phase I already stepped on the "Gateway API and VirtualService mixed on the same host overwrite each other" gotcha, so theoretical independence does not guarantee actual coexistence without conflict. Verified after checklist items 6 and 7 landed: Phase J's RBAC still works normally (a caller lacking the `hello-frontend-sa` identity still receives 403, and as confirmed above in "filter chain order", RBAC runs before Lua); Phase K's `mesh-tracing` Telemetry is also confirmed unaffected, with waypoint tracing functioning normally. The three layers coexist with no unexpected mutual overwrite or conflict
+- **`local_ratelimit` (EnvoyFilter) has more precise semantics but is not officially endorsed**: if "precise global rate limiting" semantics are needed later (e.g. real-workload traffic is onboarded with accurate rate-limit ceiling requirements), EnvoyFilter + `local_ratelimit` (token bucket shared per-process) is a v2 candidate — 1.30.3 source proves `context: SIDECAR_INBOUND` + `targetRefs` can attach to the waypoint, but one must accept the official non-endorsement (howardjohn: "very very limited support in ambient") plus upgrade risk. Not adopted this phase; recorded as a future option
+- **The problem rate limiting solves (abuse/overload) does not currently exist**: `pr-lanes` has no real user traffic. This design's value is "low-cost advance preparation" — one CRD + one snippet of Lua, putting the mechanism in place for the roadmap's "future onboarding of workloads-shaped real traffic". The cost is an order of magnitude lower than what evaluation originally envisioned (Gateway API upgrade / external ratelimit service)
 
-## 交棒給後續階段
+## Handoff to later phases
 
-無——L 是路線圖最後一個階段。本階段完成後，[k3s 服務網格能力補完路線圖](2026-08-19-k3s-mesh-capabilities-roadmap.md) 的 I/J/K/L 四階段全部收斂。
+None — L is the roadmap's last phase. Once this phase completes, all four phases I/J/K/L of the [K3s Service Mesh Capabilities Roadmap](2026-08-19-k3s-mesh-capabilities-roadmap.md) are converged.

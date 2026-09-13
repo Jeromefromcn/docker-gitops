@@ -1,68 +1,68 @@
-# 多账号目录隔离（CLAUDE_CONFIG_DIR）
+# Multi-account directory isolation (CLAUDE_CONFIG_DIR)
 
-给不同的项目分组绑**不同的 Claude 订阅账号**，和 provider 切换（官方↔CCR）正交、可叠加。机制是给每个账号一个独立的 `CLAUDE_CONFIG_DIR`，靠 direnv 按目录注入——cd 进哪个目录就是哪个账号。
+Bind **different Claude subscription accounts** to different project groups, orthogonal to and stackable on provider switching (official ↔ CCR). The mechanism is a separate `CLAUDE_CONFIG_DIR` per account, injected per-directory via direnv — whichever directory you `cd` into is which account.
 
-官方文档：`CLAUDE_CONFIG_DIR` 覆盖默认的 `~/.claude`，**登录态、设置、session 历史、插件全部**存在这个目录下（见 [env-vars 文档](https://code.claude.com/docs/en/env-vars)）。所以每个独立 configDir = 一个独立登录的账号。
+Official docs: `CLAUDE_CONFIG_DIR` overrides the default `~/.claude`, and **login state, settings, session history, plugins — everything** lives under this directory (see the [env-vars docs](https://code.claude.com/docs/en/env-vars)). So each independent configDir = one independently logged-in account.
 
-## 为什么和 provider 切换正交
+## Why this is orthogonal to provider switching
 
-- provider 切换改的是动态 `.env` 里的 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`（走 CCR 时这两行覆盖 OAuth）。
-- 账号绑定改的是**静态 `.envrc`** 里的 `CLAUDE_CONFIG_DIR`（指向各自的配置目录）。
-- 两者写在不同的文件、不同的层：`.envrc` 永远静态（账号是目录的结构属性），`.env` 才被 UI 改写（provider 是可切的）。所以 **switchboard UI 不用改**。
+- provider switching changes `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` in the dynamic `.env` (when going through CCR these two lines override OAuth).
+- account binding changes `CLAUDE_CONFIG_DIR` in the **static `.envrc`** (pointing to each account's config directory).
+- The two live in different files, different layers: `.envrc` is always static (the account is a structural property of the directory), and only `.env` is rewritten by the UI (the provider is the switchable part). So **the switchboard UI doesn't change**.
 
-## 布局（主账号零改动，只给第二个账号开独立目录）
+## Layout (zero changes to the primary account, a separate directory only for the second account)
 
-| 分组 | `.envrc` | configDir | 账号 |
+| Group | `.envrc` | configDir | Account |
 |---|---|---|---|
-| `~/jerome/` | 维持现状 | 默认 `~/.claude` | 账号A（现有登录/设置/memory 全保留） |
-| `~/bridget/` | 加一行 `export CLAUDE_CONFIG_DIR=…` + 原 `source_env_if_exists` | `~/.claude-configs/bridget` | 账号B |
+| `~/jerome/` | unchanged | default `~/.claude` | Account A (existing login/settings/memory all preserved) |
+| `~/bridget/` | add one line `export CLAUDE_CONFIG_DIR=…` + the original `source_env_if_exists` | `~/.claude-configs/bridget` | Account B |
 
-`~/bridget/.envrc` 完整内容：
+Full contents of `~/bridget/.envrc`:
 
 ```bash
 export CLAUDE_CONFIG_DIR="$HOME/.claude-configs/bridget"
 source_env_if_exists /home/ubuntu/.claude-provider/bridget.env
 ```
 
-## 一次性登录（每个独立账号做一次）
+## One-time login (done once per separate account)
 
 ```bash
 mkdir -p ~/.claude-configs/bridget
-cd ~/bridget            # direnv 已把 CLAUDE_CONFIG_DIR 注入
-direnv allow            # 改了 .envrc 要重新信任一次
-claude login            # OAuth 存进 ~/.claude-configs/bridget，绑死账号B
+cd ~/bridget            # direnv has already injected CLAUDE_CONFIG_DIR
+direnv allow            # editing .envrc requires re-trusting once
+claude login            # OAuth is stored in ~/.claude-configs/bridget, bound to Account B
 ```
 
-之后任何在 `~/bridget/` 下开的 claude session 都用账号B。
+Afterwards, any claude session opened under `~/bridget/` uses Account B.
 
-## 结果矩阵（每目录 = 固定账号 × 可切 provider）
+## Result matrix (each directory = a fixed account × a switchable provider)
 
-| 目录 | 官方模式 | CCR 模式 |
+| Directory | Official mode | CCR mode |
 |---|---|---|
-| `~/jerome/` | 账号A 订阅 | 智谱（账号无关，env 覆盖 OAuth） |
-| `~/bridget/` | 账号B 订阅 | 智谱（账号无关） |
+| `~/jerome/` | Account A subscription | Zhipu (account-independent; the env overrides OAuth) |
+| `~/bridget/` | Account B subscription | Zhipu (account-independent) |
 
-走 CCR 时 `ANTHROPIC_BASE_URL` / `AUTH_TOKEN` 覆盖掉 OAuth，configDir 里绑的是哪个账号都不重要——CCR 用自己的智谱 key。
+When going through CCR, `ANTHROPIC_BASE_URL` / `AUTH_TOKEN` override OAuth, so whichever account is bound in the configDir doesn't matter — CCR uses its own Zhipu key.
 
-## 坑
+## Gotchas
 
-1. **configDir 是整盘切，不只是登录态。** `CLAUDE_CONFIG_DIR` 把设置、全局 `CLAUDE.md`、项目 memory（`projects/…`）、MCP 配置、插件**全部**搬走。所以 `~/bridget/` 默认读不到你全局的 `~/.claude/CLAUDE.md` 和 `settings.json`——要保留就软链或复制过去（**别软链 `.credentials.json`**，否则账号隔离就失效了）：
+1. **configDir is a wholesale swap, not just the login state.** `CLAUDE_CONFIG_DIR` moves settings, the global `CLAUDE.md`, project memory (`projects/…`), MCP config, and plugins **all** over. So `~/bridget/` by default can't read your global `~/.claude/CLAUDE.md` and `settings.json` — to keep them, symlink or copy them over (**don't symlink `.credentials.json`**, otherwise account isolation is defeated):
 
    ```bash
    cd ~/.claude-configs/bridget
    ln -s ~/.claude/CLAUDE.md .
-   ln -s ~/.claude/settings.json .   # 想各账号各自改就复制而非软链
+   ln -s ~/.claude/settings.json .   # copy rather than symlink if each account should edit its own
    ```
 
-   （`jerome` 走默认 `~/.claude`，不受影响。实际在用的 `sub2` 已做全盘镜像——见下文「UI 实时切账号」step 2，不用手动逐个链。）
+   (`jerome` uses the default `~/.claude` and is unaffected. The `sub2` account actually in use is already a full mirror — see "UI live account switching" step 2 below, no need to link one by one.)
 
-2. **VSCode 扩展有已知 bug（[#30538](https://github.com/anthropics/claude-code/issues/30538)）：扩展自己的 `environmentVariables` 设置不认 `CLAUDE_CONFIG_DIR`。** 但本仓库的注入路径不走那条——`claudeProcessWrapper` 在 shell 层 export 后再 `exec claude`，claude 进程从自己的环境里读到，应能绕开。**接好后务必在 VSCode 里验证账号是否切对**（终端路径不受此 bug 影响）。
+2. **The VSCode extension has a known bug ([#30538](https://github.com/anthropics/claude-code/issues/30538)): its own `environmentVariables` setting doesn't honor `CLAUDE_CONFIG_DIR`.** But this repo's injection path doesn't go through that — `claudeProcessWrapper` exports it at the shell layer and then `exec claude`, so the claude process reads it from its own environment and should sidestep the bug. **After wiring it up, be sure to verify in VSCode that the account actually switched** (the terminal path is unaffected by this bug).
 
-3. **`CLAUDE_CONFIG_DIR` 设了仍可能在项目目录留下空 `.claude/`（[#3833](https://github.com/anthropics/claude-code/issues/3833)）。** 只是外观问题，不影响隔离——真正生效的配置仍来自 configDir。
+3. **Even with `CLAUDE_CONFIG_DIR` set, an empty `.claude/` may still be left in the project directory ([#3833](https://github.com/anthropics/claude-code/issues/3833)).** That's purely cosmetic and doesn't affect isolation — the config that actually takes effect still comes from the configDir.
 
-4. **账号默认是静态的，不像 provider 能 UI 实时切。** 切账号 = cd 到另一个目录（direnv 换 configDir）。已经在跑的 session 环境已定型，开新 session 才生效（和 provider 切换同理）。**例外：`jerome`/`bridget`/`evidence` 组各加了 `-account` 开关，可在同一个目录里用 UI 实时切账号**（见下文「UI 实时切账号」）。
+4. **An account is static by default, unlike the provider, which the UI can switch live.** Switching accounts = `cd` into another directory (direnv swaps the configDir). A session already running has its environment fixed; only new sessions pick it up (same as provider switching). **Exception: the `jerome`/`bridget`/`evidence` groups each have a `-account` toggle so you can switch accounts live via the UI within the same directory** (see "UI live account switching" below).
 
-## 加第三个账号
+## Adding a third account
 
 ```bash
 mkdir -p ~/carol ~/.claude-configs/carol
@@ -72,63 +72,67 @@ source_env_if_exists /home/ubuntu/.claude-provider/carol.env
 EOF
 touch /home/ubuntu/.claude-provider/carol.env
 cd ~/carol && direnv allow && claude login
-# 再去 switchboard 里登记 carol-ccr 开关 + 重建 switchboard（见 ../README.md「加一个新分组」）
+# Then register the carol-ccr toggle in switchboard + rebuild switchboard (see "Adding a new group" in ../README.md)
 ```
 
-## UI 实时切账号（CLAUDE_CONFIG_DIR 动态切，jerome/bridget/evidence 已实现）
+## UI live account switching (dynamic CLAUDE_CONFIG_DIR switch; implemented for jerome/bridget/evidence)
 
-**在同一个目录里**用 switchboard 在多个已登录的订阅账号之间切（不用靠 cd）。和 provider 切换正交：provider 切的是 `.claude-provider/<组>.env` 里的 `ANTHROPIC_*`，账号切的是 `.claude-account/<组>.env` 里的 `CLAUDE_CONFIG_DIR`。
+**Within the same directory**, use switchboard to switch between several already-logged-in subscription accounts (no `cd` needed). Orthogonal to provider switching: the provider toggles switch `ANTHROPIC_*` in `.claude-provider/<group>.env`, while the account toggles switch `CLAUDE_CONFIG_DIR` in `.claude-account/<group>.env`.
 
-关键：**不改 `.envrc`**。`.envrc` 保持静态，只多 `source_env_if_exists` 一行指向 `.claude-account/<组>.env`（一次性 `direnv allow` 即可，之后永远不用再 allow）。switchboard 的 `<组>-account` 开关改写这个指针文件——绕开了早期「得改写 .envrc、会触发重新 allow」的坑，所以目录隔离之外又多了一条可行的 UI 切法。
+The key: **don't touch `.envrc`**. `.envrc` stays static, with just one extra `source_env_if_exists` line pointing at `.claude-account/<group>.env` (a one-time `direnv allow`, after which you never need to re-allow). The switchboard `<group>-account` toggle rewrites this pointer file — sidestepping the earlier gotcha where "you'd have to rewrite `.envrc`, triggering a re-allow", so beyond directory isolation there's now a viable UI switching path too.
 
-一次性设定（以 jerome 为例）：
+One-time setup (using jerome as an example):
 
 ```bash
-# 1. 建 Charles 的 configDir + 登录一次（互动式 OAuth，只能手动）
+# 1. Create Charles's configDir + log in once (interactive OAuth, manual only)
 mkdir -p ~/.claude-configs/sub2
 CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/sub2 claude login
 
-# 2. 融合度（2026-08-16 起 sub2 已是全盘镜像，无需再手动链）。sub2 是 ~/.claude 的
-#    整盘镜像：除 .credentials.json（登录 token）和 .claude.json（账号 profile/准入缓存）
-#    两个文件保留本地外，其余全部软链到 ~/.claude——CLAUDE.md/settings/plugins/hooks/scripts
-#    之外，memory（projects/）、session 历史（sessions/、history.jsonl）、session-env、
-#    stats-cache 等全部共享。切账号 = 只换 token，环境/记忆/历史同一份。
-#    以后 ~/.claude 新增条目要记得补 ln -s，否则 Charles 侧读不到。
+# 2. Mirroring (since 2026-08-16 sub2 is already a full mirror, no manual linking needed).
+#    sub2 is a whole-disc mirror of ~/.claude: except that .credentials.json (login token)
+#    and .claude.json (account profile/eligibility cache) are kept local, everything else
+#    is symlinked to ~/.claude — beyond CLAUDE.md/settings/plugins/hooks/scripts, memory
+#    (projects/), session history (sessions/, history.jsonl), session-env, stats-cache etc.
+#    are all shared. Switching accounts = only the token changes; the environment, memory,
+#    and history are the same. Going forward, remember to add ln -s for any new entries in
+#    ~/.claude, otherwise Charles's side can't read them.
 
-# 3. 建指针文件目录（switchboard 容器只 mount 这个目录）
+# 3. Create the pointer-file directory (the switchboard container only mounts this directory)
 mkdir -p ~/.claude-account
 
-# 4. 目标目录的 .envrc 加一行 + 一次性 allow
-#    ~/jerome/.envrc 追加：source_env_if_exists /home/ubuntu/.claude-account/jerome.env
+# 4. Add one line to the target directory's .envrc + a one-time allow
+#    Append to ~/jerome/.envrc: source_env_if_exists /home/ubuntu/.claude-account/jerome.env
 cd ~/jerome && direnv allow
 ```
 
-开关侧（已在 switchboard 登记 `jerome-account` / `bridget-account` / `evidence-account`，group=CC Account）：`on.sh` 写 `export CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/sub2`；`off.sh` 清空（回默认 `~/.claude` = Jerome）；`status.sh` 只以指针档内容判定三态——Charles / Jerome（默认 `~/.claude`）/ 未知值=ERROR（契约：exit 0=on / 2=error / 其余=off）。**不做「目标 configDir 是否已登录」的检查**：容器刻意不 mount `~/.claude-configs`，看不到 `.credentials.json`，也无法验证——登录是设定期的前提（见上面步骤 1）。
+Toggle side (already registered in switchboard as `jerome-account` / `bridget-account` / `evidence-account`, group=CC Account): `on.sh` writes `export CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/sub2`; `off.sh` clears it (back to default `~/.claude` = Jerome); `status.sh` determines the three-way state from the pointer file content alone — Charles / Jerome (default `~/.claude`) / unknown value = ERROR (contract: exit 0=on / 2=error / everything else=off). **No check for "whether the target configDir is logged in"**: the container deliberately doesn't mount `~/.claude-configs`, so it can't see `.credentials.json` or verify it — logging in is a setup-time precondition (see step 1 above).
 
-**安全**：switchboard 容器只 mount `.claude-account/`，**不 mount** `~/.claude` 或 `~/.claude-configs/`（那两处含 `.credentials.json`）。开关脚本永远不碰 configDir 本身。
+**Security**: the switchboard container only mounts `.claude-account/`, and does **not** mount `~/.claude` or `~/.claude-configs/` (those two hold `.credentials.json`). The toggle scripts never touch the configDir itself.
 
-**结果矩阵**（`~/jerome/` 内，`~/bridget/` / `~/evidence/` 同理）：
+**Result matrix** (within `~/jerome/`; `~/bridget/` / `~/evidence/` are analogous):
 
-| account 开关 | provider 开关 | 效果 |
+| account toggle | provider toggle | Effect |
 |---|---|---|
-| Jerome | Official | Jerome 官方 |
-| Jerome | CCR | 智谱 |
-| Charles | Official | Charles 官方（环境+记忆/历史与 Jerome 全共享，只换 token） |
-| Charles | CCR | 智谱（账号无关） |
+| Jerome | Official | Jerome official |
+| Jerome | CCR | Zhipu |
+| Charles | Official | Charles official (environment + memory/history fully shared with Jerome, only the token changes) |
+| Charles | CCR | Zhipu (account-independent) |
 
-> 注：provider=CCR 时走 claude-code-router 网关（可路由到任意 OpenAI 兼容 provider）；表中「智谱」是当前上游路由目标，不是 CCR 本身。
+> Note: with provider=CCR the traffic goes through the claude-code-router gateway (routable to any OpenAI-compatible provider); "Zhipu" in the table is the current upstream routing target, not CCR itself.
 
-**坑**：切换只对新开的 session 生效（同 provider 切换）。sub2 与 `~/.claude` 共享 memory/历史（同一份文件），所以**不要同时开两个账号的长 session**——memory、todos、`.claude.json` 这类共享文件是 last-writer-wins，并发写会互相覆盖（风险等同同一账号开两个终端）。`.claude.json` 保留本地的原因：它缓存账号 profile（email/套餐/rate-limit tier）和 model-access/eligibility，共享会让两个账号的准入缓存互相串号。
+**Gotcha**: switching only affects newly opened sessions (same as provider switching). sub2 shares memory/history with `~/.claude` (the same files), so **don't run long sessions for two accounts at the same time** — shared files like memory, todos, and `.claude.json` are last-writer-wins, and concurrent writes overwrite each other (the same risk level as one account in two terminals). The reason `.claude.json` stays local: it caches the account profile (email/plan/rate-limit tier) and model-access/eligibility, and sharing it would mingle the two accounts' eligibility caches.
 
-## 验证
+## Verification
 
 ```bash
-# 在 bridget 某项目目录里，确认 configDir 注入对了（用真 claude 同款 wrapper）
-# 先用 UI 把 bridget-account 切到 Charles，再：
+# In a bridget project directory, confirm configDir was injected correctly
+# (using the same wrapper real claude uses). First use the UI to switch
+# bridget-account to Charles, then:
 cd ~/bridget/any-project
 /home/ubuntu/.claude/claude-direnv-wrapper.sh env | grep CLAUDE_CONFIG_DIR
-# 应输出 CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/sub2（Charles）
+# Should output CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-configs/sub2 (Charles)
 
-# 切回 Jerome（bridget-account = off）应没有这一行（走默认 ~/.claude）
-cd ~/bridget && /home/ubuntu/.claude/claude-direnv-wrapper.sh env | grep CLAUDE_CONFIG_DIR || echo '(unset = 默认 ~/.claude，Jerome)'
+# Switching back to Jerome (bridget-account = off) should show no such line
+# (falling back to the default ~/.claude)
+cd ~/bridget && /home/ubuntu/.claude/claude-direnv-wrapper.sh env | grep CLAUDE_CONFIG_DIR || echo '(unset = default ~/.claude, Jerome)'
 ```

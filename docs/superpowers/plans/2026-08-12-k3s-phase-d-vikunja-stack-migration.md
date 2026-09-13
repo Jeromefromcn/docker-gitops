@@ -1,81 +1,81 @@
-# K3s Phase D — Vikunja 棧遷移 Implementation Plan
+# K3s Phase D — Vikunja Stack Migration Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把 vikunja（sqlite + 資料）+ vikunja-notify-relay + apprise 從 docker compose 遷進 k3s `workloads` 命名空間，域名/端口對外不變，Telegram 通知鏈路（vikunja → relay → apprise → Telegram）遷後照常運作。
+**Goal:** Migrate vikunja (sqlite + data) + vikunja-notify-relay + apprise from docker compose into the k3s `workloads` namespace, keeping the domain/port unchanged externally, so the Telegram notification chain (vikunja → relay → apprise → Telegram) keeps working after the move.
 
-**Architecture:** 沿用 phase C 的 NPM→NodePort 橋接模式。vikunja 的 sqlite db + files 搬進一個 local-path PVC（seed-pod 六步，trilium 範本）；apprise 的 /config（40K）搬進另一個 PVC。relay 是本地 build 的 image，先推到 GHCR 讓 k3s 拉得到。三個服務各一個 Deployment；vikunja 開 NodePort 30084、apprise 開 30085，relay 純 ClusterIP。webhook URL（`http://vikunja-notify-relay:8080/`）因 k8s Service 同名而沿用，不需重註冊。
+**Architecture:** Reuse phase C's NPM→NodePort bridging pattern. vikunja's sqlite db + files move into one local-path PVC (the six-step seed-pod pattern, following the trilium template); apprise's /config (40K) moves into a second PVC. relay is a locally-built image, pushed to GHCR first so k3s can pull it. Each of the three services gets its own Deployment; vikunja opens NodePort 30084, apprise opens 30085, relay is ClusterIP only. The webhook URL (`http://vikunja-notify-relay:8080/`) carries over unchanged because the k8s Service has the same name — no re-registration needed.
 
-**Tech Stack:** k3s（Cilium + ArgoCD app-of-apps）、Kubernetes manifests（Deployment/PVC/Service）、local-path StorageClass、NPM automation API、GHCR + GitHub Actions（relay CI）。
+**Tech Stack:** k3s (Cilium + ArgoCD app-of-apps), Kubernetes manifests (Deployment/PVC/Service), local-path StorageClass, NPM automation API, GHCR + GitHub Actions (relay CI).
 
 ## Global Constraints
 
-- 所有 pod 一律 `enableServiceLinks: false`（避免 Service 名注入的 `<SVC>_PORT` 撞 app 自己的 env——trilium `TRILIUM_PORT` 教訓）
-- 所有 env 設 `TZ: Asia/Hong_Kong`；image 有沒有 tzdata 照實測 `date` 對齊，不額外追（k8s README 對照表）
-- image 一律釘 tag，不用 `latest`；secrets 永不進 git（來源是各 compose 目錄 gitignored 的 `.env`）
-- NPM 的 Forward Hostname/IP 必須是字面 IP `10.0.0.95`（phase A 已知坑）
-- local-path PV 目錄查詢用 `spec.local.path`（不是 `spec.hostPath.path`）
-- 停容器後**等 ~10 秒**再數檔案數（sqlite wal/shm 會收斂，phase C 教訓）
-- 新增 ArgoCD Application 一律 `prune: true` / `selfHeal: true`；新 Application 生效用 `argocd app sync root`
-- `workloads` 配額是 `2C/4Gi`，加進 vikunja 棧後 limits 約 `700m/768Mi`、requests 約 `350m/384Mi`，加上既有 `1C/1280Mi` 仍在配額內——**不調整配額**
-- 容器 UID：vikunja=1000、apprise=root、relay=nobody。PVC 資料屬主對齊 vikunja 的 uid 1000
-- 每個任務在 k3s 節點本機執行（就是這台機器），`kubectl` 已指到 cluster
+- All pods use `enableServiceLinks: false` across the board (avoids the Service-name-injected `<SVC>_PORT` colliding with the app's own env vars — the trilium `TRILIUM_PORT` lesson)
+- All env sets `TZ: Asia/Hong_Kong`; whether the image has tzdata is aligned by actually testing `date`, not chased further (see the k8s README comparison table)
+- Images are always pinned to a tag, never `latest`; secrets never go into git (sourced from each compose directory's gitignored `.env`)
+- NPM's Forward Hostname/IP must be the literal IP `10.0.0.95` (known gotcha since phase A)
+- Query the local-path PV directory via `spec.local.path` (not `spec.hostPath.path`)
+- After stopping a container, **wait ~10 seconds** before counting files (sqlite wal/shm needs to settle — phase C lesson)
+- New ArgoCD Applications always get `prune: true` / `selfHeal: true`; use `argocd app sync root` to make a new Application take effect
+- The `workloads` quota is `2C/4Gi`; after adding the vikunja stack, limits come to about `700m/768Mi`, requests about `350m/384Mi`, and combined with the existing `1C/1280Mi` this stays within quota — **do not adjust the quota**
+- Container UIDs: vikunja=1000, apprise=root, relay=nobody. PVC data ownership is aligned to vikunja's uid 1000
+- Every task runs locally on the k3s node (this machine); `kubectl` is already pointed at the cluster
 
 ---
 
-### Task 1: 把 vikunja-notify-relay image 推到 GHCR
+### Task 1: Push the vikunja-notify-relay image to GHCR
 
 **Files:**
-- Build context: `vps_oracle/compose/vikunja/notify-relay/`（Dockerfile + app.py，不動）
+- Build context: `vps_oracle/compose/vikunja/notify-relay/` (Dockerfile + app.py, unchanged)
 
 **Interfaces:**
-- Produces: `ghcr.io/jeromefromcn/vikunja-notify-relay:1.1.0`（linux/arm64，被 Task 9 的 relay Deployment 引用）
+- Produces: `ghcr.io/jeromefromcn/vikunja-notify-relay:1.1.0` (linux/arm64, referenced by Task 9's relay Deployment)
 
-- [ ] **Step 1: 從 repo 原始碼重建 relay image**（確保 push 上去的內容 == repo 現況，不是某個歷史 build）
+- [ ] **Step 1: Rebuild the relay image from the repo source** (make sure what gets pushed matches the repo's current state, not some historical build)
 
 ```bash
 cd /home/ubuntu/jerome/docker-gitops
 docker build -t vikunja-notify-relay:1.1.0 vps_oracle/compose/vikunja/notify-relay/
 ```
 
-Expected: build 成功，結尾 `Successfully tagged vikunja-notify-relay:1.1.0:latest`（`latest` 是 docker build 的假標籤，下一動蓋掉）。
+Expected: build succeeds, ending with `Successfully tagged vikunja-notify-relay:1.1.0:latest` (`latest` is docker build's placeholder tag, overwritten by the next step).
 
-- [ ] **Step 2: 確認 GHCR 登入**
+- [ ] **Step 2: Confirm GHCR login**
 
 ```bash
 docker login ghcr.io -u Jeromefromcn --password-stdin
 ```
 
-（密碼用 GitHub PAT，scope 需 `write:packages`；若 terminal 已登入可跳過。按提示輸入即可，不要把它寫進任何檔案。）
+(Use a GitHub PAT as the password, scope `write:packages`; skip if the terminal is already logged in. Type it in at the prompt — don't write it into any file.)
 
-- [ ] **Step 3: 標 tag 並 push**
+- [ ] **Step 3: Tag and push**
 
 ```bash
 docker tag vikunja-notify-relay:1.1.0 ghcr.io/jeromefromcn/vikunja-notify-relay:1.1.0
 docker push ghcr.io/jeromefromcn/vikunja-notify-relay:1.1.0
 ```
 
-Expected: push 成功，輸出一行 digest。
+Expected: push succeeds, prints a digest line.
 
-- [ ] **Step 4: 驗證可被 k3s 拉取（arm64 manifest 存在）**
+- [ ] **Step 4: Verify it's pullable by k3s (arm64 manifest exists)**
 
 ```bash
 docker buildx imagetools inspect ghcr.io/jeromefromcn/vikunja-notify-relay:1.1.0
 ```
 
-Expected: 顯示 `Platform: linux/arm64`（含 digest）。
+Expected: shows `Platform: linux/arm64` (with digest).
 
 ---
 
-### Task 2: 建立 `vikunja` Secret（VIKUNJA_SERVICE_SECRET）
+### Task 2: Create the `vikunja` Secret (VIKUNJA_SERVICE_SECRET)
 
 **Files:**
-- Source: `vps_oracle/compose/vikunja/.env`（gitignored，已含 `VIKUNJA_SERVICE_SECRET=<openssl rand -hex 32>`，不提交）
+- Source: `vps_oracle/compose/vikunja/.env` (gitignored, already contains `VIKUNJA_SERVICE_SECRET=<openssl rand -hex 32>`, never committed)
 
 **Interfaces:**
-- Produces: Secret `vikunja`（key `VIKUNJA_SERVICE_SECRET`）in ns `workloads`，被 Task 3 的 vikunja Deployment `secretKeyRef` 引用
+- Produces: Secret `vikunja` (key `VIKUNJA_SERVICE_SECRET`) in ns `workloads`, referenced by Task 3's vikunja Deployment via `secretKeyRef`
 
-- [ ] **Step 1: 從 gitignored .env 抽出 secret 值，冪等建立 Secret**
+- [ ] **Step 1: Extract the secret value from the gitignored .env and create the Secret idempotently**
 
 ```bash
 cd /home/ubuntu/jerome/docker-gitops
@@ -84,19 +84,19 @@ kubectl create secret generic vikunja -n workloads \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-（`grep | cut` 只抽出該 key；若 .env 是 `VIKUNJA_SERVICE_SECRET=...` 單行格式。用 dry-run+apply 使重跑冪等。）
+(`grep | cut` extracts just that key, assuming the .env has it as a single-line `VIKUNJA_SERVICE_SECRET=...` entry. Using dry-run+apply makes re-runs idempotent.)
 
-- [ ] **Step 2: 驗證 secret 存在且 key 非空**
+- [ ] **Step 2: Verify the secret exists and the key is non-empty**
 
 ```bash
 kubectl get secret vikunja -n workloads -o jsonpath='{.data.VIKUNJA_SERVICE_SECRET}' | wc -c
 ```
 
-Expected: 輸出 > 0（base64 後的位元組數）。不要把它印出來。
+Expected: output > 0 (byte count after base64 encoding). Don't print the value itself.
 
 ---
 
-### Task 3: 寫 vikunja + relay 的 k8s manifests
+### Task 3: Write the vikunja + relay k8s manifests
 
 **Files:**
 - Create: `vps_oracle/k3s/apps/vikunja/k8s/pvc.yaml`
@@ -105,11 +105,11 @@ Expected: 輸出 > 0（base64 後的位元組數）。不要把它印出來。
 - Create: `vps_oracle/k3s/apps/vikunja/k8s/relay-deployment.yaml`
 - Create: `vps_oracle/k3s/apps/vikunja/k8s/relay-service.yaml`
 
-（spec 的 repo 佈局把 relay 放 `relay/` 子目錄；這裡改為同目錄平鋪——ArgoCD 不遞迴掃描子目錄，平鋪最簡單。）
+(The spec's repo layout puts relay in a `relay/` subdirectory; here it's flattened into the same directory instead — ArgoCD doesn't scan subdirectories recursively, so flat is simplest.)
 
 **Interfaces:**
-- Consumes: Secret `vikunja`（Task 2）、image `ghcr.io/jeromefromcn/vikunja-notify-relay:1.1.0`（Task 1）
-- Produces: PVC `vikunja`、Deployment/Service `vikunja`（NodePort 30084）、Deployment/Service `vikunja-notify-relay`（ClusterIP 8080）——被 Task 7 資料搬遷與 Task 9 sync 使用
+- Consumes: Secret `vikunja` (Task 2), image `ghcr.io/jeromefromcn/vikunja-notify-relay:1.1.0` (Task 1)
+- Produces: PVC `vikunja`, Deployment/Service `vikunja` (NodePort 30084), Deployment/Service `vikunja-notify-relay` (ClusterIP 8080) — used by Task 7's data migration and Task 9's sync
 
 - [ ] **Step 1: `pvc.yaml`**
 
@@ -148,7 +148,8 @@ spec:
       labels:
         app: vikunja
     spec:
-      # 不加会注入 VIKUNJA_PORT=tcp://...，撞 vikunja 自己的 VIKUNJA_* 配置（trilium 教訓）
+      # Without this, VIKUNJA_PORT=tcp://... gets injected and collides with
+      # vikunja's own VIKUNJA_* config (the trilium lesson)
       enableServiceLinks: false
       containers:
         - name: vikunja
@@ -193,7 +194,7 @@ spec:
             claimName: vikunja
 ```
 
-（`subPath: db` / `subPath: files` 對應 PV 根目錄下的 `db/`、`files/` 子目錄——Task 7 搬資料時建立。）
+(`subPath: db` / `subPath: files` correspond to the `db/`, `files/` subdirectories under the PV root — created when Task 7 moves the data in.)
 
 - [ ] **Step 3: `service.yaml`**
 
@@ -257,7 +258,7 @@ spec:
               memory: 128Mi
 ```
 
-- [ ] **Step 5: `relay-service.yaml`**（純內網，ClusterIP；名稱必須是 `vikunja-notify-relay`，vikunja DB 裡的 webhook URL 才解析得到）
+- [ ] **Step 5: `relay-service.yaml`** (internal-only, ClusterIP; the name must be `vikunja-notify-relay` for the webhook URL stored in vikunja's DB to resolve)
 
 ```yaml
 apiVersion: v1
@@ -273,7 +274,7 @@ spec:
       targetPort: 8080
 ```
 
-- [ ] **Step 6: 驗證五個檔案寫出（佔位檢查，真正的驗證在 Task 9）**
+- [ ] **Step 6: Verify all five files were written** (placeholder check only; the real verification is in Task 9)
 
 ```bash
 ls vps_oracle/k3s/apps/vikunja/k8s/
@@ -283,7 +284,7 @@ Expected: `pvc.yaml  deployment.yaml  service.yaml  relay-deployment.yaml  relay
 
 ---
 
-### Task 4: 寫 apprise 的 k8s manifests
+### Task 4: Write the apprise k8s manifests
 
 **Files:**
 - Create: `vps_oracle/k3s/apps/apprise/k8s/pvc.yaml`
@@ -291,7 +292,7 @@ Expected: `pvc.yaml  deployment.yaml  service.yaml  relay-deployment.yaml  relay
 - Create: `vps_oracle/k3s/apps/apprise/k8s/service.yaml`
 
 **Interfaces:**
-- Produces: PVC `apprise`、Deployment/Service `apprise`（NodePort 30085）——被 Task 8 資料搬遷、Task 10 sync、Task 11 NPM 切流使用。relay 以 `http://apprise:8000` 訪問它（k8s DNS 同名）
+- Produces: PVC `apprise`, Deployment/Service `apprise` (NodePort 30085) — used by Task 8's data migration, Task 10's sync, and Task 11's NPM cutover. relay reaches it at `http://apprise:8000` (same-name k8s DNS)
 
 - [ ] **Step 1: `pvc.yaml`**
 
@@ -379,7 +380,7 @@ spec:
       nodePort: 30085
 ```
 
-- [ ] **Step 4: 驗證檔案存在**
+- [ ] **Step 4: Verify the files exist**
 
 ```bash
 ls vps_oracle/k3s/apps/apprise/k8s/
@@ -389,15 +390,15 @@ Expected: `pvc.yaml  deployment.yaml  service.yaml`
 
 ---
 
-### Task 5: 寫 ArgoCD child Application（app-of-apps 入口）
+### Task 5: Write the ArgoCD child Applications (app-of-apps entries)
 
 **Files:**
 - Create: `vps_oracle/k3s/argocd/apps/vikunja.yaml`
 - Create: `vps_oracle/k3s/argocd/apps/apprise.yaml`
 
 **Interfaces:**
-- Consumes: Task 3/4 的 manifest 目錄
-- Produces: 兩個 Application（ns `argocd`）——Task 9/10 以 `argocd app sync root` 讓它們生效
+- Consumes: Task 3/4's manifest directories
+- Produces: two Applications (ns `argocd`) — brought live by Task 9/10's `argocd app sync root`
 
 - [ ] **Step 1: `argocd/apps/vikunja.yaml`**
 
@@ -445,7 +446,7 @@ spec:
       selfHeal: true
 ```
 
-- [ ] **Step 3: 驗證檔案存在**
+- [ ] **Step 3: Verify the files exist**
 
 ```bash
 ls vps_oracle/k3s/argocd/apps/vikunja.yaml vps_oracle/k3s/argocd/apps/apprise.yaml
@@ -453,29 +454,29 @@ ls vps_oracle/k3s/argocd/apps/vikunja.yaml vps_oracle/k3s/argocd/apps/apprise.ya
 
 ---
 
-### Task 6: 停 compose 棧 + 記錄資料基準
+### Task 6: Stop the compose stacks + record a data baseline
 
 **Files:**
-- None（操作既有 compose：`vps_oracle/compose/vikunja/`、`vps_oracle/compose/apprise/`）
+- None (operates on the existing compose stacks: `vps_oracle/compose/vikunja/`, `vps_oracle/compose/apprise/`)
 
 **Interfaces:**
-- Consumes: 現役的 compose 容器（vikunja、vikunja-notify-relay、apprise）
-- Produces: 停機狀態 + 資料基準數字（Task 7/8 搬遷前後比對）
+- Consumes: the live compose containers (vikunja, vikunja-notify-relay, apprise)
+- Produces: a stopped state + baseline data numbers (compared before/after Task 7/8's migration)
 
-- [ ] **Step 1: 停 vikunja 棧與 apprise（docker compose stop，不 down 不刪）**
+- [ ] **Step 1: Stop the vikunja stack and apprise (docker compose stop, not down, not removed)**
 
 ```bash
 cd /home/ubuntu/jerome/docker-gitops/vps_oracle/compose/vikunja && docker compose stop
 cd /home/ubuntu/jerome/docker-gitops/vps_oracle/compose/apprise && docker compose stop
 ```
 
-- [ ] **Step 2: 等 ~10 秒讓 sqlite 的 wal/shm 收斂**（phase C 教訓：停容器瞬間數檔案數不準）
+- [ ] **Step 2: Wait ~10 seconds for sqlite's wal/shm to settle** (phase C lesson: file counts taken the instant a container stops are unreliable)
 
 ```bash
 sleep 10
 ```
 
-- [ ] **Step 3: 記錄基準**
+- [ ] **Step 3: Record the baseline**
 
 ```bash
 echo "vikunja files: $(sudo find /etc/vikunja -type f | wc -l)"
@@ -483,29 +484,29 @@ echo "vikunja size:  $(sudo du -sh /etc/vikunja | cut -f1)"
 echo "apprise size:  $(sudo du -sh /etc/apprise/config | cut -f1)"
 ```
 
-Expected: 各輸出一行（例如 `vikunja files: 3`、`vikunja size: 4.8M`、`apprise size: 40K`）。**抄下這三個數字**，Task 7/8 搬遷後比對。
+Expected: one output line each (e.g. `vikunja files: 3`, `vikunja size: 4.8M`, `apprise size: 40K`). **Write down these three numbers** — they're compared against after Task 7/8's migration.
 
-- [ ] **Step 4: 確認三個容器都 Exited 且未被刪除**
+- [ ] **Step 4: Confirm all three containers are Exited and not removed**
 
 ```bash
 docker ps -a --format '{{.Names}}\t{{.Status}}' | grep -E 'vikunja|apprise'
 ```
 
-Expected: `vikunja Exited (...)`、`vikunja-notify-relay Exited (...)`、`apprise Exited (...)`。
+Expected: `vikunja Exited (...)`, `vikunja-notify-relay Exited (...)`, `apprise Exited (...)`.
 
 ---
 
-### Task 7: 遷移 vikunja 資料進 PVC（trilium seed-pod 六步）
+### Task 7: Migrate vikunja's data into the PVC (trilium's six-step seed-pod pattern)
 
 **Files:**
 - Create: `vps_oracle/k3s/apps/vikunja/migration/seed-pod.yaml`
-- Consumes: `vps_oracle/k3s/apps/vikunja/k8s/pvc.yaml`（Task 3）
+- Consumes: `vps_oracle/k3s/apps/vikunja/k8s/pvc.yaml` (Task 3)
 
 **Interfaces:**
-- Consumes: `/etc/vikunja`（已停機，靜止）、PVC `vikunja`
-- Produces: 已填入資料的 PVC `vikunja`（PV 根目錄含 `db/`、`files/` 子目錄，屬主 uid 1000）——Task 9 sync 後被 vikunja Deployment 認領
+- Consumes: `/etc/vikunja` (stopped, at rest), PVC `vikunja`
+- Produces: PVC `vikunja` populated with data (PV root contains `db/`, `files/` subdirectories, owner uid 1000) — claimed by the vikunja Deployment after Task 9's sync
 
-- [ ] **Step 1: 寫 seed-pod manifest**
+- [ ] **Step 1: Write the seed-pod manifest**
 
 ```yaml
 apiVersion: v1
@@ -537,7 +538,7 @@ spec:
         claimName: vikunja
 ```
 
-- [ ] **Step 2: apply PVC + seed pod，等 PVC Bound**（`WaitForFirstConsumer`：PVC 要等到有 pod 掛載才生宿主機目錄）
+- [ ] **Step 2: Apply the PVC + seed pod, wait for the PVC to bind** (`WaitForFirstConsumer`: the PVC only gets a host directory once a pod mounts it)
 
 ```bash
 cd /home/ubuntu/jerome/docker-gitops
@@ -546,69 +547,69 @@ kubectl apply -f vps_oracle/k3s/apps/vikunja/migration/seed-pod.yaml
 kubectl -n workloads wait --for=jsonpath='{.status.phase}'=Bound pvc/vikunja --timeout=120s
 ```
 
-Expected: `persistentvolumeclaim/vikunja condition met`。
+Expected: `persistentvolumeclaim/vikunja condition met`.
 
-- [ ] **Step 3: 取得 PV 實際宿主機目錄**
+- [ ] **Step 3: Get the PV's actual host directory**
 
 ```bash
 kubectl -n workloads get pvc vikunja -o jsonpath='{.spec.volumeName}'
 ```
 
-記下 PV 名（形如 `pvc-xxxxxxxx`），再：
+Note the PV name (looks like `pvc-xxxxxxxx`), then:
 
 ```bash
-kubectl get pv <PV名> -o jsonpath='{.spec.local.path}'
+kubectl get pv <PV-name> -o jsonpath='{.spec.local.path}'
 ```
 
-Expected: 一行宿主機路徑（形如 `/var/lib/rancher/k3s/storage/pvc-...`）。**不要用 `spec.hostPath.path`**（local-path 的欄位是 `spec.local.path`）。
+Expected: one host path line (looks like `/var/lib/rancher/k3s/storage/pvc-...`). **Don't use `spec.hostPath.path`** (local-path's field is `spec.local.path`).
 
-- [ ] **Step 4: 複製資料 + chown（來源只讀，不動原目錄）**
+- [ ] **Step 4: Copy the data + chown (source stays read-only, original directory untouched)**
 
 ```bash
-sudo cp -a /etc/vikunja/. <PV目錄>/
-sudo chown -R 1000:1000 <PV目錄>
+sudo cp -a /etc/vikunja/. <PV-dir>/
+sudo chown -R 1000:1000 <PV-dir>
 ```
 
-（`cp -a` 保留屬主/時間戳；`chown 1000:1000` 對齊 vikunja 容器 uid 1000——provisioner 建的目錄屬主是 root。）
+(`cp -a` preserves ownership/timestamps; `chown 1000:1000` aligns with the vikunja container's uid 1000 — the directory the provisioner creates is owned by root.)
 
-- [ ] **Step 5: 驗證檔案數/大小與基準一致**
+- [ ] **Step 5: Verify the file count/size matches the baseline**
 
 ```bash
-echo "migrated vikunja files: $(sudo find <PV目錄> -type f | wc -l)"
-sudo du -sh <PV目錄>
+echo "migrated vikunja files: $(sudo find <PV-dir> -type f | wc -l)"
+sudo du -sh <PV-dir>
 ```
 
-Expected: 檔案數 == Task 6 Step 3 的 vikunja files 基準；大小相近（4.8M 量級）。
+Expected: file count == the vikunja files baseline from Task 6 Step 3; size in the same ballpark (~4.8M).
 
-- [ ] **Step 6: 收 seed pod（PVC 保留，資料留在原地）**
+- [ ] **Step 6: Tear down the seed pod (PVC stays, data stays in place)**
 
 ```bash
 kubectl delete -f vps_oracle/k3s/apps/vikunja/migration/seed-pod.yaml
 ```
 
-Expected: `pod "vikunja-migration-seed" deleted`。
+Expected: `pod "vikunja-migration-seed" deleted`.
 
-- [ ] **Step 7: commit seed-pod manifest**（搬遷工具留檔，與 trilium 的 `migration/` 目錄一致）
+- [ ] **Step 7: Commit the seed-pod manifest** (kept on file as a migration tool, consistent with trilium's `migration/` directory)
 
 ```bash
 git add vps_oracle/k3s/apps/vikunja/migration/seed-pod.yaml
 git commit -m "Add vikunja data-migration seed pod manifest"
 ```
 
-（若執行者是 subagent，這一步與 Task 9 的 commit 一起由 review gate 決定是否合併；seed-pod 是搬遷工具，保留即可。）
+(If this step is run by a subagent, whether to merge this commit with Task 9's is up to the review gate — the seed-pod is a migration tool, keeping it around is fine.)
 
 ---
 
-### Task 8: 遷移 apprise 的 /config 進 PVC
+### Task 8: Migrate apprise's /config into the PVC
 
 **Files:**
 - Create: `vps_oracle/k3s/apps/apprise/migration/seed-pod.yaml`
 
 **Interfaces:**
-- Consumes: `/etc/apprise/config`（40K，靜止）、PVC `apprise`
-- Produces: 已填入資料的 PVC `apprise`（PV 根目錄 = /config 內容）——Task 10 sync 後被 apprise Deployment 認領
+- Consumes: `/etc/apprise/config` (40K, at rest), PVC `apprise`
+- Produces: PVC `apprise` populated with data (PV root = the /config contents) — claimed by the apprise Deployment after Task 10's sync
 
-- [ ] **Step 1: 寫 seed-pod manifest（同 Task 7 模式，PVC 換成 `apprise`）**
+- [ ] **Step 1: Write the seed-pod manifest (same pattern as Task 7, PVC swapped for `apprise`)**
 
 ```yaml
 apiVersion: v1
@@ -640,7 +641,7 @@ spec:
         claimName: apprise
 ```
 
-- [ ] **Step 2: apply PVC + seed pod，等 Bound**
+- [ ] **Step 2: Apply the PVC + seed pod, wait for Bound**
 
 ```bash
 cd /home/ubuntu/jerome/docker-gitops
@@ -649,9 +650,9 @@ kubectl apply -f vps_oracle/k3s/apps/apprise/migration/seed-pod.yaml
 kubectl -n workloads wait --for=jsonpath='{.status.phase}'=Bound pvc/apprise --timeout=120s
 ```
 
-Expected: `persistentvolumeclaim/apprise condition met`。
+Expected: `persistentvolumeclaim/apprise condition met`.
 
-- [ ] **Step 3: 取 PV 目錄並複製**（apprise 以 root 執行，屬主不重要，`cp -a` 即可、不需 chown）
+- [ ] **Step 3: Get the PV directory and copy the data** (apprise runs as root, so ownership doesn't matter — plain `cp -a` is enough, no chown needed)
 
 ```bash
 PVNAME=$(kubectl -n workloads get pvc apprise -o jsonpath='{.spec.volumeName}')
@@ -660,17 +661,17 @@ echo "PV dir: $PVDIR"
 sudo cp -a /etc/apprise/config/. "$PVDIR"/
 ```
 
-Expected: `PV dir: /var/lib/rancher/k3s/storage/pvc-...`，cp 無錯誤輸出。
+Expected: `PV dir: /var/lib/rancher/k3s/storage/pvc-...`, no error output from cp.
 
-- [ ] **Step 4: 驗證大小與基準一致**
+- [ ] **Step 4: Verify the size matches the baseline**
 
 ```bash
-sudo du -sh <PV目錄>
+sudo du -sh <PV-dir>
 ```
 
-Expected: 與 Task 6 的 apprise 基準一致（40K 量級）。
+Expected: matches Task 6's apprise baseline (~40K).
 
-- [ ] **Step 5: 收 seed pod + commit**
+- [ ] **Step 5: Tear down the seed pod + commit**
 
 ```bash
 kubectl delete -f vps_oracle/k3s/apps/apprise/migration/seed-pod.yaml
@@ -680,16 +681,16 @@ git commit -m "Add apprise data-migration seed pod manifest"
 
 ---
 
-### Task 9: 提交 vikunja + relay 並 ArgoCD sync，內部驗證
+### Task 9: Commit vikunja + relay and ArgoCD-sync, verify internally
 
 **Files:**
-- Commit: `vps_oracle/k3s/apps/vikunja/k8s/`（Task 3）、`vps_oracle/k3s/argocd/apps/vikunja.yaml`（Task 5）
+- Commit: `vps_oracle/k3s/apps/vikunja/k8s/` (Task 3), `vps_oracle/k3s/argocd/apps/vikunja.yaml` (Task 5)
 
 **Interfaces:**
-- Consumes: Task 3/5 的檔案、Task 1 的 relay image、Task 2 的 Secret、Task 7 已填資料的 PVC
-- Produces: 叢集內 vikunja + relay 跑起來（NPM 還沒切）
+- Consumes: Task 3/5's files, Task 1's relay image, Task 2's Secret, Task 7's populated PVC
+- Produces: vikunja + relay running inside the cluster (NPM not yet cut over)
 
-- [ ] **Step 1: commit + push**
+- [ ] **Step 1: Commit + push**
 
 ```bash
 cd /home/ubuntu/jerome/docker-gitops
@@ -698,17 +699,17 @@ git commit -m "Deploy vikunja + notify-relay to k3s via GitOps"
 git push origin main
 ```
 
-（push 前先 `git status` 確認沒有混進別人的變更——本 repo 可能有並行的 Claude session 在 commit。）
+(Run `git status` before pushing to confirm nothing else got mixed in — this repo can have concurrent Claude sessions committing.)
 
-- [ ] **Step 2: 觸發 root Application sync**（新 Application 要 sync `root` 才建得出來）
+- [ ] **Step 2: Trigger a root Application sync** (a new Application only gets created once `root` is synced)
 
 ```bash
 argocd app sync root
 ```
 
-（或等 ArgoCD 下一輪 poll。sync 後等 `vikunja`、`apprise` 兩個 Application 出現。）
+(Or wait for ArgoCD's next poll cycle. After the sync, wait for both the `vikunja` and `apprise` Applications to appear.)
 
-- [ ] **Step 3: 等 pod 起來、PVC Bound**
+- [ ] **Step 3: Wait for the pods to come up and the PVC to bind**
 
 ```bash
 kubectl -n workloads wait --for=condition=available deploy/vikunja --timeout=180s
@@ -716,37 +717,37 @@ kubectl -n workloads wait --for=condition=available deploy/vikunja-notify-relay 
 kubectl get pvc -n workloads
 ```
 
-Expected: 兩個 deployment available；PVC `vikunja` 為 `Bound`。
+Expected: both deployments available; PVC `vikunja` is `Bound`.
 
-- [ ] **Step 4: 確認 ArgoCD 狀態**
+- [ ] **Step 4: Confirm ArgoCD status**
 
 ```bash
 kubectl get applications -n argocd | grep -E 'vikunja|apprise'
 ```
 
-Expected: `vikunja` 出現且 `Synced`/`Healthy`（apprise 此時可能還沒出現，Task 10 才提交它——只要 vikunja 對即可）。
+Expected: `vikunja` appears and is `Synced`/`Healthy` (apprise may not appear yet — Task 10 commits it — vikunja being correct is enough here).
 
-- [ ] **Step 5: 內部連通驗證（切 NPM 之前，叢集內先通）**
+- [ ] **Step 5: Verify internal connectivity (before cutting over NPM, confirm it works inside the cluster first)**
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:30084
 kubectl -n workloads logs deploy/vikunja-notify-relay --tail=20
 ```
 
-Expected: vikunja 回 `200` 或 `302`（登入頁/重導向）；relay log 乾乾淨淨、無 traceback（relay 無 NodePort，用 log 確認啟動正常）。
+Expected: vikunja returns `200` or `302` (login page/redirect); relay log is clean, no traceback (relay has no NodePort, so its log is how we confirm it started up cleanly).
 
 ---
 
-### Task 10: 提交 apprise 並 ArgoCD sync，內部驗證
+### Task 10: Commit apprise and ArgoCD-sync, verify internally
 
 **Files:**
-- Commit: `vps_oracle/k3s/apps/apprise/k8s/`（Task 4）、`vps_oracle/k3s/argocd/apps/apprise.yaml`（Task 5）
+- Commit: `vps_oracle/k3s/apps/apprise/k8s/` (Task 4), `vps_oracle/k3s/argocd/apps/apprise.yaml` (Task 5)
 
 **Interfaces:**
-- Consumes: Task 4/5 的檔案、Task 8 已填資料的 PVC
-- Produces: 叢集內 apprise 跑起來（NPM 還沒切）
+- Consumes: Task 4/5's files, Task 8's populated PVC
+- Produces: apprise running inside the cluster (NPM not yet cut over)
 
-- [ ] **Step 1: commit + push**
+- [ ] **Step 1: Commit + push**
 
 ```bash
 cd /home/ubuntu/jerome/docker-gitops
@@ -755,36 +756,36 @@ git commit -m "Deploy apprise to k3s via GitOps"
 git push origin main
 ```
 
-- [ ] **Step 2: 等 apprise pod 起來、PVC Bound**
+- [ ] **Step 2: Wait for the apprise pod to come up, the PVC to bind**
 
 ```bash
 kubectl -n workloads wait --for=condition=available deploy/apprise --timeout=180s
 kubectl get pvc -n workloads
 ```
 
-Expected: `apprise` deployment available；PVC `apprise` 為 `Bound`。
+Expected: `apprise` deployment available; PVC `apprise` is `Bound`.
 
-- [ ] **Step 3: ArgoCD 狀態 + 內部連通**
+- [ ] **Step 3: ArgoCD status + internal connectivity**
 
 ```bash
 kubectl get applications -n argocd | grep -E 'vikunja|apprise'
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:30085
 ```
 
-Expected: 兩者 `Synced`/`Healthy`；apprise 回 `200`（根路徑有回應）。
+Expected: both `Synced`/`Healthy`; apprise returns `200` (root path responds).
 
 ---
 
-### Task 11: NPM 切流 + 外部驗證
+### Task 11: NPM cutover + external verification
 
 **Files:**
-- None（操作 NPM proxy host id 19 vikunja、id 20 apprise；NPM 管理埠 81 只對 `proxy` 網路開放，不走宿主機）
+- None (operates on NPM proxy host id 19 vikunja, id 20 apprise; NPM's admin port 81 is only exposed to the `proxy` network, not reachable from the host)
 
 **Interfaces:**
-- Consumes: `.npm-automation.env`（gitignored 的 NPM API 帳密）、兩個已就緒的 NodePort
-- Produces: NPM 兩條 proxy host 改指 `10.0.0.95:30084/30085`，域名對外不變
+- Consumes: `.npm-automation.env` (gitignored NPM API credentials), the two ready NodePorts
+- Produces: the two NPM proxy hosts repointed to `10.0.0.95:30084/30085`, domain unchanged externally
 
-- [ ] **Step 1: 寫一個一次性切流腳本（docker run --network proxy 執行，因為宿主機連不到 npm:81）**
+- [ ] **Step 1: Write a one-off cutover script (run via `docker run --network proxy`, since the host can't reach `npm:81` directly)**
 
 ```bash
 cd /home/ubuntu/jerome/docker-gitops
@@ -816,75 +817,75 @@ docker run --rm --network proxy \
   python:3.12-alpine python /work/cutover.py
 ```
 
-Expected: 印出 `proxy host 19 -> 10.0.0.95:30084 (...)` 與 `proxy host 20 -> 10.0.0.95:30085 (...)`，且 `ssl_forced=true`、`http2_support=true` 保持（NPM 已知「SSL 開關自己重置」bug，若被重置下面 Step 3 會抓出來）。
+Expected: prints `proxy host 19 -> 10.0.0.95:30084 (...)` and `proxy host 20 -> 10.0.0.95:30085 (...)`, with `ssl_forced=true` and `http2_support=true` preserved (NPM has a known "the SSL toggle resets itself" bug — if it got reset, Step 3 below will catch it).
 
-- [ ] **Step 2: 外部驗證（域名不變，從伺服器本機打，本機公網 IP 在 access list 上）**
+- [ ] **Step 2: Verify externally (domain unchanged, hit it from the server itself, whose public IP is already on the access list)**
 
 ```bash
 curl -s -o /dev/null -w 'vikunja: %{http_code}\n' https://vikunja.jerome.cloudns.asia
 curl -s -o /dev/null -w 'apprise: %{http_code}\n' https://apprise.jerome.cloudns.asia
 ```
 
-Expected: 兩者 `200`/`302`（有 access list，但來源是本機公網 IP，放行）。
+Expected: both `200`/`302` (there's an access list, but the source is the server's own public IP, which is allowed).
 
-- [ ] **Step 3: 確認 SSL 沒被 PUT 重置**（若回 3xx 跳轉或 502，去 NPM UI 檢查該 host 的 SSL 開關）
+- [ ] **Step 3: Confirm SSL wasn't reset by the PUT** (if it returns a 3xx redirect or 502, check that host's SSL toggle in the NPM UI)
 
 ```bash
 curl -sv -o /dev/null https://vikunja.jerome.cloudns.asia 2>&1 | grep -E 'SSL connection|subject:'
 ```
 
-Expected: `SSL connection using TLS...`、`subject: CN=...`（正常握手，非憑證錯誤）。
+Expected: `SSL connection using TLS...`, `subject: CN=...` (a normal handshake, not a certificate error).
 
 ---
 
-### Task 12: 功能端到端驗證——Telegram 通知鏈路
+### Task 12: End-to-end functional verification — the Telegram notification chain
 
 **Files:**
-- None（操作 vikunja UI/API + 看 k8s log + 使用者 Telegram）
+- None (operates on the vikunja UI/API + reads k8s logs + checks the user's Telegram)
 
 **Interfaces:**
-- Consumes: 遷移後的 vikunja + relay + apprise
-- Produces: 證明「vikunja → relay → apprise → Telegram」整條鏈遷後仍通
+- Consumes: the migrated vikunja + relay + apprise
+- Produces: proof that the "vikunja → relay → apprise → Telegram" chain still works after migration
 
-- [ ] **Step 1: 登入 vikunja 並建一個 task 指派給使用者**
+- [ ] **Step 1: Log into vikunja and create a task assigned to a user**
 
-用瀏覽器開 `https://vikunja.jerome.cloudns.asia` 登入，建一個 task 指派給某個真實使用者（例如 jerome）。指派動作觸發 `task.assignee.created` webhook。
+Open `https://vikunja.jerome.cloudns.asia` in a browser and log in, create a task assigned to a real user (e.g. jerome). The assignment action triggers the `task.assignee.created` webhook.
 
-（若用 API：先 `POST /api/v1/login` 拿 token，再 `POST /api/v1/projects/{id}/tasks` 帶 `assignees: [使用者ID]`。帳密在使用者手上，plan 不預設。）
+(Via the API instead: `POST /api/v1/login` first to get a token, then `POST /api/v1/projects/{id}/tasks` with `assignees: [user-ID]`. Credentials are held by the user — the plan doesn't assume them.)
 
-- [ ] **Step 2: 確認該使用者的 Telegram 收到通知**
+- [ ] **Step 2: Confirm the user's Telegram received the notification**
 
-檢查使用者的 Telegram（vikunja-tg-{username} 的 apprise target）——應收到「📌 Task assigned to you」格式的消息。
+Check the user's Telegram (the apprise target `vikunja-tg-{username}`) — it should receive a message in the "📌 Task assigned to you" format.
 
-- [ ] **Step 3: 看 relay + apprise log 佐證**
+- [ ] **Step 3: Check the relay + apprise logs as supporting evidence**
 
 ```bash
 kubectl -n workloads logs deploy/vikunja-notify-relay --tail=20
 kubectl -n workloads logs deploy/apprise --tail=20
 ```
 
-Expected: relay log 出現收到 vikunja webhook 的 POST 記錄（200）；apprise log 無錯誤。若 Telegram 收到而 log 沒顯示，以 Telegram 實際收到為準。
+Expected: the relay log shows a POST record for receiving the vikunja webhook (200); the apprise log has no errors. If Telegram received the message but the log doesn't show it, trust what Telegram actually received.
 
-- [ ] **Step 4: 確認舊 compose 容器仍是 Exited 未刪除（回滾點）**
+- [ ] **Step 4: Confirm the old compose containers are still Exited, not removed (a rollback point)**
 
 ```bash
 docker ps -a --format '{{.Names}}\t{{.Status}}' | grep -E 'vikunja|apprise'
 ```
 
-Expected: 三個都是 `Exited`，**不是** `Removed` 或 `Up`。
+Expected: all three are `Exited`, **not** `Removed` or `Up`.
 
 ---
 
-### Task 13: 為 relay 加 CI workflow（未來改動可重現）
+### Task 13: Add a CI workflow for relay (so future changes are reproducible)
 
 **Files:**
 - Create: `.github/workflows/vikunja-notify-relay.yml`
 
 **Interfaces:**
-- Consumes: `vps_oracle/compose/vikunja/notify-relay/`（Dockerfile + app.py + test_app.py）
-- Produces: push 時自動 build→test→Trivy→Cosign→push `ghcr.io/jeromefromcn/vikunja-notify-relay:<sha>`；未來 bump 部署版本時照 placeholder-hello 的手動兩步（改 deployment.yaml image tag）
+- Consumes: `vps_oracle/compose/vikunja/notify-relay/` (Dockerfile + app.py + test_app.py)
+- Produces: on push, automatic build→test→Trivy→Cosign→push of `ghcr.io/jeromefromcn/vikunja-notify-relay:<sha>`; future deployment version bumps follow placeholder-hello's manual two-step (change the deployment.yaml image tag)
 
-- [ ] **Step 1: 寫 workflow**（以 `.github/workflows/placeholder-hello.yml` 為底，context 換成 relay 目錄，加一步跑 unittest）
+- [ ] **Step 1: Write the workflow** (based on `.github/workflows/placeholder-hello.yml`, with the context swapped to the relay directory, plus one added step to run the unit tests)
 
 ```yaml
 name: vikunja-notify-relay
@@ -958,15 +959,15 @@ jobs:
         run: cosign sign --yes "$IMAGE_REF"
 ```
 
-- [ ] **Step 2: 驗證 YAML 可解析**
+- [ ] **Step 2: Verify the YAML parses**
 
 ```bash
 python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/vikunja-notify-relay.yml')); print('valid')"
 ```
 
-Expected: `valid`。
+Expected: `valid`.
 
-- [ ] **Step 3: commit + push**
+- [ ] **Step 3: Commit + push**
 
 ```bash
 cd /home/ubuntu/jerome/docker-gitops
@@ -975,19 +976,19 @@ git commit -m "Add CI for vikunja-notify-relay image (build, test, scan, sign, p
 git push origin main
 ```
 
-Expected: 該 commit 不會觸發 workflow（path 過濾只匹配 relay 目錄），但 `workflow_dispatch` 可在 GitHub 上手動跑。**本 plan 的 migration 已完成、不依賴這次 CI 執行**；下次改 relay 程式時它會自動 build 新 `:<sha>`，屆時照 placeholder-hello 手動兩步把 deployment image tag 指過去。
+Expected: this commit does not trigger the workflow (the path filter only matches the relay directory), but `workflow_dispatch` can run it manually on GitHub. **This plan's migration is already complete and does not depend on this CI run** — next time the relay code changes, it will auto-build a new `:<sha>`, at which point follow placeholder-hello's manual two-step to point the deployment's image tag at it.
 
 ---
 
-## Self-Review 記錄
+## Self-Review Notes
 
-- **Spec 覆蓋**：vikunja 棧三件（vikunja+relay+apprise）→ Task 3/4；sqlite 原樣 + PVC 搬遷 → Task 7；relay 上 GHCR + CI → Task 1/13；Secret 帶外手動建 → Task 2；NPM 切流（含 SSL 重置檢查）→ Task 11；webhook URL 沿用（Service 同名）→ Task 9 Step 5 + Task 12；`enableServiceLinks: false` 全 pod → Global Constraints + Task 3/4 manifests；quota 不動 → Global Constraints。3x-ui 保留、dify/llm 各寫各的 plan（見「待辦」）。
-- **Placeholder scan**：無 TBD/TODO；每個 code/manifest/command 都是實際內容。
-- **Type consistency**：Service 名 `vikunja`/`vikunja-notify-relay`/`apprise` 跨 Task 一致；secret key `VIKUNJA_SERVICE_SECRET` 跨 Task 2/3 一致；NodePort 30084/30085 跨 Task 3/4/9/10/11 一致；PV 目錄查詢統一 `spec.local.path`。
+- **Spec coverage:** the three vikunja-stack pieces (vikunja+relay+apprise) → Task 3/4; sqlite moved as-is + PVC migration → Task 7; relay pushed to GHCR + CI → Task 1/13; Secret created manually out-of-band → Task 2; NPM cutover (incl. SSL-reset check) → Task 11; webhook URL carried over (same Service name) → Task 9 Step 5 + Task 12; `enableServiceLinks: false` on every pod → Global Constraints + Task 3/4 manifests; quota untouched → Global Constraints. 3x-ui stays as-is; dify/llm each get their own separate plan (see "Follow-ups").
+- **Placeholder scan:** no TBD/TODO; every code/manifest/command is real content.
+- **Type consistency:** Service names `vikunja`/`vikunja-notify-relay`/`apprise` are consistent across tasks; secret key `VIKUNJA_SERVICE_SECRET` is consistent across Task 2/3; NodePort 30084/30085 is consistent across Task 3/4/9/10/11; PV directory lookup uniformly uses `spec.local.path`.
 
-## 待辦（不在本 plan）
+## Follow-ups (out of scope for this plan)
 
-- **dify 遷移 plan**（9 容器 → `dify` ns，含 StatefulSet + SSRF NetworkPolicy + 8 條 NPM location 切流 + 5 個 secret）
-- **llm 棧遷移 plan**（3 容器 → `llm` ns，含 3C/9G 配額 + models/data PVC）
-- **3x-ui**：不遷（spec 已記為 compose 保留）
-- **phase E**：Sealed Secrets 接管 Task 2 的帶外 Secret
+- **dify migration plan** (9 containers → `dify` ns, incl. StatefulSet + SSRF NetworkPolicy + 8 NPM location cutovers + 5 secrets)
+- **llm stack migration plan** (3 containers → `llm` ns, incl. 3C/9G quota + models/data PVC)
+- **3x-ui**: not migrated (the spec already records it as staying on compose)
+- **phase E**: Sealed Secrets takes over Task 2's out-of-band Secret

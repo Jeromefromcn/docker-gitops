@@ -1,62 +1,62 @@
 ---
 name: npm-proxy-host
-description: 在 Nginx Proxy Manager 里新建或修改一条反代记录（proxy host）。当需要给某个服务配置 <service>.jerome.cloudns.asia 域名、接入 NPM、申请/复用 SSL 证书、设置 access list，或反代到 k3s NodePort 时使用。包含 add-proxy-host.sh 脚本用法和三个已知会静默失败的坑。
+description: Create or modify a reverse-proxy record (proxy host) in Nginx Proxy Manager. Use when you need to configure a <service>.jerome.cloudns.asia domain for a service, onboard it to NPM, request/reuse an SSL certificate, set an access list, or reverse-proxy to a k3s NodePort. Includes add-proxy-host.sh usage and three known pitfalls that silently fail.
 ---
 
-# 给服务接入 NPM 反代
+# Onboard a service to the NPM reverse proxy
 
-新增/修改一条 NPM 反代记录时，按下面的配置来，保持跟现有栈风格一致。
+When adding or modifying an NPM reverse-proxy record, follow the config below and keep it consistent with the existing stacks.
 
-> NPM 已于 2026-08-21 从 2.12.3 升到 2.15.1，而 2.13.0 起换成了 React 新界面。下面的字段本身都还在，但位置/名称可能跟旧界面有出入——下次照着操作时如果对不上，顺手把这段改掉。
+> NPM was upgraded from 2.12.3 to 2.15.1 on 2026-08-21, and the React-based new UI arrived in 2.13.0. The fields below still exist, but their locations/names may differ from the old UI — the next time you follow this and something doesn't line up, update this paragraph as you go.
 
-**没有 Custom Locations、不用反代到 k3s NodePort 的常规情况**，可以直接跑 [`vps_oracle/compose/npm/add-proxy-host.sh`](../../../vps_oracle/compose/npm/add-proxy-host.sh) 一次建好（含证书申请/复用、access list 按名字选、建完自动验证 SSL 设置没被静默重置），用法见 [`vps_oracle/compose/npm/README.md`](../../../vps_oracle/compose/npm/README.md) 的「用腳本一次建好 proxy host」一节。下面的字段表是这个脚本自动套用的值，也是手动走 UI/API 时的参照。
+For the common case — **no Custom Locations, and not reverse-proxying to a k3s NodePort** — you can just run [`vps_oracle/compose/npm/add-proxy-host.sh`](../../../vps_oracle/compose/npm/add-proxy-host.sh) to set it up in one go (including certificate request/reuse, selecting the access list by name, and auto-verifying after creation that the SSL settings weren't silently reset); see the "build the proxy host in one go with the script" section of [`vps_oracle/compose/npm/README.md`](../../../vps_oracle/compose/npm/README.md) for usage. The field table below shows the values this script applies automatically, and is the reference when doing it manually via the UI/API.
 
-**Details 标签页**
+**Details tab**
 
-| 字段 | 值 |
+| Field | Value |
 |---|---|
 | Domain Names | `<service>.jerome.cloudns.asia` |
 | Scheme | `http` |
-| Forward Hostname / IP | 容器名（跟 compose 里的 `container_name` 一致，靠 `proxy` 网络的 Docker DNS 解析，不用填 IP） |
-| Forward Port | 容器内部实际监听端口（不是宿主机端口，这些服务本来就不发布端口） |
-| Cache Assets | 关闭 |
-| Block Common Exploits | 开启 |
-| Websockets Support | 开启 |
-| Access List | 一律选 `self-only`（例外：**无内建鉴权的管理面板**用 `self-only-and-auth`，如 `cc-window`，见 `vps_oracle/host-native/cc-window/README.md`） |
-| Custom Locations | 尽量不加，理由见下面的约定 |
+| Forward Hostname / IP | Container name (matches `container_name` in compose, resolved via the `proxy` network's Docker DNS — no need to enter an IP) |
+| Forward Port | The container's actual internal listening port (not a host port — these services don't publish ports anyway) |
+| Cache Assets | Off |
+| Block Common Exploits | On |
+| Websockets Support | On |
+| Access List | Always select `self-only` (exception: **admin panels with no built-in auth** use `self-only-and-auth`, e.g. `cc-window`, see `vps_oracle/host-native/cc-window/README.md`) |
+| Custom Locations | Avoid where possible — rationale under the convention below |
 
-**SSL 标签页**
+**SSL tab**
 
-| 字段 | 值 |
+| Field | Value |
 |---|---|
-| SSL Certificate | 选跟 Domain Names 一致的证书；新域名选 "Request a new SSL Certificate" |
-| Email Address for Let's Encrypt | 固定填 `jeromefromcn@gmail.com`，跟现有证书保持一致，不用再查 |
-| Force SSL | 开启 |
-| HTTP/2 Support | 开启 |
-| HSTS Enabled | 关闭 |
+| SSL Certificate | Select the certificate matching the Domain Names; for a new domain choose "Request a new SSL Certificate" |
+| Email Address for Let's Encrypt | Always `jeromefromcn@gmail.com`, consistent with existing certificates — no need to look it up |
+| Force SSL | On |
+| HTTP/2 Support | On |
+| HSTS Enabled | Off |
 
-**⚠️ 已知坑**：创建时把 Force SSL / HTTP/2 Support 打开保存，有时会被静默重置回关闭状态。**保存后要重新打开这条记录复查一遍**，发现关掉了就再勾一次并保存。
+**⚠️ Known pitfall**: Force SSL / HTTP/2 Support that you turn on at creation time are sometimes silently reset back to off. **After saving, reopen the record and double-check**; if they're off, tick them again and save.
 
-**⚠️ 已知坑（反代到 k3s NodePort 时）**：Forward Hostname/IP 必须直接填宿主机内网 IP（目前是 `10.0.0.95`），不能填 `host.docker.internal` 或其他主机名——NPM 的 nginx 生成的 proxy_pass 配置走 Docker 内嵌 DNS resolver 动态解析，不读容器的 `/etc/hosts`/`extra_hosts`，填主机名会报 "could not be resolved" 导致 502。另外这个 IP 是 DHCP 分配的（`ip -4 addr show enp0s6` 显示 `dynamic`），不是静态 IP——如果 Oracle 换了地址，所有指向 NodePort 的反代会静默变成 502，排查前先确认这个 IP 有没有变。详见 [`vps_oracle/k3s/README.md`](../../../vps_oracle/k3s/README.md) 和 [`vps_oracle/compose/npm/docker-compose.yml`](../../../vps_oracle/compose/npm/docker-compose.yml) 里 `extra_hosts` 的注释。
+**⚠️ Known pitfall (when reverse-proxying to a k3s NodePort)**: Forward Hostname/IP must be the host's internal IP directly (currently `10.0.0.95`) — not `host.docker.internal` or any other hostname — because the proxy_pass config NPM's nginx generates resolves via Docker's embedded DNS resolver, and does not read the container's `/etc/hosts`/`extra_hosts`; entering a hostname reports "could not be resolved" and yields a 502. Also, this IP is DHCP-assigned (`ip -4 addr show enp0s6` shows `dynamic`), not static — if Oracle changes the address, every reverse proxy pointing at a NodePort silently becomes 502, so check whether this IP changed before troubleshooting. See [`vps_oracle/k3s/README.md`](../../../vps_oracle/k3s/README.md) and the `extra_hosts` comment in [`vps_oracle/compose/npm/docker-compose.yml`](../../../vps_oracle/compose/npm/docker-compose.yml).
 
-**⚠️ 已知坑（API 改 `locations` 时可能不生效，且会静默失败）**：dify 迁移切流时发现，`PUT /api/nginx/proxy-hosts/{id}` 带上完整 `locations` 数组一起改，NPM 会把新值写进它自己的数据库（之后 `GET` 能读到新值），但生成 `/data/nginx/proxy_host/{id}.conf` 这一步没有跟着重新渲染——磁盘上的文件还是旧内容。若这份旧文件里引用的上游主机名此时已经解析不到（比如对应的 compose 容器已经 `stop`），`nginx -t` 会报 `host not found in upstream`，API 返回 `{"error":{"message":"Internal Error"}}`（500），重试也一样失败，此时 nginx 还在跑更早之前最后一次成功 reload 的配置——如果那份配置引用的容器也已经停了，站点对外直接 502，且**这个 502 不会自愈，卡在这个状态直到人工介入**。当时的修法：`docker exec npm cat /data/nginx/proxy_host/{id}.conf` 确认磁盘文件确实没跟着变，改用 `docker exec npm sed -i ...` 直接编辑这份文件（改成跟 API 已经写入数据库的值一致），`docker exec npm nginx -t` 验证语法，再 `docker exec npm nginx -s reload` 手动生效——数据库和磁盘配置两边最终还是一致的，只是靠人工把 NPM 自己没做完的那一步补上。**排查线索**：`docker logs npm` 里的 `nginx: [emerg] host not found in upstream "..."` 精确点出是哪个上游主机名解析失败；用这个失败的旧主机名去反查是不是某个已经停掉的 compose 容器。**规避建议**：以后要切换带多条 `locations` 的服务，考虑切流前**不要**提前停掉旧的 compose 容器（等确认 API 更新真的生效、`nginx -T` 里能看到新配置之后再停），或者切完之后立刻验证磁盘文件而不是只信任 API 返回值/数据库读值。
+**⚠️ Known pitfall (changing `locations` via the API may not take effect, and fails silently)**: discovered during the dify migration cutover — `PUT /api/nginx/proxy-hosts/{id}` with the full `locations` array writes the new values into NPM's own database (a subsequent `GET` reads the new values), but the step that regenerates `/data/nginx/proxy_host/{id}.conf` does not re-render — the file on disk still holds the old content. If the old file references an upstream hostname that can no longer be resolved (e.g. the corresponding compose container has been `stop`ped), `nginx -t` reports `host not found in upstream`, the API returns `{"error":{"message":"Internal Error"}}` (500), and retries fail the same way; meanwhile nginx is still running the earlier last-successfully-reloaded config — and if the container that config references has also been stopped, the site 502s externally, and **this 502 does not self-heal; it stays stuck until a human intervenes**. The fix at the time: `docker exec npm cat /data/nginx/proxy_host/{id}.conf` to confirm the on-disk file really hadn't changed, then edit that file directly with `docker exec npm sed -i ...` (to match the values the API had already written to the database), `docker exec npm nginx -t` to verify syntax, then `docker exec npm nginx -s reload` to apply manually — the database and the on-disk config end up consistent, just with a human filling in the step NPM itself never completed. **Debugging clue**: `nginx: [emerg] host not found in upstream "..."` in `docker logs npm` pinpoints exactly which upstream hostname failed to resolve; use that stale hostname to trace back to whichever compose container has been stopped. **Avoidance advice**: when switching a service with multiple `locations`, consider NOT stopping the old compose container ahead of the cutover (wait until you've confirmed the API update actually took effect and `nginx -T` shows the new config), or verify the on-disk file immediately after the cutover rather than trusting only the API response / database value.
 
-**⚠️ 约定：能不用 Custom Locations 就不用**
+**⚠️ Convention: avoid Custom Locations wherever possible**
 
-上面那条坑有一个跟切流无关、但严重得多的普遍形态。NPM 生成配置时，普通转发把上游主机名放进变量（`set $server "trilium";`），nginx 逐请求经 Docker 内嵌 DNS 解析，后端容器没了只是这一个站 502；但**每一条 Custom Location 都会把主机名写死进 `proxy_pass`**（NPM 的 `_location.conf` 模板），字面量上游必须在**载入配置时**就解析成功，否则 nginx 直接 `[emerg]` 拒绝启动——**全部反代站点一起挂**，不只是那一个。
+The pitfall above has a more general form that is unrelated to cutover and far more severe. When NPM generates config, ordinary forwards put the upstream hostname in a variable (`set $server "trilium";`) and nginx resolves it per-request via Docker's embedded DNS, so a missing backend container only 502s that one site; but **every Custom Location hardcodes the hostname into `proxy_pass`** (NPM's `_location.conf` template), and the literal upstream must resolve **at config-load time** or nginx directly `[emerg]` refuses to start — **all reverse-proxy sites go down together**, not just that one.
 
-而运行中的 nginx 靠先前解析到的位址继续跑，所以后端容器停掉之后，从监控、面板、日志全都看不出异常。它只在**下一次 nginx 冷启动**时引爆：宿主机重启、`docker compose up -d`、镜像升级——通常是一个跟它无关的时机。2026-08-21 升级 NPM 时就是这样炸的（dify 容器已经停了 45 小时，全站中断约 90 秒），来龙去脉见 [`vps_oracle/compose/npm/README.md`](../../../vps_oracle/compose/npm/README.md)。
+The running nginx keeps going off the previously resolved addresses, so after a backend container stops, nothing looks wrong from monitoring, the panel, or the logs. It detonates only on the **next cold start of nginx**: a host reboot, `docker compose up -d`, an image upgrade — usually an unrelated moment. This is exactly how the 2026-08-21 NPM upgrade blew up (the dify container had been stopped for 45 hours; a full-site outage of about 90 seconds) — the full story is in [`vps_oracle/compose/npm/README.md`](../../../vps_oracle/compose/npm/README.md).
 
-所以：
+So:
 
-- **路径分发优先交给服务自己的 nginx/网关做**，NPM 只做一条普通转发指向那一个容器。dify 之所以需要 8 条 Custom Location，正是因为这个仓库的 dify compose 里没有官方那个 `nginx` service。
-- **停用一个 compose stack 时，同步在 NPM 里把对应的 proxy host disable 掉**。反代记录开着、后端却没了，就是在埋雷。
-- 兜底：`vps_oracle/host-native/inspector/checks/npm-nginx-config.sh` 每天 09:00/21:00 跑一次 `nginx -t`，配置坏了会发 Telegram alert。它跑在独立行程里，不影响正在服务的 nginx，所以任何时候都可以手动跑一次确认：`docker exec npm nginx -t`。
+- **Prefer letting the service's own nginx/gateway handle path routing**, and have NPM do a single ordinary forward to that one container. The reason dify needs 8 Custom Locations is precisely that this repo's dify compose lacks the official `nginx` service.
+- **When you decommission a compose stack, disable the corresponding proxy host in NPM at the same time**. A reverse-proxy record left enabled with no backend is a landmine.
+- Safety net: `vps_oracle/host-native/inspector/checks/npm-nginx-config.sh` runs `nginx -t` at 09:00/21:00 daily and sends a Telegram alert if the config is broken. It runs in a separate process and doesn't affect the serving nginx, so you can always run it once manually to confirm: `docker exec npm nginx -t`.
 
 
-## 收尾检查
+## Final checks
 
-1. **复查 SSL 标签页**——Force SSL / HTTP/2 有时会被静默重置回关闭，重新打开这条记录确认一次。
-2. `docker exec npm nginx -t` 确认配置能载入（这一步能提前发现 Custom Locations 引入的字面量上游解析失败）。
-3. 反代到 k3s NodePort 的，`curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://<service>.jerome.cloudns.asia/` 验证一次。
-4. 新服务的话，别忘了 homepage 卡片——见 `add-service` skill。
+1. **Re-check the SSL tab** — Force SSL / HTTP/2 are sometimes silently reset to off, so reopen the record and confirm once.
+2. `docker exec npm nginx -t` to confirm the config loads (this catches literal-upstream resolution failures introduced by Custom Locations early).
+3. For those reverse-proxied to a k3s NodePort, verify once with `curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://<service>.jerome.cloudns.asia/`.
+4. If it's a new service, don't forget the homepage card — see the `add-service` skill.

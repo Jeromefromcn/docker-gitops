@@ -4,21 +4,21 @@
 
 **Goal:** Implement the 13 docker/k3s hygiene checks from the design spec's check table (7 auto-tier, 6 alert-tier) as drop-in `checks/*.sh` scripts — `inspect.sh`'s glob discovery picks them up with zero changes to existing code — plus the least-privilege k3s access they need.
 
-**Architecture:** Same host-native bash pattern as phase 1: each check is an independently executable script that sources `lib/common.sh`, prints zero or more `emit_result`-shaped JSON lines, and exits 0. Docker checks call the `docker` CLI as `ubuntu` (docker group, verified working); k3s checks call `kubectl` with a dedicated least-privilege ServiceAccount kubeconfig stored in gitignored `state/`; the two operations phase 1 never needed root for (`crictl`, reading `/var/lib/docker/containers`) use narrowly-scoped `sudo -n` (passwordless sudo verified on this host) — exactly the spec's "單獨用 sudo 包那一小段" escape hatch. All notification text is English (explicit user requirement, 2026-08-16 — see inspect.sh header).
+**Architecture:** Same host-native bash pattern as phase 1: each check is an independently executable script that sources `lib/common.sh`, prints zero or more `emit_result`-shaped JSON lines, and exits 0. Docker checks call the `docker` CLI as `ubuntu` (docker group, verified working); k3s checks call `kubectl` with a dedicated least-privilege ServiceAccount kubeconfig stored in gitignored `state/`; the two operations phase 1 never needed root for (`crictl`, reading `/var/lib/docker/containers`) use narrowly-scoped `sudo -n` (passwordless sudo verified on this host) — exactly the spec's "wrap just that small piece in `sudo`" escape hatch. All notification text is English (explicit user requirement, 2026-08-16 — see inspect.sh header).
 
 **Tech Stack:** bash (`set -uo pipefail`, not `-e`), `docker` CLI 29.6 (incl. `docker compose config --format json`, which replaces a missing `yq` for YAML parsing), `kubectl` (k3s v1.36.2), `crictl` via `sudo -n`, `jq`, GNU `date -d`.
 
-**Spec:** [`docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md`](../specs/2026-08-15-vps-oracle-inspector-design.md) — "Check 清單與分級規則" tables define all 13 checks; "部署" section defines the sudo-scoping and kubeconfig requirements.
+**Spec:** [`docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md`](../specs/2026-08-15-vps-oracle-inspector-design.md) — "Check list and tiering rules" tables define all 13 checks; "Deployment" section defines the sudo-scoping and kubeconfig requirements.
 
 ## Global Constraints
 
 - **Inherited from phase 1, unchanged:** report every run via `inspector-tg` apprise target (no changes to `inspect.sh` in this phase — glob discovery means new checks need no main-loop edits); all report text English; `INSPECTOR_DRY_RUN=1` makes every destructive path print `would-delete`/`would-kill` and do nothing; thresholds are overridable env vars declared at the top of each script; never edit compose/k8s config files (the logging-drift check only reports).
 - **One commit per check**, matching phase 1's granularity and the repo's "one change per commit" rule. Commits go directly to `main` in this checkout (phase 1 precedent); before each commit run `git status --short` and `git log --oneline -1` — other Claude sessions share this checkout (see memory) and may have interleaved.
 - **Committing a check to `main` makes it live** on the next timer fire (`docker-gitops-inspector.timer` is enabled, next run 09:00/21:00 HKT). Every task therefore dry-runs its check against the real host *before* committing, and Task 14 does a full real-mode validation run.
-- **No admin kubeconfig.** k3s checks use `state/kubeconfig` (gitignored) bound to ServiceAccount `workloads/docker-gitops-inspector` with exactly: pods get/list/delete, jobs get/list/delete, persistentvolumes get/list. The spec's "唯讀 kubeconfig 複本" wording predates the tier table — the tier table's auto-actions (`kubectl delete pod`, `kubectl delete job`) require delete rights, so least-privilege-with-delete is the faithful reading.
+- **No admin kubeconfig.** k3s checks use `state/kubeconfig` (gitignored) bound to ServiceAccount `workloads/docker-gitops-inspector` with exactly: pods get/list/delete, jobs get/list/delete, persistentvolumes get/list. The spec's "read-only kubeconfig copy" wording predates the tier table — the tier table's auto-actions (`kubectl delete pod`, `kubectl delete job`) require delete rights, so least-privilege-with-delete is the faithful reading.
 - **`sudo -n` only, never bare `sudo`** — if passwordless sudo is ever revoked, the check must emit an alert line and skip, not hang waiting for a TTY it doesn't have (systemd).
 - **Tests are hermetic:** docker/kubectl/crictl are stubbed via a temp `PATH` dir (same technique as phase 1's curl stub in `test-inspect.sh`). Tests never touch real docker/k3s state; real-cluster validation happens only in each task's dry-run step.
-- **Silent-skip is a bug:** a check that can't run (docker daemon down, API unreachable, kubeconfig missing, sudo revoked) must emit a tier=alert line saying so — otherwise the Telegram report says "一切正常" while half the inspector quietly did nothing.
+- **Silent-skip is a bug:** a check that can't run (docker daemon down, API unreachable, kubeconfig missing, sudo revoked) must emit a tier=alert line saying so — otherwise the Telegram report says "all normal" while half the inspector quietly did nothing.
 - k3s RBAC manifests live in `vps_oracle/inspector/k3s/`, **not** `vps_oracle/k3s/manifests/` — everything under `k3s/manifests/` and `k3s/apps/*/k8s/` is ArgoCD GitOps-managed and manually applying there makes selfHeal fight you (see `vps_oracle/k3s/README.md`). The inspector RBAC is applied once by its own setup script.
 
 ## Verified Host Facts (2026-08-16, calibrates every dry-run expectation below)
@@ -29,7 +29,7 @@
 - `crictl images -o json` exposes no creation timestamp (fields: id/pinned/repoDigests/repoTags/size/username only) — so the containerd-image check takes **no age filter**; that matches the spec's action cell (`crictl rmi --prune`) and kubelet's own image GC remains the age-aware primary mechanism.
 - `yq` is not installed. `docker compose -f <file> config --no-interpolate --format json` (tested, works) parses compose YAML → JSON for the logging-drift check. All 7 compose files in the repo already mention `logging` at least once — expect the drift dry run to be empty or near-empty.
 - systemd's compiled default PATH for services includes `/usr/local/bin` (where kubectl lives), but Task 14 still sets `Environment=PATH=` explicitly in the unit so the dependency is visible rather than implicit.
-- Spec's Completed-Job row says "超過 N 個或超過 N 天" — this plan implements **age-only** (default 3 days). A count cap would delete fresh jobs whose output someone may still be reading; age is the dimension where misjudgment cost is asymmetric, and the spec's own tiering philosophy ("誤判代價不對稱地高 → 只告警/保守") points that way.
+- Spec's Completed-Job row says "exceeding N count or N days" — this plan implements **age-only** (default 3 days). A count cap would delete fresh jobs whose output someone may still be reading; age is the dimension where misjudgment cost is asymmetric, and the spec's own tiering philosophy ("misjudgment cost is asymmetrically high → alert only / conservative") points that way.
 
 ## File Structure
 
@@ -298,7 +298,7 @@ finish_tests() {
 #
 # Removes containers in `exited` state whose exit happened more than
 # INSPECTOR_STOPPED_CONTAINER_MAX_AGE_SECONDS ago (default 7 days).
-# Design spec's "Docker 已停止容器" row (auto tier). Uses explicit
+# Design spec's "Docker stopped containers" row (auto tier). Uses explicit
 # per-container `docker rm` of enumerated candidates rather than a
 # blanket prune, so exactly the reported targets are the ones removed.
 set -uo pipefail
@@ -755,7 +755,7 @@ git commit -m "Add docker-build-cache check"
 
 **Interfaces:**
 - Consumes: `emit_result`; `tests/lib.sh`
-- Overridable env vars: none (spec defines no threshold — "無容器掛載的自訂 network" is the whole condition)
+- Overridable env vars: none (spec defines no threshold — "a custom network with no attached containers" is the whole condition)
 
 - [ ] **Step 1: Write `checks/docker-unused-networks.sh`**
 
@@ -764,7 +764,7 @@ git commit -m "Add docker-build-cache check"
 # checks/docker-unused-networks.sh
 #
 # Removes custom docker networks with zero containers attached. Design
-# spec's "Docker 未用 network" row (auto tier, no age threshold —
+# spec's "Docker unused networks" row (auto tier, no age threshold —
 # re-creating a network costs nothing). `--filter type=custom` already
 # excludes the predefined bridge/host/none, so per-network `docker
 # network rm` of the enumerated candidates is exactly `docker network
@@ -907,8 +907,8 @@ git commit -m "Add docker-unused-networks check"
 #!/usr/bin/env bash
 # checks/docker-restart-storms.sh
 #
-# Flags containers whose RestartCount is异常 high or whose state is
-# stuck in `restarting`. Design spec's "Docker 重啟風暴" row (ALERT
+# Flags containers whose RestartCount is abnormally high or whose state is
+# stuck in `restarting`. Design spec's "Docker restart storm" row (ALERT
 # ONLY — auto-restart can mask a config error; surfacing it is the
 # point, resolving it is not the inspector's job).
 set -uo pipefail
@@ -1041,7 +1041,7 @@ Reporting note: this host has ~47 dangling **anonymous** volumes right now. List
 # checks/docker-unused-volumes.sh
 #
 # Flags volumes not referenced by any container (docker's dangling
-# filter). Design spec's "Docker 未用 volume" row (ALERT ONLY — a volume
+# filter). Design spec's "Docker unused volumes" row (ALERT ONLY — a volume
 # may hold the only copy of data; the cost of a wrong removal is
 # asymmetric). Anonymous volumes (64-hex names, created implicitly by
 # compose recreation) are aggregated into one summary line; named
@@ -1178,8 +1178,8 @@ git commit -m "Add docker-unused-volumes alert check"
 # checks/docker-compose-logging-drift.sh
 #
 # Scans <repo>/<host>/compose/*/docker-compose.yml and flags services
-# missing logging.options.max-size. Design spec's "compose 檔 logging
-# 配置漂移" row (ALERT ONLY — the inspector never edits compose files).
+# missing logging.options.max-size. Design spec's "compose-file logging
+# config drift" row (ALERT ONLY — the inspector never edits compose files).
 # Parses with `docker compose config --no-interpolate --format json`
 # instead of grep/awk: the repo has no yq, and docker already parses
 # this exact file format everywhere else. --no-interpolate keeps
@@ -1207,7 +1207,7 @@ for file in "${files[@]}"; do
     max_size="$(jq -r --arg s "$svc" '.services[$s].logging.options["max-size"] // empty' <<<"$json")"
     if [ -z "$max_size" ]; then
       emit_result "alert" "flagged" "$relpath:$svc" \
-        "service has no logging.options.max-size (repo convention: max-size 10m, see root README 日志大小限制)"
+        "service has no logging.options.max-size (repo convention: max-size 10m, see root README log size limits)"
     fi
   done < <(jq -r '.services | keys[]' <<<"$json")
 done
@@ -1322,8 +1322,8 @@ git commit -m "Add docker-compose-logging-drift alert check"
 # checks/docker-oversized-logs.sh
 #
 # Flags container json log files whose actual size exceeds
-# INSPECTOR_LOG_ALERT_BYTES (default 50MiB). Design spec's "容器日誌檔
-# 異常大" row (ALERT ONLY — an oversized log usually means the logging
+# INSPECTOR_LOG_ALERT_BYTES (default 50MiB). Design spec's "Abnormally
+# large container log file" row (ALERT ONLY — an oversized log usually means the logging
 # config did not take effect, which needs a human to investigate, not a
 # truncate). /var/lib/docker/containers is root-only, so this is one of
 # the two spec-sanctioned narrowly-scoped sudo uses (the other is
@@ -1629,8 +1629,8 @@ git commit -m "Add k3s-evicted-pods check"
 # checks/k3s-completed-jobs.sh
 #
 # Deletes completed Jobs older than INSPECTOR_COMPLETED_JOB_MAX_AGE_
-# SECONDS (default 3 days). Design spec's "k3s Completed Job 堆積" row
-# (auto tier). Age-only on purpose: the spec's "超過 N 個或超過 N 天"
+# SECONDS (default 3 days). Design spec's "k3s Completed Job pile-up" row
+# (auto tier). Age-only on purpose: the spec's "exceeding N count or N days"
 # offers count or age, and a count cap would delete fresh jobs whose
 # output someone may still be reading — age is the low-misjudgment-cost
 # dimension, matching the spec's own tiering philosophy.
@@ -1792,7 +1792,7 @@ git commit -m "Add k3s-completed-jobs check with age threshold"
 #
 # Reports and prunes containerd images not referenced by any container
 # (including exited ones) on the k3s node. Design spec's "k3s
-# containerd 未用 image" row (auto tier). crictl needs root (socket +
+# unused containerd images" row (auto tier). crictl needs root (socket +
 # config are root-only) — this and docker-oversized-logs.sh are the two
 # narrowly-scoped sudo uses the spec's deployment section sanctions.
 #
@@ -2002,7 +2002,7 @@ done < <(jq -c '.items[] | select(.status.phase == "Released") | {name: .metadat
 # checks/k3s-stuck-terminating.sh
 #
 # Flags pods stuck in Terminating (deletionTimestamp set longer than
-# INSPECTOR_TERMINATING_STUCK_SECONDS ago). Design spec's "k3s 卡住的
+# INSPECTOR_TERMINATING_STUCK_SECONDS ago). Design spec's "k3s stuck
 # Terminating pod" row (ALERT ONLY — usually a finalizer/node problem;
 # force-deleting is a human decision).
 set -uo pipefail
@@ -2143,7 +2143,7 @@ git commit -m "Add k3s released-PV and stuck-terminating alert checks"
 
 **Files:**
 - Modify: `vps_oracle/inspector/systemd/docker-gitops-inspector.service` (add one `Environment=` line)
-- Modify: `vps_oracle/inspector/README.md` (replace the "現況" section, extend 測試/部署)
+- Modify: `vps_oracle/inspector/README.md` (replace the "Status" section, extend Testing/Deploy)
 
 **Interfaces:**
 - Consumes: all 13 checks from Tasks 2–13 (already committed and individually verified)
@@ -2168,43 +2168,43 @@ ExecStart=/home/ubuntu/jerome/docker-gitops/vps_oracle/inspector/inspect.sh
 
 - [ ] **Step 2: Update `README.md`**
 
-Replace the existing `## 現況（phase 1）` section (keep the 範圍邊界 paragraph as-is) with:
+Replace the existing `## Status (phase 1)` section (keep the scope-boundary paragraph as-is) with:
 
 ```markdown
-## 現況（phase 2）
+## Status (phase 2)
 
-已實作（phase 1）：
-- `checks/stray-vscode-sessions.sh` — 游離/卡死的 claude session、脫離連線的 server-main 樹
-- `checks/vscode-server-versions.sh` — 堆積的 `.vscode-server/cli/servers/*` 版本目錄
+Implemented (phase 1):
+- `checks/stray-vscode-sessions.sh` — stray/stuck claude sessions, disconnected server-main trees
+- `checks/vscode-server-versions.sh` — piled-up `.vscode-server/cli/servers/*` version directories
 
-已實作（phase 2，docker 層）：
-- `checks/docker-stopped-containers.sh`（auto）— exited 超過 7 天的容器
-- `checks/docker-dangling-images.sh`（auto）— dangling 超過 7 天的 image
-- `checks/docker-build-cache.sh`（auto）— 超過 7 天的 build cache
-- `checks/docker-unused-networks.sh`（auto）— 無容器掛載的自訂 network
-- `checks/docker-restart-storms.sh`（alert）— RestartCount 異常高 / 持續 Restarting
-- `checks/docker-unused-volumes.sh`（alert）— 無容器掛載的 volume（匿名聚合成一行，具名逐行）
-- `checks/docker-compose-logging-drift.sh`（alert）— compose 服務缺 `logging.options.max-size`
-- `checks/docker-oversized-logs.sh`（alert）— 單檔超過 50MiB 的 `*-json.log`
+Implemented (phase 2, docker layer):
+- `checks/docker-stopped-containers.sh` (auto) — containers exited for more than 7 days
+- `checks/docker-dangling-images.sh` (auto) — images dangling for more than 7 days
+- `checks/docker-build-cache.sh` (auto) — build cache older than 7 days
+- `checks/docker-unused-networks.sh` (auto) — custom networks with no containers attached
+- `checks/docker-restart-storms.sh` (alert) — abnormally high RestartCount / stuck in Restarting
+- `checks/docker-unused-volumes.sh` (alert) — volumes with no containers attached (anonymous aggregated into one line, named listed one per line)
+- `checks/docker-compose-logging-drift.sh` (alert) — compose services missing `logging.options.max-size`
+- `checks/docker-oversized-logs.sh` (alert) — `*-json.log` files over 50MiB each
 
-已實作（phase 2，k3s 層）：
-- `checks/k3s-evicted-pods.sh`（auto）— Failed 殘留 pod
-- `checks/k3s-completed-jobs.sh`（auto）— 完成超過 3 天的 Job
-- `checks/k3s-containerd-images.sh`（auto）— 無容器引用的 containerd image（`sudo crictl`）
-- `checks/k3s-released-pvs.sh`（alert）— Released PV
-- `checks/k3s-stuck-terminating.sh`（alert）— 卡超過 15 分鐘的 Terminating pod
+Implemented (phase 2, k3s layer):
+- `checks/k3s-evicted-pods.sh` (auto) — Failed leftover pods
+- `checks/k3s-completed-jobs.sh` (auto) — Jobs completed for more than 3 days
+- `checks/k3s-containerd-images.sh` (auto) — containerd images with no container referencing them (`sudo crictl`)
+- `checks/k3s-released-pvs.sh` (alert) — Released PVs
+- `checks/k3s-stuck-terminating.sh` (alert) — Terminating pods stuck for more than 15 minutes
 
-閾值都是各腳本開頭的 env var，可從 systemd unit 的 `Environment=` 或手動執行時覆寫。
+Thresholds are env vars at the top of each script, overridable from the systemd unit's `Environment=` or when running manually.
 ```
 
-And replace the `## 測試` code block's script list with the full set:
+And replace the `## Testing` code block's script list with the full set:
 
 ```bash
 cd vps_oracle/inspector
 ./tests/test-common.sh
 ./tests/test-stray-vscode-sessions.sh
 ./tests/test-vscode-server-versions.sh
-./tests/test-inspect.sh        # 最後一段會真的打 apprise inspector-tg，Telegram 群組要收得到
+./tests/test-inspect.sh        # the last part actually hits apprise inspector-tg; the Telegram group must be reachable
 ./tests/test-docker-stopped-containers.sh
 ./tests/test-docker-dangling-images.sh
 ./tests/test-docker-build-cache.sh
@@ -2219,21 +2219,21 @@ cd vps_oracle/inspector
 ./tests/test-k3s-alerts.sh
 ```
 
-And append this new section after `## 部署`:
+And append this new section after `## Deploy`:
 
 ```markdown
-## k3s 存取（phase 2 一次性設置）
+## k3s access (one-time setup for phase 2)
 
-k3s checks 不用 admin kubeconfig，用最小權限 SA（`workloads/docker-gitops-inspector`：pods/jobs get+list+delete、PV get+list，其余一律拒絕）：
+The k3s checks don't use the admin kubeconfig; they use a least-privilege SA (`workloads/docker-gitops-inspector`: pods/jobs get+list+delete, PV get+list, everything else denied):
 
 ```bash
 cd vps_oracle/inspector
-./k3s/setup-kubeconfig.sh     # apply RBAC + 寫 state/kubeconfig（gitignored，600）
+./k3s/setup-kubeconfig.sh     # apply RBAC + write state/kubeconfig (gitignored, 600)
 ```
 
-腳本冪等，重跑安全。RBAC manifest 在 `k3s/rbac.yaml`——不在 `vps_oracle/k3s/manifests/`（那是 ArgoCD 地盤，見 k3s/README）。
+The script is idempotent and safe to rerun. The RBAC manifest is at `k3s/rbac.yaml` — not under `vps_oracle/k3s/manifests/` (that's ArgoCD territory, see k3s/README).
 
-兩個 check 用到密碼免輸入的 `sudo -n`（都是唯讀列舉或單一清理指令）：`docker-oversized-logs.sh`（讀 `/var/lib/docker/containers`）、`k3s-containerd-images.sh`（`crictl` socket 是 root-only）。若日後收回 NOPASSWD，這兩個 check 會在報告裡發 alert 說明被跳過，不會掛住。
+Two checks use passwordless `sudo -n` (both read-only enumeration or a single cleanup command): `docker-oversized-logs.sh` (reads `/var/lib/docker/containers`) and `k3s-containerd-images.sh` (the `crictl` socket is root-only). If NOPASSWD is ever revoked, these two checks will emit an alert in the report saying they were skipped, rather than hanging.
 ```
 
 - [ ] **Step 3: Run the full test suite**
@@ -2249,7 +2249,7 @@ Expected: every test file ends `PASS`; loop completes without breaking.
 ```bash
 cd vps_oracle/inspector && INSPECTOR_DRY_RUN=1 ./inspect.sh
 ```
-Expected: exit 0, one Telegram message in "OCI System inspection". Expected real findings on this host: the `docker unused volumes` aggregate line (~47 anonymous) and possibly named-volume lines and one `containerd unused images` line; **nothing** in 已自動處理 (host verified clean for every auto tier). Anything else in the report is a surprise — investigate before Step 5.
+Expected: exit 0, one Telegram message in "OCI System inspection". Expected real findings on this host: the `docker unused volumes` aggregate line (~47 anonymous) and possibly named-volume lines and one `containerd unused images` line; **nothing** in the auto-handled section (host verified clean for every auto tier). Anything else in the report is a surprise — investigate before Step 5.
 
 - [ ] **Step 5: Reload unit and do one real (non-dry-run) systemd run**
 
@@ -2274,7 +2274,7 @@ git commit -m "Pin PATH in inspector unit and document phase 2 in README"
 ## Definition of Done (Phase 2)
 
 - [ ] All 16 test files pass (`test-common.sh` through `test-k3s-alerts.sh`)
-- [ ] `INSPECTOR_DRY_RUN=1 ./inspect.sh` full run: report contents match actual host state (eyeballed against `docker ps -a` / `kubectl get` / `sudo crictl images`), nothing in 已自動處理 that shouldn't be
+- [ ] `INSPECTOR_DRY_RUN=1 ./inspect.sh` full run: report contents match actual host state (eyeballed against `docker ps -a` / `kubectl get` / `sudo crictl images`), nothing in the auto-handled section that shouldn't be
 - [ ] One real systemd-triggered run (`systemctl start`) succeeded: journal clean, Telegram report received, nothing wrongly deleted
 - [ ] `state/kubeconfig` exists (mode 600) and RBAC verified: SA can delete pods/jobs, cannot read secrets
 - [ ] All 14 tasks committed as separate commits on `main`, each preceded by a `git status --short` check
@@ -2282,4 +2282,4 @@ git commit -m "Pin PATH in inspector unit and document phase 2 in README"
 
 ## Spec Coverage Check
 
-Spec auto-tier rows: 已停止容器→Task 2, dangling image→Task 3, build cache→Task 4, 未用 network→Task 5, Evicted/Failed pod→Task 10, Completed Job→Task 11, containerd 未用 image→Task 12. Spec alert-tier rows: 重啟風暴→Task 6, 未用 volume→Task 7, logging 配置漂移→Task 8, 日誌檔異常大→Task 9, Released PV→Task 13, 卡住 Terminating→Task 13. Self-chain overlap row was implemented in phase 1 (kill_tree consumers; no new kill paths exist in phase 2 — no process kills at all, so no new self-protection surface). Deployment requirements (ubuntu user + scoped sudo + non-admin kubeconfig): Tasks 1, 9, 12, 14.
+Spec auto-tier rows: stopped containers→Task 2, dangling image→Task 3, build cache→Task 4, unused network→Task 5, Evicted/Failed pod→Task 10, Completed Job→Task 11, unused containerd image→Task 12. Spec alert-tier rows: restart storm→Task 6, unused volume→Task 7, logging config drift→Task 8, abnormally large log file→Task 9, Released PV→Task 13, stuck Terminating→Task 13. Self-chain overlap row was implemented in phase 1 (kill_tree consumers; no new kill paths exist in phase 2 — no process kills at all, so no new self-protection surface). Deployment requirements (ubuntu user + scoped sudo + non-admin kubeconfig): Tasks 1, 9, 12, 14.

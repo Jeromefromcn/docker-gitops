@@ -17,7 +17,7 @@ services:
       - /etc/trilium/data:/home/node/trilium-data
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = trilium, Forward Port = 8080（未发布到宿主机）
+    # NPM reverse proxy: Forward Hostname/IP = trilium, Forward Port = 8080 (not published to the host)
 
 networks:
   proxy:

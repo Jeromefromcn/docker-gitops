@@ -1,4 +1,4 @@
-# Claude Code 分组级 Provider 切换 Implementation Plan
+# Claude Code Group-level Provider Switching Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -40,7 +40,7 @@ This collapses the two known direnv footguns (recursion via inherited `BASH_ENV`
 
 ```bash
 cat > /home/ubuntu/.claude/direnv-load.sh <<'EOF'
-# 对当前目录求值 direnv 并注入环境变量。被 source，不要 exit。
+# Evaluates direnv for the current directory and injects the env vars. Meant to be sourced, never exit.
 if command -v direnv >/dev/null 2>&1; then
   __d="$(BASH_ENV= timeout 5 direnv export bash 2>/dev/null </dev/null)"
   [ -n "$__d" ] && eval "$__d"
@@ -99,7 +99,7 @@ Expected: prints a non-empty path (or whatever `betting-lab/.envrc` actually act
 ```bash
 cat > /home/ubuntu/.claude/claude-direnv-wrapper.sh <<'EOF'
 #!/usr/bin/env bash
-# 由 VSCode 扩展以 workspace 目录为 cwd 调用: wrapper <真claude> <args...>
+# Invoked by the VSCode extension with the workspace directory as cwd: wrapper <real-claude> <args...>
 . /home/ubuntu/.claude/direnv-load.sh
 exec "$@"
 EOF
@@ -145,7 +145,7 @@ This is the plan's single genuinely unverified step (spec C7): whether VSCode's 
 
 **Interfaces:**
 - Consumes: `/home/ubuntu/.claude/claude-direnv-wrapper.sh` (Task 2).
-- Produces: nothing consumed by later tasks programmatically — this is a manual/verification gate. If it fails, stop and fall back to `claudeCode.useTerminal: true` (spec §"为什么一定要用 wrapper" discussion) before continuing to Task 4.
+- Produces: nothing consumed by later tasks programmatically — this is a manual/verification gate. If it fails, stop and fall back to `claudeCode.useTerminal: true` (spec §"why the wrapper is required" discussion) before continuing to Task 4.
 
 - [ ] **Step 1: Snapshot the current settings file (rollback point)**
 
@@ -259,11 +259,11 @@ Per spec §3.4, initial state: `jerome.env` empty (official), `bridget.env` star
 ```bash
 mkdir -p /home/ubuntu/.claude-provider
 cat > /home/ubuntu/.claude-provider/jerome.env <<'EOF'
-# 空 = 走官方订阅 OAuth。provider-switch UI 是唯一应该改写这个文件的东西。
+# empty = official subscription OAuth. The provider-switch UI is the only thing that should ever rewrite this file.
 EOF
 cat > /home/ubuntu/.claude-provider/bridget.env <<'EOF'
-# 空 = 走官方订阅 OAuth。provider-switch UI 是唯一应该改写这个文件的东西。
-# 将在 Task 7 由 CCR 的 client key 填充，切到 CCR。
+# empty = official subscription OAuth. The provider-switch UI is the only thing that should ever rewrite this file.
+# Will be filled with CCR's client key in Task 7, switching it to CCR.
 EOF
 ```
 
@@ -298,13 +298,13 @@ cat /home/ubuntu/jerome/betting-lab/.envrc
 - [ ] **Step 4: Verify the full resolution chain for both groups (zero cost, no claude involved)**
 
 ```bash
-# jerome 组：应为空（官方）
+# jerome group: should be empty (official)
 cd /home/ubuntu/jerome && BASH_ENV=/home/ubuntu/.claude/direnv-bash-env.sh bash -c 'echo "ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-(unset, official)}"'
 
-# betting-lab：应继承 jerome 组的值，同时保留 venv 激活
+# betting-lab: should inherit the jerome group's value while still keeping the venv activated
 cd /home/ubuntu/jerome/betting-lab && BASH_ENV=/home/ubuntu/.claude/direnv-bash-env.sh bash -c 'echo "ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-(unset, official)} VIRTUAL_ENV=${VIRTUAL_ENV:-(none)}"'
 
-# bridget 组：目前也应为空（CCR 值还没填）
+# bridget group: for now should also be empty (the CCR value isn't filled in yet)
 cd /home/ubuntu/bridget && BASH_ENV=/home/ubuntu/.claude/direnv-bash-env.sh bash -c 'echo "ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-(unset, official)}"'
 ```
 
@@ -339,7 +339,7 @@ services:
   ccr:
     build:
       context: https://github.com/musistudio/claude-code-router.git#v3.0.20
-    image: claude-code-router:3.0.20   # 构建自 pin 死的 git tag；上游没有发布镜像，这是等价的"锁版本"
+    image: claude-code-router:3.0.20   # built from a pinned git tag; upstream publishes no image, this is the equivalent of "pinning a version"
     container_name: ccr
     hostname: ccr
     restart: unless-stopped
@@ -351,17 +351,19 @@ services:
         max-size: "10m"
         max-file: "5"
     env_file:
-      - .env   # 需要 CCR_WEB_AUTH_TOKEN（管理面板/RPC 口令）和 ZHIPU_API_KEY（智谱 key），见 .env.example
+      - .env   # needs CCR_WEB_AUTH_TOKEN (admin panel/RPC password) and ZHIPU_API_KEY (Zhipu key), see .env.example
     environment:
       TZ: "Asia/Hong_Kong"
       CCR_PUBLIC_BASE_URL: "http://127.0.0.1:3458"
     ports:
-      # 例外：claude 进程跑在宿主机上、不在容器里，够不到 proxy 网络，只能发布到宿主机端口。
-      # 两个端口都只绑 127.0.0.1，不对外暴露；管理面板(3458)如需从别的机器访问，走 SSH 端口转发。
-      - "127.0.0.1:3456:8080"   # gateway，jerome/bridget 的 .env 文件里 ANTHROPIC_BASE_URL 指这里
-      - "127.0.0.1:3458:8080"   # management UI/RPC — 实际由 CCR 自己在容器内区分路由，见上游 docker/README.md
+      # Exception: the claude process runs on the host, not in a container, so it can't
+      # reach the proxy network and can only use published host ports.
+      # Both ports are bound to 127.0.0.1 only, not exposed externally; if the admin panel
+      # (3458) needs access from another machine, use SSH port forwarding.
+      - "127.0.0.1:3456:8080"   # gateway; jerome/bridget's .env files point ANTHROPIC_BASE_URL here
+      - "127.0.0.1:3458:8080"   # management UI/RPC — CCR itself routes by path internally, see upstream docker/README.md
     volumes:
-      - ccr-data:/data   # 装 SQLite 配置 + API key + 日志，属于敏感状态，故意不用仓库内可见的 bind mount
+      - ccr-data:/data   # holds SQLite config + API keys + logs, sensitive state, deliberately not a repo-visible bind mount
     networks:
       - proxy
 
@@ -386,8 +388,8 @@ EOF
 
 ```bash
 cat > vps_oracle/compose/ccr/.env <<EOF
-CCR_WEB_AUTH_TOKEN=<粘贴 Step 1 生成的值>
-ZHIPU_API_KEY=<粘贴智谱后台的真实 key，不要照抄这个占位符>
+CCR_WEB_AUTH_TOKEN=<paste the value generated in Step 1>
+ZHIPU_API_KEY=<paste the real key from the Zhipu console, don't just copy this placeholder>
 EOF
 ```
 
@@ -443,7 +445,7 @@ CCR v3.0.20 configures providers and routing rules through its own web UI (SQLit
 From a machine that can reach the VPS, open an SSH tunnel (the UI is bound to `127.0.0.1` on the host, per Task 5's deliberate port binding):
 
 ```bash
-ssh -L 3458:127.0.0.1:3458 ubuntu@<vps_oracle 的 SSH 地址>
+ssh -L 3458:127.0.0.1:3458 ubuntu@<vps_oracle's SSH address>
 ```
 
 Then browse to `http://127.0.0.1:3458` on the local machine. Log in / complete first-run setup using `CCR_WEB_AUTH_TOKEN` from `vps_oracle/compose/ccr/.env`.
@@ -491,7 +493,7 @@ Expected: a `200` (or another 2xx) — not `401`/`403` (bad key) and not `000`/c
 ```bash
 cat > /home/ubuntu/.claude-provider/bridget.env <<EOF
 export ANTHROPIC_BASE_URL=http://127.0.0.1:3456
-export ANTHROPIC_AUTH_TOKEN=<Task 6 Step 4 的 client key>
+export ANTHROPIC_AUTH_TOKEN=<the client key from Task 6 Step 4>
 EOF
 ```
 
@@ -689,7 +691,7 @@ def check_connectivity(base_url, timeout=2.0):
         urllib.request.urlopen(base_url, timeout=timeout)
         return True
     except urllib.error.HTTPError:
-        return True  # 服务器活着，能应答就算连通，不管状态码
+        return True  # the server is alive; any response counts as connected, regardless of status code
     except Exception:
         return False
 
@@ -840,7 +842,7 @@ def toggle_group(env_path, ccr_base_url, ccr_token):
     current = status.read_config(env_path)
     tmp_path = env_path + ".tmp"
     if current["routed"]:
-        content = "# 空 = 走官方订阅 OAuth。provider-switch UI 是唯一应该改写这个文件的东西。\n"
+        content = "# empty = official subscription OAuth. The provider-switch UI is the only thing that should ever rewrite this file.\n"
     else:
         content = (
             f"export ANTHROPIC_BASE_URL={ccr_base_url}\n"
@@ -966,19 +968,19 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-    user: "1001:1001"   # 需要以宿主机 ubuntu 用户写 ~/.claude-provider/ 下的文件，不能用 nobody
+    user: "1001:1001"   # needs to write files under the host user ubuntu's ~/.claude-provider/, so it can't run as nobody
     environment:
       TZ: "Asia/Hong_Kong"
       PORT: "8080"
       CCR_BASE_URL: "http://127.0.0.1:3456"
-      CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # Task 6 生成的 CCR client key，走 .env
+      CCR_TOKEN: "${CCR_CLIENT_TOKEN}"   # the CCR client key generated in Task 6, sourced from .env
     env_file:
       - .env
     volumes:
       - /home/ubuntu/.claude-provider:/home/ubuntu/.claude-provider
     networks:
       - proxy
-    # NPM 反代配置见 vps_oracle/compose/ccr/README.md 里的 "接入 NPM" 一节
+    # NPM reverse-proxy config is in the "Wiring into NPM" section of vps_oracle/compose/ccr/README.md
 
 networks:
   proxy:
@@ -990,7 +992,7 @@ CCR_CLIENT_TOKEN=replace-with-the-CCR-client-key-from-task-6
 EOF
 
 cat > vps_oracle/compose/provider-switch/.env <<EOF
-CCR_CLIENT_TOKEN=<Task 6 生成的 client key，跟 bridget.env 里的一致>
+CCR_CLIENT_TOKEN=<the client key generated in Task 6, matching the one in bridget.env>
 EOF
 ```
 
@@ -1066,7 +1068,7 @@ EOF
 
 **Files:**
 - Modify: `vps_oracle/compose/homepage/config/services.yaml`
-- (NPM configuration is done in its admin panel, not a repo file — see README's "给服务接入 NPM 反代" section)
+- (NPM configuration is done in its admin panel, not a repo file — see README's "Wiring a service into the NPM reverse proxy" section)
 
 **Interfaces:** none — this is pure wiring/documentation, no code interfaces produced or consumed.
 
@@ -1115,7 +1117,7 @@ Expected: homepage dashboard shows both new cards; the HTTPS URL returns `200` (
 ```bash
 cd /home/ubuntu/jerome/docker-gitops
 git add vps_oracle/compose/homepage/config/services.yaml
-git commit -m "添加 provider-switch 和 CCR 的 homepage 卡片"
+git commit -m "Add homepage cards for provider-switch and CCR"
 ```
 
 ---
@@ -1135,72 +1137,72 @@ Per spec §3.11 — the deliverable the user explicitly asked for, aimed at futu
 cat > vps_oracle/compose/ccr/README.md <<'EOF'
 # CCR — claude-code-router
 
-把智谱订阅接到本机 Claude Code 里，按项目分组（`jerome` / `bridget`）独立切换官方订阅 / CCR。完整设计过程见 [`docs/superpowers/specs/2026-08-09-claude-provider-group-switch-design.md`](../../../docs/superpowers/specs/2026-08-09-claude-provider-group-switch-design.md)。
+Wires the Zhipu subscription into local Claude Code, letting each project group (`jerome` / `bridget`) independently switch between the official subscription and CCR. Full design process in [`docs/superpowers/specs/2026-08-09-claude-provider-group-switch-design.md`](../../../docs/superpowers/specs/2026-08-09-claude-provider-group-switch-design.md).
 
-## 原理速览
+## Mechanism at a glance
 
 ```
-启动 claude
- ├─ 终端      → ~/.bashrc 的 direnv hook
- └─ VSCode    → claudeCode.claudeProcessWrapper → ~/.claude/claude-direnv-wrapper.sh
+Starting claude
+ ├─ Terminal   → ~/.bashrc's direnv hook
+ └─ VSCode     → claudeCode.claudeProcessWrapper → ~/.claude/claude-direnv-wrapper.sh
                         │
-                        ↓ direnv 按 cwd 向上找最近的 .envrc（各组目录下静态放一个）
+                        ↓ direnv walks up from cwd to find the nearest .envrc (one placed statically per group directory)
    ~/jerome/.envrc      → source_env_if_exists ~/.claude-provider/jerome.env
    ~/bridget/.envrc     → source_env_if_exists ~/.claude-provider/bridget.env
-                        │                          ↑ provider-switch UI 的唯一写入点
+                        │                          ↑ the provider-switch UI's only write point
                         ↓ ANTHROPIC_BASE_URL
-              ├─ 未设置              → 官方订阅 OAuth
-              └─ 127.0.0.1:3456     → 本目录的 CCR 容器 → 智谱 GLM（按规则分流）
+              ├─ unset                → official subscription OAuth
+              └─ 127.0.0.1:3456       → the CCR container in this directory → Zhipu GLM (routed per rule)
 ```
 
-`.envrc` 文件本身**永远不改**——改它会让 direnv 拒绝加载（信任机制导致的），所有切换都是改它 `source_env_if_exists` 引用的那个 `.env` 文件。
+The `.envrc` file itself is **never changed** — editing it makes direnv refuse to load it (a consequence of the trust mechanism); every switch instead edits the `.env` file it references via `source_env_if_exists`.
 
-## 加一个新分组
+## Adding a new group
 
-以新增 `~/sandbox/` 组为例：
+Example: adding a new `~/sandbox/` group:
 
 ```bash
 mkdir -p ~/sandbox
 echo 'source_env_if_exists ~/.claude-provider/sandbox.env' > ~/sandbox/.envrc
 direnv allow ~/sandbox
-touch ~/.claude-provider/sandbox.env          # 空文件 = 走官方订阅
+touch ~/.claude-provider/sandbox.env          # empty file = official subscription
 
-# 在 vps_oracle/compose/provider-switch/status.py 的 GROUPS 字典里加一条：
+# Add an entry to the GROUPS dict in vps_oracle/compose/provider-switch/status.py:
 #   "sandbox": {"env_path": "/home/ubuntu/.claude-provider/sandbox.env", "group_dir": "/home/ubuntu/sandbox"}
-# 改完:
+# Once done:
 cd vps_oracle/compose/provider-switch && docker compose up -d --build
 ```
 
-命名约定：分组名 = 目录名 = env 文件名，照抄上面的模式就不会出岔子。
+Naming convention: group name = directory name = env filename — copy the pattern above exactly and nothing goes wrong.
 
-## 四个坑
+## Four gotchas
 
-1. **`.envrc` 只能写那一行 `source_env_if_exists ...`，任何后续改动都要重新 `direnv allow`**——不然 direnv 会整个拒绝加载这个 `.envrc`，变量全部消失（不是变错，是消失；实测见设计文档 §2.6）。
-2. **组内项目如果自己也有 `.envrc`，会遮蔽组级的那一个**（direnv 只认最近的一个，不叠加）。已知的例子是 `betting-lab`，靠在它的 `.envrc` 首行加 `source_up` 解决。新项目如果需要自己的 `.envrc`，记得也加这一行。
-3. **切换只对新开的会话生效**。已经在跑的 claude 进程环境是启动时定死的，UI 上切一下不会影响它们——这也是为什么 provider-switch 的页面要显示"还有几个会话挂在旧 provider 上"。
-4. **把已有项目搬到别的组目录下会断开会话历史**。`~/.claude/projects/` 下的目录名是按路径编码的，项目目录一动，`--resume` 就找不到旧会话了（文件还在，只是找不到）。要搬项目，提前想清楚。
+1. **`.envrc` may only contain that one line `source_env_if_exists ...`; any further edit to it requires a fresh `direnv allow`** — otherwise direnv refuses to load this `.envrc` at all, and every variable simply vanishes (not wrong values — gone entirely; confirmed by testing, see design doc §2.6).
+2. **If a project inside the group has its own `.envrc`, it shadows the group-level one** (direnv only honors the nearest one, it doesn't stack). The known example is `betting-lab`, fixed by adding `source_up` as the first line of its `.envrc`. Remember to add that line for any new project that needs its own `.envrc`.
+3. **Switching only takes effect for newly opened sessions.** A claude process already running has its environment fixed at startup; flipping the UI doesn't affect it — which is also why the provider-switch page shows "how many sessions are still on the old provider."
+4. **Moving an existing project to a different group directory breaks its session history.** The directory names under `~/.claude/projects/` are path-encoded, so once a project directory moves, `--resume` can no longer find the old sessions (the files are still there, just unreachable). Think it through before moving a project.
 
-## 验证一个组是否真的挂对了 provider（零 token 成本）
+## Verifying a group is actually wired to the right provider (zero token cost)
 
 ```bash
 for p in $(pgrep -f 'native-binary/claude'); do
   cwd=$(readlink /proc/$p/cwd 2>/dev/null)
   echo "pid=$p cwd=$cwd"
-  tr '\0' '\n' < /proc/$p/environ | grep ANTHROPIC_BASE_URL || echo "  -> 官方订阅（未设置）"
+  tr '\0' '\n' < /proc/$p/environ | grep ANTHROPIC_BASE_URL || echo "  -> official subscription (unset)"
 done
 ```
 
-## 改组名 / 删组
+## Renaming / deleting a group
 
-direnv 的授权记录是按 `.envrc` 的**绝对路径**存的（`~/.local/share/direnv/allow/`），改目录名等于换了一个新 `.envrc`，要重新 `direnv allow`。同时会触发上面第 4 条的会话历史问题。要改趁项目/会话还少的时候改。
+direnv's authorization records are keyed by the `.envrc`'s **absolute path** (`~/.local/share/direnv/allow/`) — renaming the directory is effectively a new `.envrc`, requiring a fresh `direnv allow`. It also triggers gotcha #4 above about session history. Do renames while the project/sessions are still few.
 
-删组：从 `status.py` 的 `GROUPS` 里删掉那一条，`docker compose up -d --build` 重启 provider-switch；`~/.claude-provider/<组名>.env` 和 `~/<组名>/.envrc` 手动删除或留着都行（留着不会被扫描到，纯粹是死文件）。
+Deleting a group: remove its entry from `status.py`'s `GROUPS`, then `docker compose up -d --build` to restart provider-switch; `~/.claude-provider/<group>.env` and `~/<group>/.envrc` can be deleted manually or left in place (leaving them is harmless — they simply won't be scanned, pure dead files).
 
-## 回滚整个机制
+## Rolling back the whole mechanism
 
-1. 把 `~/.vscode-server/data/Machine/settings.json` 里的 `claudeCode.claudeProcessWrapper` 删掉，Reload Window——VSCode 路径回到直接启动 claude，不再经过 wrapper。
-2. 终端路径本来就不依赖这套机制（走 `.bashrc` 自带的 direnv hook），不用管。
-3. `docker compose down` 这个目录和 `provider-switch/` 目录，两个容器都停了，`~/.claude-provider/*.env` 留空即可，所有项目回到纯官方订阅。
+1. Remove `claudeCode.claudeProcessWrapper` from `~/.vscode-server/data/Machine/settings.json` and Reload Window — VSCode goes back to starting claude directly, no longer through the wrapper.
+2. The terminal path never depended on this mechanism (it uses `.bashrc`'s own direnv hook), nothing to do there.
+3. `docker compose down` this directory and the `provider-switch/` directory — both containers stop, leave `~/.claude-provider/*.env` empty, and every project reverts to the plain official subscription.
 EOF
 ```
 
@@ -1210,7 +1212,7 @@ EOF
 cat > vps_oracle/compose/provider-switch/README.md <<'EOF'
 # provider-switch
 
-原理、加分组步骤、已知坑，见 [`../ccr/README.md`](../ccr/README.md)——两个栈是同一套机制的两半，文档只写一份，避免两边说法漂移。
+For the mechanism, the steps to add a group, and known gotchas, see [`../ccr/README.md`](../ccr/README.md) — the two stacks are two halves of the same mechanism, documented in one place only, to avoid the two sides' accounts drifting apart.
 EOF
 ```
 

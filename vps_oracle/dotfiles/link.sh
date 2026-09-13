@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# 重建本目录下所有配置文件在 $HOME / 系统目录里的软链。
-# 用途：本仓库搬了位置、或者在新机器上重新 clone 之后，跑一次这个脚本
-# 把下面列的每个 dotfile 重新软链回它该在的地方。
+# Regenerate the symlinks for every config file in this directory, pointing
+# back into $HOME / the relevant system directory.
+# Use case: after this repo moves location, or after a fresh clone on a new
+# machine, run this script once to re-link every dotfile listed below back
+# to where it belongs.
 #
-# 默认不覆盖已经存在的真实文件（不是软链、不是指向本目录的软链），
-# 避免误删你还没纳管的本机配置；确认要覆盖就加 --force。
+# By default this never overwrites an existing real file (one that isn't
+# already a symlink, or isn't a symlink pointing into this directory),
+# to avoid clobbering local config that isn't managed here yet; pass
+# --force once you've confirmed you want to overwrite it.
 
 set -euo pipefail
 
@@ -12,7 +16,7 @@ DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
 
-# "<系统里的真实路径>|<本目录下的相对路径>"
+# "<real path on the system>|<relative path within this directory>"
 PAIRS=(
   "$HOME/.claude/CLAUDE.md|claude/CLAUDE.md"
   "$HOME/.claude/rules|claude/rules"
@@ -50,16 +54,16 @@ for pair in "${PAIRS[@]}"; do
   target="$DOTFILES_DIR/$rel"
 
   if [ ! -e "$target" ]; then
-    echo "跳过（本目录下没有这个文件，可能是 config.env 这类被 gitignore 的真身还没建）: $target"
+    echo "Skipping (no such file in this directory — may be a gitignored real file like config.env that hasn't been created yet): $target"
     continue
   fi
 
   if [ -L "$live" ]; then
     current="$(readlink "$live")"
     if [ "$current" = "$target" ]; then
-      echo "已连接: $live"
+      echo "Already linked: $live"
     else
-      echo "重新连接: $live（原本指向 $current）"
+      echo "Re-linking: $live (used to point to $current)"
       ln -sf "$target" "$live"
     fi
     continue
@@ -67,15 +71,15 @@ for pair in "${PAIRS[@]}"; do
 
   if [ -e "$live" ]; then
     if [ "$FORCE" = "1" ]; then
-      echo "覆盖（--force）: $live"
+      echo "Overwriting (--force): $live"
       ln -sf "$target" "$live"
     else
-      echo "跳过（$live 已存在真实文件，不是软链，加 --force 才覆盖）"
+      echo "Skipping ($live already exists as a real file, not a symlink — pass --force to overwrite)"
     fi
     continue
   fi
 
   mkdir -p "$(dirname "$live")"
   ln -s "$target" "$live"
-  echo "新建连接: $live -> $target"
+  echo "New link: $live -> $target"
 done

@@ -17,17 +17,20 @@ try:
                     pointer = m.group(1).strip("'\"")
                     break
 
-    # 只以指標檔判定三態：容器刻意不 mount ~/.claude-configs（那是 .credentials.json
-    # 所在地），所以無法（也不該）驗證目標 configDir 是否已登入——登入是設定期的前提。
+    # Determine the three states from the pointer file alone: the container deliberately
+    # does not mount ~/.claude-configs (that's where .credentials.json lives), so it can't
+    # (and shouldn't) verify whether the target configDir is logged in — login is a
+    # setup-time precondition.
     if pointer == sub2_dir:
         print("Charles (~/.claude-configs/sub2)")
         sys.exit(0)
     if pointer is None or pointer == "/home/ubuntu/.claude":
         print("Jerome (default ~/.claude)")
         sys.exit(1)
-    print(f"未知 CLAUDE_CONFIG_DIR: {pointer}")
+    print(f"Unknown CLAUDE_CONFIG_DIR: {pointer}")
     sys.exit(2)
 except Exception:
-    # 任何意外崩潰（例如讀 env_path 的權限錯誤）必須回報為 ERROR，
-    # 不能被誤讀成「off」——sys.exit 拋的是 SystemExit（BaseException），不受此 except 影響。
+    # Any unexpected crash (e.g. a permission error reading env_path) must
+    # report as ERROR, not silently masquerade as "off" — sys.exit raises
+    # SystemExit, a BaseException, so it is unaffected by this except.
     sys.exit(2)

@@ -2,8 +2,8 @@
 # checks/k3s-oom-killed-containers.sh
 #
 # Flags containers whose last termination was OOMKilled within the
-# lookback window. Design spec's "只告警" table, same reasoning as
-# "Docker 重啟風暴" — whether to raise the memory limit or cut the
+# lookback window. Design spec's "alert-only" table, same reasoning as
+# "Docker restart storm" — whether to raise the memory limit or cut the
 # workload down is a human call, not hygiene the inspector should do
 # itself. Added after the 2026-08-17 io_pressure_critical incident:
 # jaeger and a trivy scan job were both OOMKilled and silently

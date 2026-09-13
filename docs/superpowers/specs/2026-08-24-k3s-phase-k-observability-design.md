@@ -1,34 +1,34 @@
-# K3s Phase K — 可觀測性接入設計
+# K3s Phase K — Observability Integration Design
 
-日期：2026-08-24
+Date: 2026-08-24
 
-對應 [K3s 服務網格能力補完路線圖](2026-08-19-k3s-mesh-capabilities-roadmap.md) 的 K 階段：指標（istiod/ztunnel/waypoint 的 Prometheus 端點）、日誌（waypoint access log）、追蹤（Envoy trace）全部要能在既有的 Grafana/Jaeger UI 查到。
+Corresponds to Phase K of the [K3s Service Mesh Capabilities Roadmap](2026-08-19-k3s-mesh-capabilities-roadmap.md): metrics (the Prometheus endpoints of istiod/ztunnel/waypoint), logs (waypoint access log), and tracing (Envoy trace) must all be queryable in the existing Grafana/Jaeger UI.
 
-**本文件推翻路線圖原文對 K 階段的設計前提**（「複用 `lab-environment` 既有的 Prometheus/Loki/Jaeger」），原因與新設計見下方「範圍」與「已知限制」。前置：[Phase J](2026-08-23-k3s-phase-j-authorization-design.md) 已完成並合入 `main`，其 `AuthorizationPolicy` 的 `selector` 只選中 `app: hello-backend`，不影響本階段新增的任何資源（見下方「交棒」段落的查證）。
+**This document overturns the roadmap's original design premise for Phase K** ("reuse `lab-environment`'s existing Prometheus/Loki/Jaeger"); the reason and the new design are in "Scope" and "Known limitations" below. Precondition: [Phase J](2026-08-23-k3s-phase-j-authorization-design.md) is complete and merged into `main`; its `AuthorizationPolicy` `selector` only matches `app: hello-backend` and does not affect any resource added this phase (see the verification in the "Handoff" section below).
 
-## 範圍
+## Scope
 
-**這階段要做的：**
-- 新增一個獨立的 k3s namespace（`mesh-observability`）承載 Loki + Jaeger + 一個範圍限定在 `pr-lanes` 的 Promtail，透過 NodePort 曝露給 compose 使用
-- 幫 istiod / ztunnel / waypoint 現有的 Prometheus 端點各加一個小的 NodePort `Service`（不新增 Deployment，純曝露既有埠）
-- compose 既有的 Prometheus 加 3 個新 scrape target；既有的 Grafana 加 Loki + Jaeger 兩個新資料源——**沿用 compose 現有的 Prometheus/Grafana，不在 compose 另外新裝一套**
-- Istio 的 tracing 設定指向 `mesh-observability` 裡的 Jaeger（叢集內 ClusterIP，不跨網路邊界）
-- compose 的 `prometheus`、`grafana` 兩個 service 修正 docker network 預設閘道優先權（見下方「已知限制」，這是本階段能成立的前提修正，不修就連不到任何 NodePort）
-- **Jaeger UI 接入 NPM 反代 + homepage 卡片（2026-08-24 完成）**：`jaeger.jerome.cloudns.asia` → `10.0.0.95:30114`（mesh-observability 的 Jaeger-query NodePort），用 `self-only-and-auth` access list（id 2，含 3x-ui 來源 + 公網 IP + Basic Auth），NPM proxy host id 36、憑證 id 38；homepage `Infra Services` 區加 `Jaeger` 卡片（緊鄰主 Grafana）。Loki 沒有獨立 UI，日誌就在既有 Grafana 的 Loki 資料源看（`grafana.jerome.cloudns.asia`）
+**What this phase does:**
+- Add a standalone k3s namespace (`mesh-observability`) hosting Loki + Jaeger + a Promtail scoped to `pr-lanes`, exposed to compose via NodePort
+- Add a small NodePort `Service` for each of istiod / ztunnel / waypoint's existing Prometheus endpoints (no new Deployment — purely exposing existing ports)
+- Add 3 new scrape targets to compose's existing Prometheus; add two new data sources, Loki + Jaeger, to the existing Grafana — **reusing compose's existing Prometheus/Grafana, not installing a separate new stack in compose**
+- Point Istio's tracing config at the Jaeger in `mesh-observability` (in-cluster ClusterIP, not crossing a network boundary)
+- Fix the docker network default-gateway priority for compose's `prometheus` and `grafana` services (see "Known limitations" below; this is the prerequisite fix that makes this phase possible — without it not a single NodePort is reachable)
+- **Jaeger UI into NPM reverse proxy + homepage card (done 2026-08-24)**: `jaeger.jerome.cloudns.asia` → `10.0.0.95:30114` (mesh-observability's Jaeger-query NodePort), using the `self-only-and-auth` access list (id 2, including 3x-ui source + public IP + Basic Auth), NPM proxy host id 36, certificate id 38; homepage `Infra Services` section gains a `Jaeger` card (next to the main Grafana). Loki has no standalone UI; logs are viewed via the Loki data source in the existing Grafana (`grafana.jerome.cloudns.asia`)
 
-**這階段不做的（留給後續階段或明確排除）：**
-- 不動 `lab-environment` 的任何東西——它自己那套 Prometheus/Grafana/Loki/Jaeger/Promtail（`replicas: 0`）原封不動保留給 SRE 練習自己用，`pr-lanes` 的可觀測性完全不依賴它、也不共用它的 pipeline（這正是 `lab-environment/README.md` 開頭宣告的「deliberate 不共用」邊界，路線圖原文的設計違反了這個邊界，本文件修正之）
-- 不修 Cilium/istio-cni 那條 `fwmark 0x200/0xf00 → table 2004（route via lo）` 的重定向規則——這是叢集層級、影響任何 pod 對外連到私網位址的既有限制，不是本階段引入的問題，修復它風險高（可能動到 ztunnel/waypoint 現有流量重定向的核心機制），本階段的設計完全繞開它，見「已知限制」
-- 不新增 HTTP method/path 層級的存取控制——J 階段範圍
-- 限流——L 階段的評估性範圍
+**What this phase does NOT do (left to later phases or explicitly excluded):**
+- Touch nothing in `lab-environment` — its own Prometheus/Grafana/Loki/Jaeger/Promtail (`replicas: 0`) stays intact for SRE practice use; `pr-lanes`'s observability neither depends on it nor shares its pipeline (this is exactly the "deliberate non-sharing" boundary declared at the top of `lab-environment/README.md`; the roadmap's original design violated this boundary, and this document corrects it)
+- Not fixing the Cilium/istio-cni redirect rule `fwmark 0x200/0xf00 → table 2004 (route via lo)` — this is a cluster-level, existing limitation affecting any pod's outbound connection to a private-network address, not a problem introduced by this phase; fixing it is high-risk (could touch the core mechanism of ztunnel/waypoint's existing traffic redirection), and this phase's design completely routes around it; see "Known limitations"
+- No HTTP method/path-level access control — Phase J scope
+- Rate limiting — Phase L's evaluation scope
 
-## 現狀約束
+## Current-state constraints
 
-延續路線圖列出的資源約束（`pr-lanes-quota` 現況：`limits.cpu 500m/1200m`、`limits.memory 640Mi/1536Mi` 已用掉，見下方查證），但本階段新增的元件**完全不落在 `pr-lanes-quota` 裡**——Loki/Jaeger/Promtail 落在新開的 `mesh-observability` namespace，有自己獨立的 `ResourceQuota`；istiod/ztunnel/waypoint 的新 metrics `Service` 是純控制面資源，不佔 CPU/記憶體額度。
+Continuing the resource constraint listed in the roadmap (`pr-lanes-quota` current state: `limits.cpu 500m/1200m`, `limits.memory 640Mi/1536Mi` used; see the check below), but the components added this phase land **entirely outside `pr-lanes-quota`** — Loki/Jaeger/Promtail land in the new `mesh-observability` namespace with their own independent `ResourceQuota`; the new metrics `Service`s for istiod/ztunnel/waypoint are pure control-plane resources and consume no CPU/memory.
 
-主機記憶體仍然吃緊（路線圖記錄的 2026-08-19 實測：23Gi 總量僅 813Mi 真空閒，swap 4Gi 用掉 3.4Gi）——`mesh-observability` 的資源請求刻意壓到最低（見下方元件表），且若上線後觀察到 swap 持續攀升或任何 OOMKilled，應優先暫停評估，不強行往下走，這條原則路線圖本身已經寫過一次，這裡重申。
+Host memory is still tight (the roadmap's recorded 2026-08-19 measurement: 23Gi total with only 813Mi truly free, swap 4Gi with 3.4Gi used) — `mesh-observability`'s resource requests are deliberately pushed to the minimum (see the component table below), and if after rollout swap keeps climbing or any OOMKilled is observed, evaluation should be paused first rather than forcing ahead. The roadmap itself already wrote this principle once; it is restated here.
 
-## 架構
+## Architecture
 
 ```mermaid
 flowchart TB
@@ -39,121 +39,121 @@ flowchart TB
         waypoint_log["waypoint access log\n(/dev/stdout)"]
     end
 
-    subgraph mesh_obs["namespace: mesh-observability（新）"]
-        promtail["Promtail\n(只讀 pr-lanes 的 pod 日誌)"]
+    subgraph mesh_obs["namespace: mesh-observability (new)"]
+        promtail["Promtail\n(read-only pod logs of pr-lanes)"]
         loki["Loki\nNodePort"]
-        jaeger["Jaeger\nZipkin收集埠(叢集內)\nQuery UI(NodePort)"]
+        jaeger["Jaeger\nZipkin collection port (in-cluster)\nQuery UI (NodePort)"]
     end
 
     subgraph compose["docker compose: vps_oracle/compose/monitoring"]
-        prom["Prometheus（既有）"]
-        graf["Grafana（既有）"]
+        prom["Prometheus (existing)"]
+        graf["Grafana (existing)"]
     end
 
-    istiod_svc["新 Service（istiod-metrics）\nNodePort"] --> istiod_ep
-    ztunnel_svc["新 Service（ztunnel-metrics）\nNodePort"] --> ztunnel_ep
-    waypoint_svc["新 Service（waypoint-metrics）\nNodePort"] --> waypoint_ep
+    istiod_svc["new Service (istiod-metrics)\nNodePort"] --> istiod_ep
+    ztunnel_svc["new Service (ztunnel-metrics)\nNodePort"] --> ztunnel_ep
+    waypoint_svc["new Service (waypoint-metrics)\nNodePort"] --> waypoint_ep
 
-    waypoint_log -. kubelet 日誌檔案 .-> promtail
+    waypoint_log -. kubelet log files .-> promtail
     promtail -->|push| loki
 
-    prom -->|"pull（NodePort，已驗證安全的方向）"| istiod_svc
-    prom -->|"pull（NodePort）"| ztunnel_svc
-    prom -->|"pull（NodePort）"| waypoint_svc
-    graf -->|"query（NodePort）"| loki
-    graf -->|"query（NodePort）"| jaeger
+    prom -->|"pull (NodePort, already-verified safe direction)"| istiod_svc
+    prom -->|"pull (NodePort)"| ztunnel_svc
+    prom -->|"pull (NodePort)"| waypoint_svc
+    graf -->|"query (NodePort)"| loki
+    graf -->|"query (NodePort)"| jaeger
 
-    waypoint_ep -. "Envoy trace（叢集內 ClusterIP，Zipkin 協定）" .-> jaeger
+    waypoint_ep -. "Envoy trace (in-cluster ClusterIP, Zipkin protocol)" .-> jaeger
 
     style mesh_obs fill:#eef,stroke:#448
     style compose fill:#efe,stroke:#484
 ```
 
-三種遙測全部走同一個方向：**compose（既有 Prometheus/Grafana）主動連出去打 k3s 的 NodePort**——這是這台機器上唯一已經在生產環境跑過的跨 docker/k3s 方向（NPM 反代 headlamp/lab-environment grafana/argocd 用的就是這條路，`host-firewall.sh` 2026-08-19 已經加過 `172.19.0.0/16 → NodePort range` 的允許規則，本階段**不需要新增任何防火牆規則**）。完全避開「pod 主動連出去打 docker bridge」這個方向——這條路在 fwmark/table 2004 那堵牆前面直接消失，見「已知限制」。
+All three telemetry types flow in the same direction: **compose (existing Prometheus/Grafana) actively connects out to k3s NodePorts** — the only cross-docker/k3s direction already run in production on this machine (NPM reverse-proxying headlamp/lab-environment grafana/argocd uses this path, and `host-firewall.sh` already added the `172.19.0.0/16 → NodePort range` allow rule on 2026-08-19, so this phase **needs no new firewall rules**). This completely avoids the "pod actively connecting out to docker bridge" direction — that path vanishes in front of the fwmark/table 2004 wall; see "Known limitations".
 
-Promtail 讀 kubelet 的 pod 日誌檔案、推到 Loki，這段全程在 k3s pod 網段內部（Promtail → Loki 用 ClusterIP），不跨網路邊界。waypoint 的 Envoy trace 送到 Jaeger 的 Zipkin 收集埠，同樣是叢集內 ClusterIP，不跨邊界——只有 Grafana 查詢 Loki/Jaeger 這一段才跨邊界，而這段走的是已驗證方向。
+Promtail reads kubelet's pod log files and pushes them to Loki, entirely inside the k3s pod network (Promtail → Loki uses ClusterIP), not crossing a network boundary. The waypoint's Envoy trace goes to Jaeger's Zipkin collection port, also in-cluster ClusterIP, not crossing a boundary — only the Grafana querying Loki/Jaeger segment crosses a boundary, and that segment uses the already-verified direction.
 
-## 元件與設定
+## Components and configuration
 
-| 項目 | 決定 | 理由 |
+| Item | Decision | Rationale |
 |---|---|---|
-| `mesh-observability` namespace | 新建，獨立於 `pr-lanes`、`lab-environment`。`ResourceQuota`：`requests.cpu: 200m / requests.memory: 320Mi`，`limits.cpu: 500m / limits.memory: 640Mi` | 三個新元件（Loki 128Mi/256Mi、Jaeger 64Mi/256Mi、Promtail 32Mi/64Mi，數字沿用 `lab-environment` 已經跑過的規格）加總落在這個額度內，留一點餘裕。獨立 namespace 是刻意選擇：不進 `pr-lanes-quota`（避免跟泳道容量搶資源，路線圖本來就明講這點）、不進 `lab-environment`（避免違反它自己宣告的隔離邊界） |
-| Loki / Jaeger 鏡像與設定 | 直接照抄 `lab-environment/k8s/loki.yaml`、`jaeger.yaml` 的鏡像版本與資源規格，改 namespace、改 Service 曝露方式（多加 NodePort） | 這兩份 YAML 在 `lab-environment` 已經跑過、驗證過能正常啟動，沒有理由重新造一輪——只是換個 namespace、換成常駐（不是 `replicas: 0`） |
-| Promtail 範圍 | `promtail-config.yml` 的 scrape glob 改成只匹配 `/var/log/pods/pr-lanes_*`（`lab-environment` 的 promtail 用同樣手法把自己限定在自己的 namespace，見它的 `configmaps.yaml` 註解） | 只收 `pr-lanes` 的日誌，不是整個節點——避免把 `kube-system`/`argocd` 等其他 namespace 的日誌也一起吃進來，控制量體與資源用量 |
-| istiod metrics 曝露 | 新增 `Service`（`istio-system` namespace，NodePort，selector `app=istiod,istio=pilot`，指到既有的 `15014` 埠），**不修改 istiod 自己那個由 istio-istiod Application 管理的 ClusterIP Service** | istiod 已經有 `http-monitoring:15014`，只是沒有對外曝露；另開一個獨立 Service 是為了不去動 ArgoCD 管理的既有資源（改了會被下次 sync 覆蓋，或造成不必要的 diff） |
-| ztunnel metrics 曝露 | 新增 `Service`（`istio-system` namespace，NodePort，selector `app=ztunnel`，指到既有的 `15020 ztunnel-stats` 埠） | ztunnel 目前完全沒有 Service，這是新建，不涉及修改既有資源 |
-| istiod/ztunnel metrics Service 歸屬哪個 ArgoCD Application | 併入新建的 `mesh-observability` Application（放進它的 `k8s/` 目錄，每個檔案顯式帶 `metadata.namespace: istio-system`），**不放進 `vps_oracle/k3s/istio/`** | `istio-istiod`/`istio-ztunnel` 兩個 Application 的 `source` 是遠端 Helm chart（`istio-release.storage.googleapis.com`），`vps_oracle/k3s/istio/` 底下的檔案只當 Helm values 用（`valueFiles: - $values/vps_oracle/k3s/istio/istiod-values.yaml`），不是「這個目錄下的檔案會被自動撿到」的 plain-manifests 模式——丟進去的新 YAML 不會被同步。ArgoCD 允許一個 Application 管理 `destination.namespace` 以外的資源，只要 manifest 自己寫明 `metadata.namespace`，`lab-environment` 底下的既有 YAML 也是這樣顯式寫 namespace 的慣例，沿用即可 |
-| waypoint metrics 曝露 | 新增 `Service`（`pr-lanes` namespace，NodePort，selector 對齊 waypoint pod 的 label，指到既有的 `15090 http-envoy-prom` 埠） | waypoint 由 Gateway API 的 `Gateway` 資源自動建立了一個 Service，但只轉發 `15021`/`15008`，不含 metrics 埠——另開一個小 Service 補這個洞，不去動 Gateway 資源自動生成的那個 |
-| NodePort 分配 | `istiod-metrics 30110`、`ztunnel-metrics 30111`、`waypoint-metrics 30112`、`loki 30113`、`jaeger-query 30114`（Jaeger 的 Zipkin 收集埠 `9411` 只用 ClusterIP，不需要 NodePort） | 目前已用：`30083`（hello-frontend）、`30090`（argocd）、`30092-30098`（lab-environment + headlamp）、`30512`（lab-environment jaeger zipkin，未顯式指定被自動分配）。挑一段連號、可讀的範圍，實作時要重新 `kubectl get svc -A --field-selector spec.type=NodePort` 確認沒有新的衝突（這幾天可能有變動） |
-| compose Prometheus 新 scrape_configs | 3 個新 job，`static_configs.targets` 指向 `10.0.0.95:30110`／`:30111`／`:30112` | 沿用 `prometheus.yml` 現有的 `static_configs` 風格（這個檔案目前沒有用任何服務發現機制，跟其餘 job 一致） |
-| compose Grafana 新資料源 | 在 `grafana/provisioning/datasources/` 新增 Loki（`http://10.0.0.95:30113`）與 Jaeger（`http://10.0.0.95:30114`）兩個 provisioning 檔 | 沿用現有 `prometheus.yml` provisioning 的模式 |
-| Istio tracing 設定 | `istiod-values.yaml` 的 `meshConfig` 加 `extensionProviders`（`envoyOtelAls` 或 zipkin 類型，指向 `jaeger.mesh-observability.svc.cluster.local:9411`），`pr-lanes` 加一個 `Telemetry` CR 啟用 tracing、引用該 provider | Istio 標準做法（`extensionProviders` + `Telemetry` CR），沿用 lab-environment jaeger.yaml 已經配好的 `COLLECTOR_ZIPKIN_HOST_PORT: ":9411"`（Zipkin 協定相容，Envoy 原生支援送 Zipkin 格式的 span，不需要額外的 collector/sidecar） |
-| **compose `prometheus`/`grafana` 的 docker network 預設閘道修正**（已完成 2026-08-24） | compose 專案自己的 `default` 網路改 `internal: true`（internal 網路拿不到閘道，不參與預設路由選舉，`proxy` 於是成為唯一出口）；`blackbox-exporter` 另掛一張 `egress` 網橋保留出公網能力 | **本階段能成立的硬性前提**，完整診斷過程見[排查記錄](../../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md)：這兩個容器原本預設閘道解析到 `monitoring_default`，不是 `proxy`，實測連 k3s NodePort 得到 `No route to host`。**注意：原本規劃的 `networks.proxy.priority: 1` 實測在這台機器上無效**（compose 5.1.1/5.1.4/5.5.0 都不把該欄位轉發給 engine，`GwPriority` 恆為 `0`），別再走那條路 |
+| `mesh-observability` namespace | New, independent of `pr-lanes`, `lab-environment`. `ResourceQuota`: `requests.cpu: 200m / requests.memory: 320Mi`, `limits.cpu: 500m / limits.memory: 640Mi` | The three new components (Loki 128Mi/256Mi, Jaeger 64Mi/256Mi, Promtail 32Mi/64Mi; numbers reused from the specs `lab-environment` already ran) sum within this quota, leaving some headroom. A standalone namespace is a deliberate choice: not in `pr-lanes-quota` (avoid competing for resources with lane capacity; the roadmap already states this), not in `lab-environment` (avoid violating its self-declared isolation boundary) |
+| Loki / Jaeger image and config | Copy the image versions and resource specs directly from `lab-environment/k8s/loki.yaml`, `jaeger.yaml`; change namespace and the Service exposure method (add NodePort) | These two YAMLs have already run and been verified to start in `lab-environment`; no reason to rebuild them — just change the namespace and make them resident (not `replicas: 0`) |
+| Promtail scope | Change `promtail-config.yml`'s scrape glob to only match `/var/log/pods/pr-lanes_*` (`lab-environment`'s promtail uses the same technique to limit itself to its own namespace; see its `configmaps.yaml` comment) | Only collect `pr-lanes` logs, not the whole node — avoid also ingesting `kube-system`/`argocd` and other namespaces' logs, controlling volume and resource use |
+| istiod metrics exposure | Add a `Service` (`istio-system` namespace, NodePort, selector `app=istiod,istio=pilot`, pointing to the existing `15014` port), **without modifying istiod's own ClusterIP Service managed by the istio-istiod Application** | istiod already has `http-monitoring:15014`, just not externally exposed; the standalone Service is to avoid touching ArgoCD-managed existing resources (a change would be overwritten by the next sync, or cause an unnecessary diff) |
+| ztunnel metrics exposure | Add a `Service` (`istio-system` namespace, NodePort, selector `app=ztunnel`, pointing to the existing `15020 ztunnel-stats` port) | ztunnel currently has no Service at all; this is new creation, no modification of existing resources |
+| Which ArgoCD Application owns the istiod/ztunnel metrics Services | Fold into the new `mesh-observability` Application (place in its `k8s/` directory, each file explicitly carrying `metadata.namespace: istio-system`), **not in `vps_oracle/k3s/istio/`** | The `istio-istiod`/`istio-ztunnel` Applications' `source` is a remote Helm chart (`istio-release.storage.googleapis.com`); files under `vps_oracle/k3s/istio/` are only used as Helm values (`valueFiles: - $values/vps_oracle/k3s/istio/istiod-values.yaml`), not a "files in this directory get auto-discovered" plain-manifests mode — new YAML dropped there would not be synced. ArgoCD allows an Application to manage resources outside `destination.namespace` as long as the manifest itself writes `metadata.namespace` explicitly; the existing YAML under `lab-environment` follows this same explicit-namespace convention, so reuse it |
+| waypoint metrics exposure | Add a `Service` (`pr-lanes` namespace, NodePort, selector aligned to the waypoint pod's labels, pointing to the existing `15090 http-envoy-prom` port) | The waypoint already auto-created a Service from the Gateway API `Gateway` resource, but it only forwards `15021`/`15008`, not the metrics port — a standalone small Service fills this gap, without touching the one auto-generated by the Gateway resource |
+| NodePort allocation | `istiod-metrics 30110`, `ztunnel-metrics 30111`, `waypoint-metrics 30112`, `loki 30113`, `jaeger-query 30114` (Jaeger's Zipkin collection port `9411` uses ClusterIP only, no NodePort needed) | Currently in use: `30083` (hello-frontend), `30090` (argocd), `30092-30098` (lab-environment + headlamp), `30512` (lab-environment jaeger zipkin, auto-assigned since not explicitly specified). Choose a contiguous, readable range; at implementation time re-run `kubectl get svc -A --field-selector spec.type=NodePort` to confirm no new conflicts (this may have changed in recent days) |
+| compose Prometheus new scrape_configs | 3 new jobs, `static_configs.targets` pointing to `10.0.0.95:30110` / `:30111` / `:30112` | Follow `prometheus.yml`'s existing `static_configs` style (this file currently uses no service discovery mechanism, consistent with the rest of the jobs) |
+| compose Grafana new data sources | Add two provisioning files, Loki (`http://10.0.0.95:30113`) and Jaeger (`http://10.0.0.95:30114`), under `grafana/provisioning/datasources/` | Follow the existing `prometheus.yml` provisioning pattern |
+| Istio tracing config | In `istiod-values.yaml`'s `meshConfig`, add `extensionProviders` (`envoyOtelAls` or zipkin type, pointing to `jaeger.mesh-observability.svc.cluster.local:9411`); add a `Telemetry` CR in `pr-lanes` enabling tracing and referencing this provider | Istio's standard approach (`extensionProviders` + `Telemetry` CR), reusing lab-environment's jaeger.yaml `COLLECTOR_ZIPKIN_HOST_PORT: ":9411"` (Zipkin protocol-compatible; Envoy natively supports emitting Zipkin-format spans, no extra collector/sidecar needed) |
+| **compose `prometheus`/`grafana` docker network default-gateway fix** (done 2026-08-24) | Change the compose project's own `default` network to `internal: true` (an internal network gets no gateway and does not participate in default-route election, making `proxy` the sole egress); `blackbox-exporter` gets an additional `egress` bridge network to keep public-internet reachability | **The hard prerequisite making this phase possible**; the full diagnosis is in the [troubleshooting record](../../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md): these two containers originally resolved their default gateway to `monitoring_default`, not `proxy`, and testing showed `No route to host` connecting to k3s NodePorts. **Note: the originally planned `networks.proxy.priority: 1` was tested and ineffective on this machine** (compose 5.1.1/5.1.4/5.5.0 all fail to forward that field to the engine; `GwPriority` is always `0`) — do not go down that path again |
 
-## Repo 佈局
+## Repo layout
 
 ```
-vps_oracle/k3s/apps/mesh-observability/         # 新目錄
+vps_oracle/k3s/apps/mesh-observability/         # new directory
   k8s/
     namespace.yaml            # namespace + ResourceQuota
-    loki.yaml                 # 抄 lab-environment/k8s/loki.yaml，改 namespace + NodePort
-    jaeger.yaml                # 抄 lab-environment/k8s/jaeger.yaml，改 namespace + NodePort（UI/query）
-    promtail.yaml              # 抄 lab-environment/k8s/promtail.yaml，改 namespace + scrape glob 限定 pr-lanes
-    configmaps.yaml            # loki-config / promtail-config（scrape glob: /var/log/pods/pr-lanes_*）
-    istiod-metrics-service.yaml  # 新增：NodePort Service，metadata.namespace 顯式寫 istio-system，指到既有 istiod Service 選中的 15014
-    ztunnel-metrics-service.yaml # 新增：NodePort Service，metadata.namespace 顯式寫 istio-system，指到 ztunnel 的 15020
+    loki.yaml                 # copied from lab-environment/k8s/loki.yaml, changed namespace + NodePort
+    jaeger.yaml                # copied from lab-environment/k8s/jaeger.yaml, changed namespace + NodePort (UI/query)
+    promtail.yaml              # copied from lab-environment/k8s/promtail.yaml, changed namespace + scrape glob scoped to pr-lanes
+    configmaps.yaml            # loki-config / promtail-config (scrape glob: /var/log/pods/pr-lanes_*)
+    istiod-metrics-service.yaml  # new: NodePort Service, metadata.namespace explicitly written istio-system, pointing to the 15014 selected by the existing istiod Service
+    ztunnel-metrics-service.yaml # new: NodePort Service, metadata.namespace explicitly written istio-system, pointing to ztunnel's 15020
 
 vps_oracle/k3s/argocd/apps/
-  mesh-observability.yaml     # 新增，照抄 lab-environment.yaml 的格式，path 指到上面那個目錄
+  mesh-observability.yaml     # new, copied from lab-environment.yaml's format, path pointing to the directory above
 
 vps_oracle/k3s/apps/hello/k8s/
-  waypoint-metrics-service.yaml   # 新增：NodePort Service，指到 waypoint pod 的 15090
-  pr-lanes-telemetry.yaml         # 新增：Telemetry CR，啟用 tracing 並引用 istiod 的 zipkin provider
+  waypoint-metrics-service.yaml   # new: NodePort Service, pointing to the waypoint pod's 15090
+  pr-lanes-telemetry.yaml         # new: Telemetry CR, enabling tracing and referencing istiod's zipkin provider
 
 vps_oracle/k3s/istio/
-  istiod-values.yaml           # 修改：meshConfig.extensionProviders 加 zipkin provider（這是 Helm values 檔，istiod-metrics-service.yaml 不放這裡，見「元件與設定」表的說明）
+  istiod-values.yaml           # modified: meshConfig.extensionProviders adds zipkin provider (this is a Helm values file; istiod-metrics-service.yaml does not go here, see the "Components and configuration" table note)
 
 vps_oracle/compose/monitoring/
-  docker-compose.yml           # 已完成（2026-08-24）：networks.default 改 internal: true，讓 proxy 成為
-                               # prometheus/grafana 唯一出口；blackbox-exporter 另掛新的 egress 網路保留出公網能力
-                               #（原規劃的 networks.proxy.priority 實測無效，別再加，見「元件與設定」表）
-  prometheus/prometheus.yml    # 修改：加 3 個 scrape_configs job
+  docker-compose.yml           # done (2026-08-24): networks.default changed to internal: true, making proxy the
+                               # sole egress for prometheus/grafana; blackbox-exporter gets an additional egress network to keep public reachability
+                               # (the originally planned networks.proxy.priority is tested ineffective, do not re-add, see the "Components and configuration" table)
+  prometheus/prometheus.yml    # modified: add 3 scrape_configs jobs
   grafana/provisioning/datasources/
-    loki.yml                   # 新增
-    jaeger.yml                 # 新增
+    loki.yml                   # new
+    jaeger.yml                 # new
 ```
 
-（`istiod-metrics-service.yaml`/`ztunnel-metrics-service.yaml` 併入 `mesh-observability` Application 這個決定已在「元件與設定」表定案，不再是待確認事項。）
+(The decision to fold `istiod-metrics-service.yaml`/`ztunnel-metrics-service.yaml` into the `mesh-observability` Application is already finalized in the "Components and configuration" table, no longer a to-be-confirmed item.)
 
-## 驗證清單（phase K 過關標準，implement 階段會再細化成逐步驟）
+## Verification checklist (phase K pass criteria; the implement stage will refine into step-by-step)
 
-1. `mesh-observability` namespace 建立、ArgoCD Application `Synced` + `Healthy`，Loki/Jaeger/Promtail 三個 Pod `Running`
-2. `kubectl describe resourcequota -n mesh-observability` 確認用量在額度內，且**不影響** `pr-lanes-quota`（`kubectl describe resourcequota pr-lanes-quota -n pr-lanes` 用量應該完全不變，新增的三個 metrics Service 都是純控制面資源）
-3. compose `prometheus`/`grafana` 的預設閘道修正已生效（`default` 網路改 internal，兩者出口落在 `proxy`）：`docker exec prometheus wget -qO- http://10.0.0.95:<istiod-metrics NodePort>` 成功回應（用這個當作「網路修正生效」的最小驗證，不用等整個 Prometheus scrape 迴圈跑一輪；`docker exec prometheus ip route` 第一行應該是 `default via 172.19.0.1`）
-4. compose Prometheus targets 頁面（`http://172.19.0.4:9090/targets`，只走內網）三個新 job 都是 `UP`
-5. compose Grafana 新增的 Loki/Jaeger 資料源測試連線成功（`Test` 按鈕綠燈）
-6. 對 `hello-frontend`/`hello-backend` 打一輪測試流量，在 compose Grafana 裡：
-   - 能查到 istiod/ztunnel/waypoint 的指標
-   - 能在 Loki 裡查到對應的 waypoint access log
-   - 能在 Jaeger 裡查到這次呼叫的 trace（**已知限制**：Envoy trace 預設是取樣的，不是每個請求都會產生 span，需要在 `Telemetry` CR 裡確認取樣率設定，或多打幾次請求提高命中機率）
-7. `lab-environment` 的所有元件狀態不變（維持 `replicas: 0`，本階段沒有觸碰任何 `lab-environment` 底下的檔案）
-8. 全部既有 Application 複查仍 `Synced` + `Healthy`
+1. The `mesh-observability` namespace is created, the ArgoCD Application is `Synced` + `Healthy`, and the Loki/Jaeger/Promtail three Pods are `Running`
+2. `kubectl describe resourcequota -n mesh-observability` confirms usage is within quota, and **does not affect** `pr-lanes-quota` (`kubectl describe resourcequota pr-lanes-quota -n pr-lanes` usage should be completely unchanged; the three new metrics Services are all pure control-plane resources)
+3. compose `prometheus`/`grafana`'s default-gateway fix is in effect (the `default` network changed to internal, both egressing via `proxy`): `docker exec prometheus wget -qO- http://10.0.0.95:<istiod-metrics NodePort>` responds successfully (use this as the minimal verification that "the network fix works", without waiting for a full Prometheus scrape cycle; `docker exec prometheus ip route`'s first line should be `default via 172.19.0.1`)
+4. compose Prometheus targets page (`http://172.19.0.4:9090/targets`, internal only) shows all three new jobs `UP`
+5. compose Grafana's newly added Loki/Jaeger data sources test-connect successfully (`Test` button green)
+6. Send a round of test traffic against `hello-frontend`/`hello-backend`, and in compose Grafana:
+   - istiod/ztunnel/waypoint metrics can be queried
+   - the corresponding waypoint access log can be found in Loki
+   - the trace of this call can be found in Jaeger (**known limitation**: Envoy trace is sampled by default; not every request produces a span — confirm the sampling rate in the `Telemetry` CR, or send more requests to raise the hit probability)
+7. `lab-environment`'s components are unchanged (stay at `replicas: 0`; this phase touched no files under `lab-environment`)
+8. Re-check all existing Applications still `Synced` + `Healthy`
 
-## 已知限制
+## Known limitations
 
-- **路線圖原文對 K 階段的設計前提是錯的,本文件的架構是實地診斷後推翻重寫的結果**。原設計假設「指向 `lab-environment` 既有的 Prometheus/Loki/Jaeger」，但查證發現這套元件全部 `replicas: 0`（平時沒在跑），且 `lab-environment/README.md` 明文宣告「deliberate 不跟 `vps_oracle` 真實監控共用 pipeline」——原設計的方向本身就違反這條邊界。
-- **pod → docker bridge 這個方向被叢集層級的網路重定向機制擋死，刻意不在本階段修復**：`pr-lanes` 內任一 pod（含非 ambient mesh 成員）連 compose 容器固定 IP 會 timeout，封包完全不出現在任何網路介面上；根因是 `ip rule` 一條 `fwmark 0x200/0xf00 → table 2004（route via lo）` 的既有規則，幾乎可以肯定是 Cilium/istio-cni 流量重定向機制的一部分。不是 `pr-lanes` 特有——任何 k3s pod 想連 docker compose 網路都會撞到同一堵牆。修這條重定向機制風險高（可能連帶弄壞現在正常運作的 mesh 流量重定向），本階段選擇完全繞開它，不依賴它被修好。完整診斷過程（tcpdump、cilium-dbg monitor、ip rule 逐步排除)見[排查記錄](../../incidents/2026-08-24-k3s-pod-to-docker-bridge-blackhole.md)
-- **compose `prometheus`/`grafana` 原本連不到任何 k3s NodePort，根因是兩個容器的 docker network 預設閘道解析到錯的網段**（`monitoring_default` 而非 `proxy`）。**已於 2026-08-24 修復並套用**：把 compose 專案的 `default` 網路改成 `internal: true`（原先規劃的 `networks.proxy.priority` 實測無效，compose 不把該欄位轉發給 engine）。完整診斷過程與其他評估過的選項見[排查記錄](../../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md)
-- **上面那條閘道修正只解決了第一層前置條件——docker-bridge 容器連 k3s NodePort 其實還有第二層，Task 6 才發現**：閘道修好之後，`prometheus`/`grafana`（以及任何其他 docker-bridge 容器，包含跟本階段完全無關的既有 `npm` 生產容器）連 `10.0.0.95:<NodePort>` 依然全部 `Connection refused`。根因是 `socketLB.hostNamespaceOnly: true`（Phase F/G 起、ambient mesh 路由的必要設定、不可逆）讓 Cilium 對 NodePort 的 socket-level `connect()` 重寫只對「host netns 裡的進程」生效；docker 容器發出的封包被核心路由直接送到本機（`10.0.0.95` 是 `enp0s6` 上的真實位址），既不經過 socket-LB 路徑，也不經過網卡的 eBPF hook，兩條 Cilium NodePort 路徑都碰不到。真正撐住這個方向的是 `vps_oracle/npm-nodeport-relay/`——2026-08-19 那次事故留下的、**按 NodePort 逐一註冊**的 host-netns `socat` relay（`nodeport-relay@<port>.service`，監聽 `127.0.0.1:<port>`，這裡 socket-LB 仍然生效，能正確轉發到 backend Pod）。這個 relay 原本只註冊了 6 個既有埠（NPM/headlamp 用的 `30090`、`30092`、`30094`-`30095`、`30097`-`30098`——`30093` 是 `lab-environment` 內部用的 Prometheus、不需要 relay），本階段新增的 5 個埠（`30110`-`30114`）在 Task 6 才發現完全沒有對應 instance——即使 Task 5 的網路閘道修正完全正確、也已經套用生效，一樣連不通，且症狀（`connection refused`）跟「閘道沒修好」時一模一樣，很容易誤判成 Task 5 的回歸。已於 Task 6 補上 `nodeport-relay@30110` 到 `nodeport-relay@30114` 五個 systemd instance（`sudo systemctl enable --now`），並更新 `vps_oracle/npm-nodeport-relay/README.md` 的埠清單/Install 清單。**給未來要加第 6 個 k3s NodePort 給 compose 用的人**：這兩層前置條件缺一不可——docker network 閘道（上一條）之外，還要記得幫新埠註冊一個 `nodeport-relay@<port>.service` instance，否則會撞上一模一樣的 `connection refused`，卻誤以為是網路閘道又壞了。完整機制見 [2026-08-19 事故記錄](../../incidents/2026-08-19-npm-to-k3s-nodeport-outage.md)
-- **Envoy trace 的取樣率**：`Telemetry` CR 若沒有明確設高取樣率，Jaeger 裡不會每個請求都看得到對應的 span，實作與驗證時需要留意，不要把「Jaeger 沒查到某次請求的 trace」誤判為架構沒接通
-- **Jaeger 裡實際出現的 service 名稱是 `waypoint.pr-lanes`，不是 `hello-frontend`/`hello-backend`**：ambient mesh 底下，`hello-frontend` → `hello-backend` 的流量會被 `pr-lanes` 的 waypoint proxy 攔截，Envoy 送出的 Zipkin span 是用 waypoint 自己的 workload identity 打標籤，不是兩端應用程式自己的名字（span 的 `operationName` 是 `hello-backend:80/*`，目的地資訊保留在這裡）。另外 Jaeger all-in-one 鏡像自己的 self-instrumentation 也會生成第二個 service 名 `jaeger-all-in-one`，查 `/api/services` 會看到這兩個，後者跟本階段架構無關，是鏡像的預設行為。這件事設計階段沒有預先假設過確切名稱，Task 3 Step 6 與 Task 7 Step 3 都是照實記錄觀察到的結果，不是預測值
-- **Istio tracing 接線第一次嘗試就成功，`extensionProviders`/`Telemetry` 兩邊的 provider 名稱沒有出現不match的問題**：`istiod-values.yaml` 的 `extensionProviders[].name` 與 `pr-lanes-telemetry.yaml` 的 `providers[].name` 兩邊都是 `zipkin-mesh-observability`，Task 3 實作時已經逐字元比對過確認一致，第一輪驗證（Task 3 Step 6）就直接查到真實 span 落地，沒有需要回頭修任何拼字或設定。過程中遇到的兩個插曲都是操作面、不是設計面的問題，記錄給後續踩到同樣狀況的人：(1) ArgoCD 預設輪詢間隔還沒撿到新 commit 前查證會看到舊狀態，用讀一次性的 `argocd.argoproj.io/refresh=hard` annotation 加速偵測即可（Task 2 就用過同一招，非破壞性操作）；(2) Jaeger 上線後把 `mesh-observability-quota` 的 headroom 壓到只剩 64Mi（`limits.memory` 576Mi/640Mi），之後任何要在這個 namespace 裡起 debug pod 驗證的人（含 Task 4、Task 7 自己）都不能再依賴 LimitRange 的預設值（128Mi，放不進剩下的 64Mi），得手動帶更小的 `--overrides`（例如 request 10m/32Mi、limit 50m/64Mi）
-- **NodePort 最終分配跟設計階段規劃的完全一致，Task 1 落地時沒有撞號**：Task 1 Step 1 在建立任何資源前先查證 `30110`-`30114` 五個埠當時全部是空的，最終落地的埠號（`istiod-metrics 30110`、`ztunnel-metrics 30111`、`waypoint-metrics 30112`、`loki 30113`、`jaeger-query 30114`）跟上面「元件與設定」表列出的規劃一字不差，本文件 Task 7 收尾檢查（Step 1）也再次確認這五個埠仍然正確綁定、可用
-- **Loki/Promtail 的儲存是暫時性的（2026-08-24 最終 review 補記）**：`loki` 沒有掛 volume 給 `/loki`（chunks/rules 都在容器層），Promtail 的 positions 檔在 `/tmp/positions.yaml`——pod 重建時 Loki 會清空已存的日誌、Promtail 會重讀既有檔案（重推近期行成重複）。目前量體極小（`pr-lanes` 沒有真實使用者流量）所以無所謂，但不要誤以為這裡的 Loki 是持久儲存；真需要持久化時要加 PVC
-- **這次的診斷過程動用了 `sudo iptables -L`、`cilium-dbg monitor`、臨時建立/刪除的診斷用 pod（`netdiag-tmp*`，均已清理，不留在叢集裡）——全程唯讀或使用一次性資源，沒有修改任何 ArgoCD 管理的既有資源，符合「k3s 資源 git-first」的原則**
+- **The roadmap's original design premise for Phase K is wrong; this document's architecture is the rewritten result of live diagnosis**. The original design assumed "pointing to `lab-environment`'s existing Prometheus/Loki/Jaeger", but verification found these components are all `replicas: 0` (not running normally), and `lab-environment/README.md` explicitly declares "deliberately not sharing the pipeline with `vps_oracle` real monitoring" — the original design's direction itself violates this boundary.
+- **The pod → docker bridge direction is blocked dead by a cluster-level network redirect mechanism, deliberately not fixed this phase**: any pod in `pr-lanes` (including non-ambient-mesh members) timing out when connecting to a compose container's fixed IP, with packets not appearing on any network interface; the root cause is an existing `ip rule` — `fwmark 0x200/0xf00 → table 2004 (route via lo)` — almost certainly part of Cilium/istio-cni's traffic redirect mechanism. Not specific to `pr-lanes` — any k3s pod wanting to reach the docker compose network hits the same wall. Fixing this redirect mechanism is high-risk (could take down the currently working mesh traffic redirection with it); this phase chooses to route around it entirely, not depending on it being fixed. The full diagnosis process (tcpdump, cilium-dbg monitor, ip rule step-by-step elimination) is in the [troubleshooting record](../../incidents/2026-08-24-k3s-pod-to-docker-bridge-blackhole.md)
+- **compose `prometheus`/`grafana` originally could not reach any k3s NodePort; the root cause was the two containers' docker network default gateway resolving to the wrong subnet** (`monitoring_default` rather than `proxy`). **Fixed and applied on 2026-08-24**: changed the compose project's `default` network to `internal: true` (the originally planned `networks.proxy.priority` tested ineffective; compose does not forward that field to the engine). Full diagnosis and other evaluated options are in the [troubleshooting record](../../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md)
+- **The gateway fix above only solved the first prerequisite layer — a docker-bridge container reaching a k3s NodePort actually has a second layer, discovered only in Task 6**: after the gateway was fixed, `prometheus`/`grafana` (and any other docker-bridge container, including the existing `npm` production container entirely unrelated to this phase) still got `Connection refused` connecting to `10.0.0.95:<NodePort>`. The root cause is `socketLB.hostNamespaceOnly: true` (required since Phase F/G for ambient mesh routing, irreversible) making Cilium's socket-level `connect()` rewrite for NodePort only apply to "processes in the host netns"; packets from docker containers are routed by the kernel directly to the local machine (`10.0.0.95` is a real address on `enp0s6`), hitting neither the socket-LB path nor the NIC's eBPF hook — both Cilium NodePort paths are untouched. What actually carries this direction is `vps_oracle/npm-nodeport-relay/` — the host-netns `socat` relay left from the 2026-08-19 incident, **registered per-NodePort** (`nodeport-relay@<port>.service`, listening on `127.0.0.1:<port>`, where socket-LB still works and can correctly forward to the backend Pod). This relay originally registered only 6 existing ports (`30090`, `30092`, `30094`-`30095`, `30097`-`30098` for NPM/headlamp — `30093` is `lab-environment`'s internal Prometheus, no relay needed), and the 5 new ports this phase adds (`30110`-`30114`) were found only in Task 6 to have no corresponding instances at all — even with Task 5's network gateway fix fully correct and applied, they still wouldn't connect, and the symptom (`connection refused`) is identical to "gateway not fixed", easy to misjudge as a Task 5 regression. Fixed in Task 6 by adding the five systemd instances `nodeport-relay@30110` through `nodeport-relay@30114` (`sudo systemctl enable --now`), and updating the port list/Install list in `vps_oracle/npm-nodeport-relay/README.md`. **For anyone adding a 6th k3s NodePort for compose in the future**: both prerequisite layers are needed — besides the docker network gateway (previous item), also remember to register a `nodeport-relay@<port>.service` instance for the new port, otherwise you'll hit the exact same `connection refused` and wrongly think the network gateway broke again. Full mechanism in the [2026-08-19 incident record](../../incidents/2026-08-19-npm-to-k3s-nodeport-outage.md)
+- **Envoy trace sampling rate**: if the `Telemetry` CR does not explicitly raise the sampling rate, not every request will have a corresponding span in Jaeger; implementation and verification must note this, not misjudge "Jaeger has no trace for a request" as "the architecture isn't wired up"
+- **The service name that actually appears in Jaeger is `waypoint.pr-lanes`, not `hello-frontend`/`hello-backend`**: under ambient mesh, `hello-frontend` → `hello-backend` traffic is intercepted by `pr-lanes`'s waypoint proxy, and the Zipkin span Envoy emits is tagged with the waypoint's own workload identity, not the endpoints' application names (the span's `operationName` is `hello-backend:80/*`, where the destination info is preserved). Additionally, the Jaeger all-in-one image's own self-instrumentation generates a second service name, `jaeger-all-in-one`; querying `/api/services` shows these two, the latter unrelated to this phase's architecture, a default behavior of the image. This document did not assume the exact names during design; Task 3 Step 6 and Task 7 Step 3 both record the observed results as-is, not predicted values
+- **Istio tracing wiring worked on the first attempt; there was no provider-name mismatch between `extensionProviders`/`Telemetry`**: the `extensionProviders[].name` in `istiod-values.yaml` and the `providers[].name` in `pr-lanes-telemetry.yaml` are both `zipkin-mesh-observability`, and Task 3 implementation already compared them character by character, confirming consistency; the first round of verification (Task 3 Step 6) directly found real spans landing, with no spelling or config to fix. The two hiccups along the way were operational, not design issues, recorded for anyone hitting the same situations later: (1) before ArgoCD's default polling interval picks up the new commit, verification sees stale state — use the one-shot `argocd.argoproj.io/refresh=hard` annotation to speed up detection (Task 2 already used the same trick; non-destructive); (2) after Jaeger went live, `mesh-observability-quota`'s headroom was squeezed to just 64Mi (`limits.memory` 576Mi/640Mi), so anyone spawning a debug pod in this namespace to verify (including Task 4 and Task 7 themselves) can no longer rely on the LimitRange default (128Mi, doesn't fit in the remaining 64Mi) and must manually pass a smaller `--overrides` (e.g. request 10m/32Mi, limit 50m/64Mi)
+- **The final NodePort allocation matches the design-stage plan exactly; Task 1 landed with no port collisions**: Task 1 Step 1 verified all five ports `30110`-`30114` were empty before creating any resource; the final landed ports (`istiod-metrics 30110`, `ztunnel-metrics 30111`, `waypoint-metrics 30112`, `loki 30113`, `jaeger-query 30114`) match the plan listed in the "Components and configuration" table above word for word, and this document's Task 7 wrap-up check (Step 1) re-confirmed these five ports are still correctly bound and usable
+- **Loki/Promtail storage is temporary (added in the 2026-08-24 final review)**: `loki` mounts no volume for `/loki` (chunks/rules are in the container layer), and Promtail's positions file is at `/tmp/positions.yaml` — on pod recreation Loki clears stored logs and Promtail re-reads existing files (re-pushing recent lines as duplicates). The current volume is tiny (`pr-lanes` has no real user traffic) so it doesn't matter, but don't mistake this Loki for persistent storage; add a PVC if persistence is genuinely needed
+- **This diagnosis process used `sudo iptables -L`, `cilium-dbg monitor`, and temporarily created/deleted diagnostic pods (`netdiag-tmp*`, all cleaned up, not left in the cluster) — read-only or one-shot resources throughout, no modification of any ArgoCD-managed existing resource, consistent with the "k3s resources git-first" principle**
 
-## 交棒給後續階段
+## Handoff to later phases
 
-**J 階段查證**：J 階段設計文檔的「交棒給後續階段」原本預期 K 階段是「`lab-environment` 主動 scrape `pr-lanes`」，並提醒 K 階段要重新確認 J 的 `AuthorizationPolicy`（`selector: app: hello-backend`）是否影響這條路徑。本文件確認：新設計裡沒有任何元件的 selector 是 `app: hello-backend`（istiod/ztunnel/waypoint 的 metrics Service 各自選中自己的 label），J 階段的兩份 `AuthorizationPolicy` 完全不影響本階段新增的任何資源，這個交棒項目視為已解決。
+**Phase J verification**: Phase J's design document's "Handoff to later phases" originally expected Phase K to be "`lab-environment` actively scraping `pr-lanes`", and reminded Phase K to re-confirm whether J's `AuthorizationPolicy` (`selector: app: hello-backend`) affects this path. This document confirms: in the new design, no component's selector is `app: hello-backend` (istiod/ztunnel/waypoint's metrics Services each select their own labels), so Phase J's two `AuthorizationPolicy`s do not affect any resource added this phase; this handoff item is considered resolved.
 
-L 階段若走 `EnvoyFilter` 路徑做限流，跟本階段在 waypoint 上啟用的 tracing（透過 `Telemetry` CR，同樣是疊加在 Envoy 設定上）理論上互相獨立，但 L 階段評估時應該把「K 階段已經在 waypoint 上多跑一份 tracing 設定」列入考量，一併確認 `EnvoyFilter` 不會跟 tracing 的 filter chain 打架。
+If Phase L takes the `EnvoyFilter` path for rate limiting, it is theoretically independent of this phase's tracing enabled on the waypoint (via the `Telemetry` CR, likewise stacked on Envoy config), but Phase L's evaluation should factor in that "Phase K already runs an extra tracing config on the waypoint" and confirm `EnvoyFilter` won't fight the tracing filter chain.

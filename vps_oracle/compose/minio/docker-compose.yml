@@ -12,7 +12,7 @@ services:
         max-size: "10m"
         max-file: "5"
     env_file:
-      - .env   # MINIO_ROOT_USER / MINIO_ROOT_PASSWORD（gitignore，不提交）
+      - .env   # MINIO_ROOT_USER / MINIO_ROOT_PASSWORD (gitignored, not committed)
     environment:
       TZ: "Asia/Hong_Kong"
     command: server /data --console-address ":9001"
@@ -20,8 +20,8 @@ services:
       - /etc/minio/data:/data
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = minio, Forward Port = 9001（控制台，未发布到宿主机）。
-    # 9000（S3 API）不发布、不反代，纯内部使用，需要外部 S3 时再开。
+    # NPM reverse proxy: Forward Hostname/IP = minio, Forward Port = 9001 (console, not published to the host).
+    # 9000 (S3 API) is neither published nor reverse-proxied — purely internal; open it up when external S3 is needed.
 
 networks:
   proxy:

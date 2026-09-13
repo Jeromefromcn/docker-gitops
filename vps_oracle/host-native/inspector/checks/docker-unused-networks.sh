@@ -2,7 +2,7 @@
 # checks/docker-unused-networks.sh
 #
 # Removes custom docker networks with zero containers attached. Design
-# spec's "Docker 未用 network" row (auto tier, no age threshold —
+# spec's "Docker unused network" row (auto tier, no age threshold —
 # re-creating a network costs nothing). `--filter type=custom` already
 # excludes the predefined bridge/host/none, so per-network `docker
 # network rm` of the enumerated candidates is exactly `docker network

@@ -1,69 +1,69 @@
 ---
 name: inspector-check
-description: 给 vps_oracle/host-native/inspector 新增或修改一个巡检 check。当需要「加一个巡检项」「让 inspector 检测 X」「补一个告警」，或某次故障复盘后决定补自动检测时使用。强制 checks/ 与 tests/ 一一配对。
+description: Add or modify an inspection check under vps_oracle/host-native/inspector. Use when you need to "add an inspection item", "make inspector detect X", "add an alert", or decide after a failure post-mortem to add automated detection. Enforces one-to-one pairing of checks/ and tests/.
 ---
 
-# 新增一个 inspector 巡检 check
+# Add an inspector check
 
-巡检脚本由 systemd timer 每天 09:00/21:00 跑一次，每轮必发一封 Telegram 报告。背景和分级设计见 [设计文档](../../../docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md)。
+The inspection scripts run via a systemd timer at 09:00/21:00 daily, and each run always sends a Telegram report. For background and the tiering design, see the [design doc](../../../docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md).
 
-## 铁律：一个 check 一个测试
+## Hard rule: one check, one test
 
-`checks/<name>.sh` **必须**有对应的 `tests/test-<name>.sh`。CI（`.github/workflows/repo-conventions.yml`）会检查这个配对，缺了直接失败。先写测试再写实现。
+Every `checks/<name>.sh` **must** have a matching `tests/test-<name>.sh`. CI (`.github/workflows/repo-conventions.yml`) checks this pairing and fails outright if it's missing. Write the test before the implementation.
 
-## 1. 决定分级：auto 还是 alert
+## 1. Decide the tier: auto or alert
 
-| 分级 | 含义 | 什么时候用 |
+| Tier | Meaning | When to use |
 |---|---|---|
-| `auto` | 检测到就自动清理 | 误判的代价可接受且可逆——dangling image、stopped container、build cache |
-| `alert` | 只报告，等人决定 | **误判的代价不对称**——可能是某份数据的唯一副本，或需要人判断的系统状态。docker volume、Released PV、卡住的 Terminating pod 都是 alert |
+| `auto` | Detect and auto-clean | the cost of a false positive is acceptable and reversible — dangling image, stopped container, build cache |
+| `alert` | Report only, wait for a human | **the cost of a false positive is asymmetric** — possibly the sole copy of some data, or a system state that needs human judgment. docker volume, Released PV, stuck Terminating pod are all `alert` |
 
-拿不准就选 `alert`。
+If unsure, pick `alert`.
 
-## 2. 写测试（先）
+## 2. Write the test (first)
 
-照 [`tests/test-k3s-released-pvs.sh`](../../../vps_oracle/host-native/inspector/tests/test-k3s-released-pvs.sh) 的模式：
+Follow the pattern of [`tests/test-k3s-released-pvs.sh`](../../../vps_oracle/host-native/inspector/tests/test-k3s-released-pvs.sh):
 
-- `source "$SCRIPT_DIR/lib.sh"` 拿 `assert_true` / `finish_tests`
-- 在临时目录里写假的 `docker` / `kubectl` / `crictl` 脚本，`PATH` 前置注入——**测试必须是 hermetic 的**，绝不碰真实的 docker/k8s
-- 破坏性的 stub 命令（`rm`/`rmi`/`prune`/`delete`）把 argv 追加到 `$STUB_DIR/calls.log`，测试断言「到底会执行什么」
-- 时间相关的 fixture 用 `date -d '-30 minutes'` 在 stub 里现算，别写死时间戳
+- `source "$SCRIPT_DIR/lib.sh"` for `assert_true` / `finish_tests`
+- Write fake `docker` / `kubectl` / `crictl` scripts in a temp dir and prepend them to `PATH` — **tests must be hermetic**, never touching the real docker/k8s
+- Destructive stub commands (`rm`/`rmi`/`prune`/`delete`) append their argv to `$STUB_DIR/calls.log`, and the test asserts "what will actually be executed"
+- For time-related fixtures, compute inside the stub with `date -d '-30 minutes'` rather than hardcoding timestamps
 
-至少覆盖这几种情况：
+Cover at least these cases:
 
-- [ ] 该命中的命中了，且 detail 里有可操作的信息
-- [ ] 不该命中的没命中（边界值两侧各一个）
-- [ ] `auto` check：dry run 只提议不执行（`INSPECTOR_DRY_RUN=1`，断言 `calls.log` 不存在）
-- [ ] `alert` check：**从不**产出 `deleted` / `would-delete`
-- [ ] 依赖不可用时（kubeconfig 缺失、API 连不上）**发 alert，而不是静默跳过**
-- [ ] 字段缺失/格式不对时降级成 `unknown` 或跳过，不让整个循环崩掉
+- [ ] What should match does match, and the detail carries actionable information
+- [ ] What shouldn't match doesn't (one on each side of the boundary value)
+- [ ] `auto` check: dry run only proposes, never executes (`INSPECTOR_DRY_RUN=1`, assert `calls.log` doesn't exist)
+- [ ] `alert` check: **never** produces `deleted` / `would-delete`
+- [ ] When a dependency is unavailable (kubeconfig missing, API unreachable), **raise an alert instead of silently skipping**
+- [ ] On a missing field / bad format, degrade to `unknown` or skip, without crashing the whole loop
 
-## 3. 写 check
+## 3. Write the check
 
 ```bash
 #!/usr/bin/env bash
 # checks/<name>.sh
 #
-# <一句话说明检测什么>。<对应设计文档里的哪一行，以及分级理由>
+# <one line describing what this detects>. <which line in the design doc this corresponds to, and the tiering rationale>
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 ```
 
-- 输出一律走 `emit_result <tier> <action> <target> <detail>`，`tier` 是 `auto`/`alert`，`action` 是 `flagged`/`deleted`/`would-delete`
-- 阈值走环境变量并给默认值：`"${INSPECTOR_XXX:-900}"`
-- k3s 相关的 check 用 `${INSPECTOR_KUBECONFIG:-$INSPECTOR_STATE_DIR/kubeconfig}`，文件不存在时发 alert 提示跑 `k3s/setup-kubeconfig.sh`
-- `set -e` **不要**用（`-uo pipefail` 即可）——单个条目处理失败不该中断整轮巡检
+- Output always goes through `emit_result <tier> <action> <target> <detail>`; `tier` is `auto`/`alert`, `action` is `flagged`/`deleted`/`would-delete`
+- Thresholds come from environment variables with defaults: `"${INSPECTOR_XXX:-900}"`
+- k3s-related checks use `${INSPECTOR_KUBECONFIG:-$INSPECTOR_STATE_DIR/kubeconfig}`; when the file is missing, raise an alert pointing to running `k3s/setup-kubeconfig.sh`
+- Do **not** use `set -e` (`-uo pipefail` is enough) — a single item failing to process shouldn't abort the whole inspection round
 
-## 4. 挂进巡检主流程
+## 4. Wire into the main inspection flow
 
-确认 [`inspect.sh`](../../../vps_oracle/host-native/inspector/inspect.sh) 会发现这个新 check（看它是遍历目录还是有显式清单）。
+Confirm that [`inspect.sh`](../../../vps_oracle/host-native/inspector/inspect.sh) will discover the new check (see whether it iterates the directory or has an explicit list).
 
-## 5. 验证
+## 5. Verify
 
 ```bash
 cd vps_oracle/host-native/inspector/tests && ./test-<name>.sh
 for t in test-*.sh; do [ "$t" = test-common.sh ] || ./"$t" >/dev/null || echo "FAIL $t"; done
 ```
 
-全绿再提交。
+Commit only when all green.

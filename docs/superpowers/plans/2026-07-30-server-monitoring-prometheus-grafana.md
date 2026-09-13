@@ -178,7 +178,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-    # 不对外暴露: 没有登录认证, 只用 docker exec 或临时端口做本地 PromQL 调试
+    # Not exposed externally: there is no login auth; use docker exec or a temporary port for local PromQL debugging
 
   node-exporter:
     image: prom/node-exporter@sha256:c9ef89f9464f09e7234decaae68a80ab856ff0014435677a99fd48b03dd410ea  # v1.12.1
@@ -196,7 +196,7 @@ services:
       - /:/host:ro,rslave
     command:
       - '--path.rootfs=/host'
-    # 不用 network_mode: host: 牺牲网络吞吐指标精度换取部署简单,网络告警本来就不在这次范围内
+    # No network_mode: host: trade away network-throughput metric accuracy for simpler deployment — network alerting was never in scope this iteration anyway
 
   blackbox-exporter:
     image: prom/blackbox-exporter@sha256:2d27bd2523936a9f28d1073ee12fbae1497f7d45c1b08710a271cb6c48f06550  # v0.28.0
@@ -235,11 +235,11 @@ services:
     networks:
       - default
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = grafana, Forward Port = 3000
+    # NPM reverse-proxy config: Forward Hostname/IP = grafana, Forward Port = 3000
 
 networks:
   proxy:
-    external: true   # 手动创建一次：docker network create proxy
+    external: true   # created once by hand: docker network create proxy
 ```
 
 - [ ] **Step 5: Confirm with the user, then deploy**

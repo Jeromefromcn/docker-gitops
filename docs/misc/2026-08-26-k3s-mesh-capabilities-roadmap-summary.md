@@ -1,63 +1,63 @@
-# K3s 服務網格能力補完路線圖:落成演練與驗證手冊
+# K3s Service Mesh Capability Completion Roadmap: Completion Drill and Verification Manual
 
-日期:2026-08-26(2026-08-29 修訂:對齊 rpc 化後的 backend)
-狀態:I / J / K / L 四階段全部已上線並在集群內驗證通過(**路線圖原文表格未同步更新 K 階段狀態,見下方「勘誤」**)
-環境:Oracle VPS 單節點 k3s(Cilium CNI),ArgoCD GitOps,`pr-lanes` 命名空間(Istio Ambient)
-關聯文檔:[路線圖原文](../superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md)、各階段設計文檔見文末「關聯文檔」一節
-本文檔:面向「這四個階段到底做出了什麼、**怎麼完整演練操作**、怎麼驗證」的落成演練與驗證手冊,涵蓋從零落成與操作演練,不重複設計文檔的決策過程。**2026-08-29 起,`hello-backend` 已 rpc 化**(見 [rpc 規格](2026-08-28-hello-backend-rpc-spec.md)),超時/重試/熔斷改用其內建 `/slow`、`/fail-503`、`/fail-500` 端點驗證,不再需要臨時改鏡像。
+Date: 2026-08-26 (revised 2026-08-29: aligned with the RPC-ified backend)
+Status: all four phases I / J / K / L are live and verified in the cluster (**the roadmap's original table was not updated for the K phase status, see "Errata" below**)
+Environment: Oracle VPS single-node k3s (Cilium CNI), ArgoCD GitOps, `pr-lanes` namespace (Istio Ambient)
+Related docs: [roadmap original](../superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md), per-phase design docs in the "Related docs" section at the end
+This document: a completion-drill and verification manual aimed at "what exactly these four phases produced, **how to fully drill the operations**, how to verify", covering from-scratch completion and operational drills; it does not repeat the design docs' decision process. **From 2026-08-29, `hello-backend` has been RPC-ified** (see the [RPC spec](2026-08-28-hello-backend-rpc-spec.md)); timeout/retry/circuit-breaking are now verified using its built-in `/slow`, `/fail-503`, `/fail-500` endpoints, no longer requiring temporary image modifications.
 
 ---
 
-## 0. 勘誤:路線圖原文的完成度標記有誤
+## 0. Errata: the roadmap original's completion markers are wrong
 
-路線圖原文([2026-08-19-k3s-mesh-capabilities-roadmap.md](../superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md))的階段表格裡,K 階段目前寫的是「設計與實作計畫完成,待執行」。這是**過期資訊**——根據 git 歷史與集群現狀查證,K 階段其實已經在 2026-08-24 完整落地並驗證通過(commit `62f52ed`「Record Phase K implementation findings in the design doc」、`0ff2b2e`「Enable Loki compactor retention」、`2e07e7f`「Expose Jaeger UI via NPM reverse proxy」都是 K 階段收尾工作),只是路線圖表格那一行沒有跟著改成「✅ 已完成」。K 階段的設計文檔本身「已知限制」段落已經記錄了完整的實作發現(NodePort 分配確認無衝突、Jaeger service 命名、tracing 一次接通等),[實作計畫](../superpowers/plans/2026-08-24-k3s-phase-k-observability.md)的 checkbox 也同樣沒勾,屬於同一處疏漏。
+The roadmap original ([2026-08-19-k3s-mesh-capabilities-roadmap.md](../superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md))'s phase table currently lists the K phase as "design and implementation plan done, pending execution". This is **stale information** — according to git history and the cluster's current state, the K phase was actually fully completed and verified on 2026-08-24 (commits `62f52ed` "Record Phase K implementation findings in the design doc", `0ff2b2e` "Enable Loki compactor retention", `2e07e7f` "Expose Jaeger UI via NPM reverse proxy" are all K-phase wrap-up work), only the roadmap table's row was not updated to "✅ Completed". The K phase's design doc itself already records the full implementation findings in its "Known limitations" section (NodePort assignment confirmed conflict-free, Jaeger service naming, tracing connected on the first try, etc.), and the [implementation plan](../superpowers/plans/2026-08-24-k3s-phase-k-observability.md)'s checkboxes are likewise unchecked — the same single oversight.
 
-本文檔第 4 節已用 `kubectl`/`kubectl -n argocd get application` 現場核對,確認 I/J/K/L 四階段的資源都在集群裡跑著且健康。建議之後找機會把路線圖表格與實作計畫的 checkbox 一併補上「✅ 已完成」,但這不影響功能本身已經在用。
+Section 4 of this document has cross-checked live with `kubectl`/`kubectl -n argocd get application`, confirming that the I/J/K/L four phases' resources are all running and healthy in the cluster. It is suggested that, when the chance arises, the roadmap table and the implementation plan checkboxes be updated together to "✅ Completed", but this does not affect the functionality already in use.
 
-## 1. 一句話總結
+## 1. One-line summary
 
-延續 [F+G 階段](2026-08-19-k3s-phase-fg-pr-lanes-summary.md)搭好的 Istio Ambient 骨架,依序補齊了服務網格四大標準能力裡原本缺的部分:**I** 給 `pr-lanes` 加上金絲雀權重路由、超時、重試、熔斷、故障注入;**J** 加上東西向流量的身份級存取控制(AuthorizationPolicy);**K** 把指標/日誌/追蹤接進 compose 既有的 Prometheus/Grafana,外加一個新開的 `mesh-observability` namespace 跑 Loki/Jaeger;**L** 用 `TrafficExtension` + Lua 幫 `hello-backend` 加上固定窗口限流。四階段交付內容零新增常駐服務對外能力(除了 I 階段一個必要的 `hello-backend-canary` Deployment),優先複用既有元件與既有 Grafana/Prometheus;I 階段超時/重試/熔斷的行為級驗證原本需臨時改動 backend 鏡像製造真實上游故障(2026-08-29 前),現已 rpc 化,改用 backend 內建的 `/slow`、`/fail-503`、`/fail-500` 端點直接打即可(見 5.3),無需臨時改鏡像。
+Continuing the Istio Ambient skeleton built in [Phase F+G](2026-08-19-k3s-phase-fg-pr-lanes-summary.md), this phase sequentially filled the missing parts of the four standard service-mesh capability groups: **I** adds canary weight routing, timeout, retry, circuit-breaking, and fault injection to `pr-lanes`; **J** adds identity-level access control for east-west traffic (AuthorizationPolicy); **K** plugs metrics/logs/tracing into the compose-stack's existing Prometheus/Grafana, plus a newly opened `mesh-observability` namespace running Loki/Jaeger; **L** adds fixed-window rate limiting to `hello-backend` via `TrafficExtension` + Lua. The four phases deliver zero new resident externally-facing service capability (except for one necessary `hello-backend-canary` Deployment in Phase I), prioritizing reuse of existing components and the existing Grafana/Prometheus; Phase I's behavior-level verification of timeout/retry/circuit-breaking originally required temporarily modifying the backend image to produce a real upstream failure (before 2026-08-29), but after RPC-ification it now uses the backend's built-in `/slow`, `/fail-503`, `/fail-500` endpoints directly (see 5.3), no temporary image modification needed.
 
-## 2. 為什麼要做這個
+## 2. Why do this
 
-[container-topology v3](../../container-topology/v3.md) 定稿後對照業界服務網格四大類能力(流量管理、安全、可觀測性、彈性)盤點現狀,發現 F+G 階段只做了「PR 預覽泳道」這一個場景需要的 header 路由,金絲雀權重、超時重試、熔斷、故障注入、細粒度授權、指標/日誌/追蹤接入、限流全部缺席。這條路線圖把缺口收斂成四個階段,依風險分層處理(I 的四項合併因為同質、J 因為授權策略配錯會直接斷流所以獨立一輪 spec→plan→implement→verify、K 因為要跨 docker/k3s 網路邊界所以先查證再動工、L 先誠實評估「pr-lanes 目前沒有真實流量,限流要解決的問題還不存在」再決定要不要做)。完整背景見路線圖原文與各階段設計文檔開頭。
+After [container-topology v3](../../container-topology/v3.md) was finalized, the current state was audited against the industry's four major service-mesh capability groups (traffic management, security, observability, resilience), finding that Phase F+G only implemented the header routing needed for the single "PR preview lane" scenario, while canary weighting, timeout/retry, circuit-breaking, fault injection, fine-grained authorization, metrics/logs/tracing integration, and rate limiting were all absent. This roadmap converges the gaps into four phases, handled in risk-layered order (Phase I's four items merged because they are homogeneous; Phase J isolated into its own spec→plan→implement→verify round because a misconfigured authorization policy directly cuts traffic; Phase K first investigated then proceeded because it crosses the docker/k3s network boundary; Phase L first honestly evaluated "pr-lanes currently has no real traffic, so the problem rate limiting solves does not exist yet" before deciding whether to do it). Full background is in the roadmap original and the start of each phase's design doc.
 
-## 3. 四個階段各做了什麼
+## 3. What each of the four phases did
 
-### I 階段:流量彈性與路由治理(2026-08-22 完成)
+### Phase I: traffic resilience and routing governance (completed 2026-08-22)
 
-- **金絲雀權重路由**:`VirtualService`(不是最初設計的 Gateway API `HTTPRoute`——兩者在同一 host 共存時互相覆蓋,已刪除 `HTTPRoute`)把 90% 流量導向 `hello-backend`、10% 導向新增的 `hello-backend-canary` Deployment,與既有的 PR 泳道 header 路由互不干擾。
-- **超時**:`timeout: 10s`。行為級驗證需**真實上游慢**(見 5.3):fault injection 的 delay 是代理轉發前的本地等待,疊加同規則 timeout 時不被截斷(15s 延遲仍跑完整個請求才回 200)——這是 Envoy 對「故障注入 delay」的行為限制,非配置錯誤,也不代表 timeout 本身不可驗證。
-- **重試**:`attempts: 2, perTryTimeout: 2s, retryOn: 5xx,reset,connect-failure`。行為級驗證需**真實上游 5xx**(見 5.3):fault injection 的 abort 是 local reply,不會派送到上游,觸發不了重試。
-- **熔斷(outlier detection)**:`consecutive5xxErrors: 3, interval: 30s, baseEjectionTime: 30s, maxEjectionPercent: 100`(因兩個 backend 都只有 1 個副本,50% 會捨去成 0)。已下發到 Envoy dataplane。行為級 ejection 需**真實連續 5xx** 觸發(見 5.3):fault injection 的 abort 是 local reply 不派送到上游,outlier detection 看不到——要驗證得讓上游真的回 5xx,不是代理偽造。
-- **故障注入**:`x-fault-test: delay`/`abort` header 觸發,固定打中 `hello-backend`(不含金絲雀)。
+- **Canary weight routing**: `VirtualService` (not the originally designed Gateway API `HTTPRoute` — the two override each other when coexisting on the same host; the `HTTPRoute` has been deleted) routes 90% of traffic to `hello-backend` and 10% to the new `hello-backend-canary` Deployment, non-interfering with the existing PR-lane header routing.
+- **Timeout**: `timeout: 10s`. Behavior-level verification needs a **real slow upstream** (see 5.3): fault injection's delay is a local wait before the proxy forwards; when stacked with a same-rule timeout it is not truncated (a 15s delay still runs the full request then returns 200) — this is an Envoy behavior limitation for "fault-injection delay", not a config error, and does not mean timeout itself is unverifiable.
+- **Retry**: `attempts: 2, perTryTimeout: 2s, retryOn: 5xx,reset,connect-failure`. Behavior-level verification needs a **real upstream 5xx** (see 5.3): fault injection's abort is a local reply, not dispatched upstream, and cannot trigger retries.
+- **Circuit-breaking (outlier detection)**: `consecutive5xxErrors: 3, interval: 30s, baseEjectionTime: 30s, maxEjectionPercent: 100` (because both backends have only 1 replica, 50% would round down to 0). Already pushed to the Envoy dataplane. Behavior-level ejection needs **real consecutive 5xx** to trigger (see 5.3): fault injection's abort is a local reply not dispatched upstream, so outlier detection can't see it — to verify, the upstream must actually return 5xx, not a proxy-fabricated one.
+- **Fault injection**: triggered by the `x-fault-test: delay`/`abort` header, always hitting `hello-backend` (not including the canary).
 
-### J 階段:細粒度存取控制(2026-08-23 完成)
+### Phase J: fine-grained access control (completed 2026-08-23)
 
-- 兩份 `AuthorizationPolicy`:**Policy 1**(`hello-backend-waypoint-frontend-only`)掛在 waypoint Gateway 上,只放行來自 `hello-frontend-sa` 身份的呼叫;**Policy 2**(`hello-backend-require-waypoint`)掛在所有 `app: hello-backend` Pod 上,只放行來自 `waypoint` 身份的連線——兩層合起來擋掉「非 hello-frontend 呼叫」與「繞過 waypoint 直連 Pod」兩種路徑。
-- 新增兩個 ServiceAccount:`hello-frontend-sa`、`hello-backend-sa`(baseline/canary/所有 PR 泳道共用同一個)。
-- 上線走 Audit-first:Policy 1 先套 `istio.io/dry-run` 觀察一輪再轉 Enforce,Policy 2 因判斷條件單純直接人工比對後生效。
-- **誠實記錄的驗證缺口**:dry-run 觀察窗口從未實際觀察到一筆合法身份請求被 shadow-allow(全是刻意送入的非法請求觸發 shadow-deny),合法流量的真正確認是切到 Enforce 之後才發生。
+- Two `AuthorizationPolicy`s: **Policy 1** (`hello-backend-waypoint-frontend-only`) attached to the waypoint Gateway, allowing only calls from the `hello-frontend-sa` identity; **Policy 2** (`hello-backend-require-waypoint`) attached to all `app: hello-backend` Pods, allowing only connections from the `waypoint` identity — the two layers together block both "non-hello-frontend calls" and "bypassing the waypoint to hit the Pod directly".
+- Two new ServiceAccounts: `hello-frontend-sa`, `hello-backend-sa` (shared by baseline/canary/all PR lanes).
+- Rollout is Audit-first: Policy 1 first applied `istio.io/dry-run` for one observation round before switching to Enforce; Policy 2, because its condition is simple, took effect after direct manual comparison.
+- **Honestly recorded verification gap**: the dry-run observation window never actually observed a legitimate-identity request being shadow-allowed (all were deliberately injected illegal requests triggering shadow-deny); the real confirmation of legitimate traffic only happened after switching to Enforce.
 
-### K 階段:可觀測性接入(2026-08-24 完成,設計中途推翻重寫)
+### Phase K: observability integration (completed 2026-08-24, design overturned and rewritten mid-way)
 
-路線圖原文設計「複用 `lab-environment` 既有 Prometheus/Loki/Jaeger」在動工前查證發現站不住腳:那套元件全部 `replicas: 0`(平時沒在跑),且 `lab-environment/README.md` 明文宣告「deliberate 不跟真實監控共用 pipeline」。改採新架構:
+The roadmap original's design of "reuse `lab-environment`'s existing Prometheus/Loki/Jaeger" was found untenable upon pre-work investigation: those components are all `replicas: 0` (normally not running), and `lab-environment/README.md` explicitly declares "deliberately not sharing the pipeline with real monitoring". A new architecture was adopted:
 
-- 新開一個獨立 namespace `mesh-observability`,跑 Loki + Jaeger + 一個範圍限定在 `pr-lanes` 的 Promtail,不進 `pr-lanes-quota`、不進 `lab-environment`。
-- istiod / ztunnel / waypoint 各自的 Prometheus 端點新增一個 NodePort Service 曝露出來(不新增元件)。
-- **方向是 compose 既有 Prometheus/Grafana 主動連出去打 k3s NodePort**(pod 反向連 docker bridge 這個方向被叢集層級的 `fwmark`/`table 2004` 規則擋死,查證過但刻意不修)。
-- 過程中額外發現並修好兩層前置條件:(1) compose `prometheus`/`grafana` 容器的 docker network 預設閘道解析到錯的網段,改 `default` 網路 `internal: true` 修正;(2) 閘道修好後仍 `Connection refused`,根因是 `socketLB.hostNamespaceOnly: true` 讓 docker 容器連 NodePort 完全繞不過 Cilium 的兩條路徑,靠既有的 `nodeport-relay@<port>.service`(host-netns socat)逐埠註冊解決,新增了 `nodeport-relay@30110`~`30114` 五個 instance。
-- Jaeger UI 額外接了 NPM 反代(`jaeger.jerome.cloudns.asia`)與 homepage 卡片。
+- A new independent namespace `mesh-observability` runs Loki + Jaeger + a Promtail scoped to `pr-lanes`, neither in `pr-lanes-quota` nor in `lab-environment`.
+- istiod / ztunnel / waypoint each have a new NodePort Service exposing their Prometheus endpoints (no new components added).
+- **The direction is the compose-stack's existing Prometheus/Grafana actively reaching out to hit k3s NodePorts** (the reverse direction, pod reaching the docker bridge, is blocked by cluster-level `fwmark`/`table 2004` rules — investigated but deliberately not fixed).
+- In the process, two layers of preconditions were additionally found and fixed: (1) the compose `prometheus`/`grafana` containers' docker network default gateway resolved to the wrong subnet, fixed by setting the `default` network to `internal: true`; (2) after the gateway fix there was still `Connection refused`, rooted in `socketLB.hostNamespaceOnly: true` making docker containers completely unable to bypass Cilium's two paths to reach the NodePort, resolved by registering the existing `nodeport-relay@<port>.service` (host-netns socat) per port, adding five instances `nodeport-relay@30110`~`30114`.
+- The Jaeger UI additionally got an NPM reverse proxy (`jaeger.jerome.cloudns.asia`) and a homepage card.
 
-### L 階段:限流(2026-08-25 完成,原定兩條路徑均被否決)
+### Phase L: rate limiting (completed 2026-08-25, both originally planned paths rejected)
 
-- 原定兩條路徑查證後都是死路:升級 Gateway API 到 experimental channel——官方 GEP 列表至今沒有限流 API;Istio `EnvoyFilter`——在 ambient/waypoint 模式下不受官方背書。
-- 改採 **`TrafficExtension`(Istio 1.30 API)+ 內嵌 Lua** 固定窗口令牌桶,掛在 `hello-backend` Service 的 waypoint 入站 filter chain(`phase: STATS`),`hello-backend` 限流 60 req/min,超限回 `429` + `x-envoy-ratelimited: true`。
-- 線上驗證:100 次 burst 得 59×200/41×429,貼近設計目標;等待 65+ 秒窗口重置後恢復 200。
-- **filter chain 順序曾記錄有誤,已更正**:真正順序是 `rbac → grpc_stats → fault → cors → Lua 限流 → ... → router`——J 階段 RBAC 在 L 階段限流之前,未授權流量不會消耗限流額度。
-- **覆蓋邊界**:只保護經 `hello-backend` VIP 的流量(含 canary 90/10 內部轉發部分),不保護直連 `hello-backend-canary.pr-lanes.svc.cluster.local` 或繞過 waypoint 直連 Pod 的流量。
+- Both originally planned paths turned out to be dead ends after investigation: upgrading Gateway API to the experimental channel — the official GEP list still has no rate-limiting API; Istio `EnvoyFilter` — not officially endorsed in ambient/waypoint mode.
+- Switched to **`TrafficExtension` (Istio 1.30 API) + embedded Lua** fixed-window token bucket, attached to the `hello-backend` Service's waypoint inbound filter chain (`phase: STATS`), rate limiting `hello-backend` to 60 req/min, returning `429` + `x-envoy-ratelimited: true` on excess.
+- Live verification: 100 bursts got 59×200/41×429, close to the design target; waiting 65+ seconds for the window reset restored 200.
+- **The filter chain order was once recorded incorrectly and has been corrected**: the real order is `rbac → grpc_stats → fault → cors → Lua rate limit → ... → router` — Phase J's RBAC is before Phase L's rate limiting, so unauthorized traffic does not consume rate-limit quota.
+- **Coverage boundary**: only protects traffic through the `hello-backend` VIP (including the canary 90/10 internal forwarding part), not direct-to-`hello-backend-canary.pr-lanes.svc.cluster.local` or waypoint-bypassing direct-to-Pod traffic.
 
-## 4. 集群現況核對(本文檔撰寫時,2026-08-26 現場執行)
+## 4. Cluster current-state cross-check (at the time this document was written, executed live on 2026-08-26)
 
 ```bash
 $ kubectl -n pr-lanes get pods -o wide
@@ -91,182 +91,182 @@ loki-6c4dd9fb95-ls5xs       1/1     Running   10 (34h ago)
 promtail-6b45497c96-b5fvc   1/1     Running   0
 ```
 
-四階段的資源都存在且 `Running`/`ALLOW`。以下第 5 節提供逐項的**演練與驗證**步驟(涵蓋「改動→同步→驗證→還原」的落成操作)。
+The four phases' resources all exist and are `Running`/`ALLOW`. Section 5 below provides item-by-item **drill and verification** steps (covering the "change → sync → verify → revert" completion operations).
 
 ---
 
-## 4.5 驗證點總覽(10 項,逐項勾選)
+## 4.5 Verification-point overview (10 items, check them off one by one)
 
-10 個驗證點對應四大類能力。**「打勾」欄**:驗證通過就改成 `[x]`,全部打勾表示這份手冊完整跑完。⚠️ 標記表示該驗證點有副作用(建臨時 pod、灌流量、或短暫調整流量),執行前先看 5.0 記 quota 基準值。
+The 10 verification points correspond to the four major capability groups. **The "check" column**: change to `[x]` when a verification passes; all checked means this manual has been fully run through. ⚠️ markers denote a verification point with side effects (creating a temporary pod, injecting traffic, or briefly adjusting traffic); before executing, record the quota baseline value per 5.0 first.
 
-| ✓ | 能力 | 驗證點 | 驗證方式 | 預期結果 | 對應章節 |
+| ✓ | Capability | Verification point | Verification method | Expected result | Corresponding section |
 |---|---|---|---|---|---|
-| [x] | I | 金絲雀權重路由 | 連打 20 次統計 canary 命中 | ~10%(約 2 次) | 5.1 |
-| [x] | I | 超時 | `/slow`(15s)內建端點 | 約 6s 後被截斷回 504(非 200;perTryTimeout 2s×3 次嘗試) | 5.3 |
-| [x] | I | 重試 | `/fail-503` 內建端點 | 重試發生,上游持續失敗最終 503 | 5.3 |
-| [ ] | I | 熔斷 | 連打 `/fail-503` 3+ 次 | 觸發 ejection,之後 503,30s 後恢復 200 | 5.3 |
-| [ ] | I | 故障注入 | `x-fault-test: delay`/`abort` | delay ~15s、abort 立即錯誤碼 | 5.2 |
-| [ ] | J | 身份級授權 | 合法/非法兩路徑 | 合法 200、非法非 200 | 5.4 |
-| [ ] | K | 指標 | compose Prometheus targets | `istiod/ztunnel/waypoint up` | 5.5 |
-| [ ] | K | 日誌 | Loki 查 `pr-lanes` | 非空日誌條目 | 5.6 |
-scm-history-item:/home/ubuntu/jerome/docker-gitops?%7B%22repositoryId%22%3A%22scm0%22%2C%22historyItemId%22%3A%22c3d47724f94221efc9577929b139345fd01a98f9%22%2C%22historyItemParentId%22%3A%22682be36b4e71c002279803d4fb8a3f039814fbb0%22%2C%22historyItemDisplayId%22%3A%22c3d4772%22%7D| [ ] | K | 追蹤 | Jaeger 查 service | 含 waypoint 相關 service | 5.7 |
-| [ ] | L | 限流 | 灌 70 次請求 | 出現 429 + `x-envoy-ratelimited`,窗口重置後恢復 200 | 5.8 |
+| [x] | I | Canary weight routing | hit 20 times, count canary hits | ~10% (about 2 hits) | 5.1 |
+| [x] | I | Timeout | `/slow` (15s) built-in endpoint | truncated after ~6s returning 504 (not 200; perTryTimeout 2s×3 attempts) | 5.3 |
+| [x] | I | Retry | `/fail-503` built-in endpoint | retry occurs, upstream keeps failing, finally 503 | 5.3 |
+| [ ] | I | Circuit-breaking | hit `/fail-503` 3+ times | triggers ejection, then 503, recovers to 200 after 30s | 5.3 |
+| [ ] | I | Fault injection | `x-fault-test: delay`/`abort` | delay ~15s, abort immediate error code | 5.2 |
+| [ ] | J | Identity-level authorization | legal/illegal two paths | legal 200, illegal non-200 | 5.4 |
+| [ ] | K | Metrics | compose Prometheus targets | `istiod/ztunnel/waypoint up` | 5.5 |
+| [ ] | K | Logs | Loki query `pr-lanes` | non-empty log entries | 5.6 |
+scm-history-item:/home/ubuntu/jerome/docker-gitops?%7B%22repositoryId%22%3A%22scm0%22%2C%22historyItemId%22%3A%22c3d47724f94221efc9577929b139345fd01a98f9%22%2C%22historyItemParentId%22%3A%22682be36b4e71c002279803d4fb8a3f039814fbb0%22%2C%22historyItemDisplayId%22%3A%22c3d4772%22%7D| [ ] | K | Tracing | Jaeger query service | includes waypoint-related service | 5.7 |
+| [ ] | L | Rate limiting | inject 70 requests | 429 + `x-envoy-ratelimited` appears, recovers to 200 after window reset | 5.8 |
 
-⚠️ 注意:**超時/重試/熔斷**三項的行為級驗證用 rpc 化 backend 的內建端點(`/slow`、`/fail-503`、`/fail-500`)直接打,見 5.3,**不需要**臨時改 backend 鏡像。其中**熔斷**會短暫讓 backend 進入 ejected 狀態,驗完等 `baseEjectionTime: 30s` 過去自然恢復。
+⚠️ Note: the behavior-level verification of **timeout/retry/circuit-breaking** is done directly against the RPC-ified backend's built-in endpoints (`/slow`, `/fail-503`, `/fail-500`), see 5.3 — **no need** to temporarily modify the backend image. Among them **circuit-breaking** briefly puts the backend into the ejected state; after verifying, wait for `baseEjectionTime: 30s` to pass for natural recovery.
 
-## 5. 演練與驗證步驟
+## 5. Drill and verification steps
 
-以下所有指令假設在 `docker-gitops` 倉庫任意目錄執行,已有 `kubectl` 存取此 k3s 叢集的權限。凡標「⚠️ 有副作用」的步驟會建立臨時 debug pod 或短暫調整流量,執行前留意。
+All the commands below assume execution from any directory of the `docker-gitops` repo, with `kubectl` access to this k3s cluster already available. Steps marked "⚠️ has side effects" create a temporary debug pod or briefly adjust traffic — be aware before executing.
 
-### 5.0 通用前置檢查
+### 5.0 Common precondition check
 
 ```bash
-# 所有相關 ArgoCD Application 應為 Synced + Healthy
+# All relevant ArgoCD Applications should be Synced + Healthy
 kubectl get applications -n argocd -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status
 
-# pr-lanes 的 quota 目前用量(基準值,後續步驟前後比對應該不變)
+# pr-lanes quota current usage (baseline value; should be unchanged before vs after later steps)
 kubectl -n pr-lanes describe resourcequota pr-lanes-quota
 ```
 
-預期:`hello`、`istio-istiod`、`istio-ztunnel`、`istio-cni`、`istio-base`、`gateway-api`、`mesh-observability` 均 `Synced`/`Healthy`。
+Expected: `hello`, `istio-istiod`, `istio-ztunnel`, `istio-cni`, `istio-base`, `gateway-api`, `mesh-observability` are all `Synced`/`Healthy`.
 
 ---
 
-### 5.1 I 階段:金絲雀權重路由
+### 5.1 Phase I: canary weight routing
 
-**權重路由的規則是 `backend-virtualservice.yaml` 的第三條 http 規則**(無 header 匹配那條):`weight: 90 → hello-backend`(stable)、`weight: 10 → hello-backend-canary`。改這個 weight 就能驗證權重變化,這是 GitOps 落成循環(Git first → ArgoCD sync)。
+**The weight-routing rule is the third http rule of `backend-virtualservice.yaml`** (the one with no header match): `weight: 90 → hello-backend` (stable), `weight: 10 → hello-backend-canary`. Changing this weight verifies the weight change — this is the GitOps completion loop (Git first → ArgoCD sync).
 
-**A. 驗證現有權重(無改動)**
+**A. Verify current weights (no change)**
 
 ```bash
 FRONTEND_POD=$(kubectl -n pr-lanes get pod -l app=hello-frontend -o jsonpath='{.items[0].metadata.name}')
 
-# 連續打 20 次,統計 canary 命中比例,預期接近 10%(2 次上下)
+# Hit 20 times consecutively, count the canary-hit ratio, expected near 10% (about 2 hits)
 for i in $(seq 1 20); do
   kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s http://hello-backend.pr-lanes.svc.cluster.local/ | grep -o canary
 done | sort | uniq -c
 ```
 
-預期:約 2 次 `canary`,其餘無輸出(打中 stable 版本無 canary 字樣)。
+Expected: about 2 `canary`, the rest no output (hitting the stable version has no "canary" string).
 
-**B. 演練落成:改 weight 驗證權重變化(改動→同步→驗證→還原)**
+**B. Drill the completion: change weight to verify weight change (change → sync → verify → revert)**
 
-1. 編輯 `vps_oracle/k3s/apps/hello/k8s/backend-virtualservice.yaml`,把第三條規則的 `weight: 90`/`weight: 10` 改成 `weight: 70`/`weight: 30`。
-2. Commit + push(觸發 ArgoCD sync):
+1. Edit `vps_oracle/k3s/apps/hello/k8s/backend-virtualservice.yaml`, changing the third rule's `weight: 90`/`weight: 10` to `weight: 70`/`weight: 30`.
+2. Commit + push (triggers ArgoCD sync):
    ```bash
    git add vps_oracle/k3s/apps/hello/k8s/backend-virtualservice.yaml
    git commit -m "chore: temporarily shift canary weight to 70/30 for drill"
    git push origin main
    ```
-3. 等 ArgoCD sync(`kubectl get application hello -n argocd` 變 `Synced`)。
-4. 重跑上方 A 的 20 次統計——預期 canary 命中率明顯上升(約 6 次,而非 2 次)。
-5. **還原**:把 weight 改回 90/10,再 commit + push。
+3. Wait for ArgoCD sync (`kubectl get application hello -n argocd` becomes `Synced`).
+4. Rerun the 20-hit count of A above — expected canary-hit ratio rises noticeably (about 6 hits, not 2).
+5. **Revert**: change the weight back to 90/10, then commit + push.
 
-**副作用**:無(不重建 pod,僅改 Envoy 路由權重)。
+**Side effects**: none (no pod rebuild, only changes the Envoy routing weight).
 
-### 5.2 I 階段:故障注入(delay/abort)
+### 5.2 Phase I: fault injection (delay/abort)
 
 ```bash
-# 不帶 header:正常回應,無延遲
+# Without header: normal response, no delay
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' http://hello-backend.pr-lanes.svc.cluster.local/
 
-# 帶 x-fault-test: delay:預期整整 ~15s 後才回 200(已知限制:timeout 10s 不會截斷,這是 Envoy 行為限制,不是 bug)
+# With x-fault-test: delay: expected 200 only after a full ~15s (known limitation: timeout 10s does not truncate; this is an Envoy behavior limitation, not a bug)
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H 'x-fault-test: delay' http://hello-backend.pr-lanes.svc.cluster.local/
 
-# 帶 x-fault-test: abort:預期立即返回故障注入設定的錯誤碼(非 200)
+# With x-fault-test: abort: expected immediate return of the error code set by fault injection (not 200)
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H 'x-fault-test: abort' http://hello-backend.pr-lanes.svc.cluster.local/
 ```
 
-### 5.3 I 階段:超時、重試、熔斷的行為級驗證(rpc 化 backend 內建故障端點)
+### 5.3 Phase I: behavior-level verification of timeout, retry, circuit-breaking (RPC-ified backend's built-in failure endpoints)
 
-**背景**:**不要**用 `x-fault-test: delay/abort` 來驗證這三項——那是代理本地的 local reply/轉發前等待,請求不會真正派送/慢到上游,重試與 outlier detection 都看不到,超時也不會被截斷。要驗證行為,必須讓**上游(hello-backend)真的變慢或真的回 5xx**。
+**Background**: **do not** use `x-fault-test: delay/abort` to verify these three — those are the proxy's local reply / pre-forward wait; the request is never actually dispatched / slowed at the upstream, so retry and outlier detection can't see it, and timeout is not truncated. To verify the behavior, the **upstream (hello-backend) must actually become slow or actually return 5xx**.
 
-**做法(2026-08-29 起)**:`hello-backend` 已 rpc 化(見 [rpc 規格](2026-08-28-hello-backend-rpc-spec.md)),**內建**真實上游端點,直接打即可,不需要臨時改鏡像:
+**Approach (from 2026-08-29)**: `hello-backend` has been RPC-ified (see the [RPC spec](2026-08-28-hello-backend-rpc-spec.md)), with **built-in** real upstream endpoints — hit them directly, no temporary image modification:
 
-- `GET /slow`:延遲 `SLOW_DELAY_SECONDS`(預設 **15s**)後回 200 → 慢於 `perTryTimeout: 2s` × 3 次嘗試(實際 ~6s 截斷,見下),觸發超時
-- `GET /fail-503`:立即回 503 → 觸發重試(`retryOn: 5xx`)與熔斷(`outlierDetection`)
-- `GET /fail-500`:立即回 500 → 觸發重試(`retryOn: 5xx`),重試後仍 500,最終回 **503**
-- `GET /healthz`:回 200(供 probe)
+- `GET /slow`: delays `SLOW_DELAY_SECONDS` (default **15s**) then returns 200 → slower than `perTryTimeout: 2s` × 3 attempts (actually truncated at ~6s, see below), triggering timeout
+- `GET /fail-503`: immediately returns 503 → triggers retry (`retryOn: 5xx`) and circuit-breaking (`outlierDetection`)
+- `GET /fail-500`: immediately returns 500 → triggers retry (`retryOn: 5xx`), still 500 after retry, finally returns **503**
+- `GET /healthz`: returns 200 (for probes)
 
-**實測行為(2026-08-29 初測 / 2026-09-01 修正)**:
-- `/slow`(15s)會被 Envoy 截斷,但**不是** `timeout: 10s` 觸發,而是 `retries.perTryTimeout: 2s` 先到點:每次嘗試 2s 超時,`attempts: 2` = 原始 1 次 + 重試 2 次 = 共 **3 次嘗試**,總耗時 **≈ 6s**(2s × 3),重試配額耗盡後回 **504**(不是 503、不是 10s)。`timeout: 10s` 是總預算上限,但 6s 就先耗盡重試配額,所以它實際從未觸發。
-- `/fail-500` 觸發 retry(2 次),上游持續 500,最終回 **503**。
-- 所以**超時**的最終可見狀態碼是 **504**(每次嘗試都是 timeout 類錯誤);**重試**(上游持續 5xx)的最終可見狀態碼是 **503**。區分機制看 `%{time_total}`:超時約 6s、重試立即(<1s)。
+**Observed behavior (initial test 2026-08-29 / corrected 2026-09-01)**:
+- `/slow` (15s) is truncated by Envoy, but **not** by `timeout: 10s` — rather `retries.perTryTimeout: 2s` hits first: each attempt times out at 2s, `attempts: 2` = 1 original + 2 retries = **3 attempts total**, total elapsed **≈ 6s** (2s × 3); after the retry quota is exhausted it returns **504** (not 503, not 10s). `timeout: 10s` is the total budget ceiling, but 6s exhausts the retry quota first, so it never actually triggers.
+- `/fail-500` triggers retry (2 times), upstream keeps 500, finally returns **503**.
+- So the final visible status code of **timeout** is **504** (every attempt is a timeout-class error); the final visible status code of **retry** (upstream keeps 5xx) is **503**. Distinguish the mechanism by `%{time_total}`: timeout about 6s, retry immediate (<1s).
 
-**驗證步驟**(先記下第 5.0 節的 quota 基準值):
+**Verification steps** (record the section 5.0 quota baseline first):
 
 ```bash
 FRONTEND_POD=$(kubectl -n pr-lanes get pod -l app=hello-frontend -o jsonpath='{.items[0].metadata.name}')
 SVC=http://hello-backend.pr-lanes.svc.cluster.local
 
-# 2 超時:預期約 6s 後被截斷回 504(非 200;time_total ≈ 6s = perTryTimeout 2s × 3 次嘗試)
-#   ⚠️ 觸發 outlier ejection:連續 504/5xx 會把 backend 踢出(見 #4),重跑前先等 baseEjectionTime 30s
+# 2 Timeout: expected truncated after ~6s returning 504 (not 200; time_total ≈ 6s = perTryTimeout 2s × 3 attempts)
+#   ⚠️ triggers outlier ejection: consecutive 504/5xx will eject the backend (see #4), wait baseEjectionTime 30s before rerunning
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- \
   curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' "$SVC/slow"
 
-# 3 重試:上游固定 503,retryOn: 5xx 觸發,attempts: 2 重試兩次後最終仍 503(立即回,time_total < 1s)
+# 3 Retry: upstream fixed 503, retryOn: 5xx triggers, attempts: 2 retries twice then finally still 503 (immediate, time_total < 1s)
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- \
   curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' "$SVC/fail-503"
 
-# 4 熔斷:連續 3 次 5xx 觸發 ejection,之後請求回 503/No Healthy Upstream,
-#   等 baseEjectionTime: 30s 過去後恢復 200
+# 4 Circuit-breaking: 3 consecutive 5xx trigger ejection, afterwards requests return 503/No Healthy Upstream,
+#   after baseEjectionTime: 30s passes it recovers to 200
 for i in $(seq 1 4); do
   kubectl -n pr-lanes exec "$FRONTEND_POD" -- \
     curl -s -o /dev/null -w '%{http_code}\n' "$SVC/fail-503"
 done
 ```
 
-**預期**:超時 → 約 6s 後 504(`time_total≈6s`,perTryTimeout 2s × 3 次嘗試;非 200、非 10s);重試 → 立即 503(`time_total<1s`,重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。
+**Expected**: timeout → 504 after ~6s (`time_total≈6s`, perTryTimeout 2s × 3 attempts; not 200, not 10s); retry → immediate 503 (`time_total<1s`, retry occurs but upstream keeps failing); circuit-breaking → after the 3rd request requests start being rejected (503), recovering to 200 after stopping for 30s+.
 
-預期:超時 → 約 6s 後 504(`time_total≈6s`,perTryTimeout 2s × 3 次嘗試;非 200、非 10s);重試 → 立即 503(`time_total<1s`,重試發生但上游持續失敗);熔斷 → 第 3 次後請求開始被拒(503),停 30s 以上後恢復 200。**無需恢復任何東西**——端點是 backend 內建的常駐能力,不打就等於沒影響;熔斷的 ejected 狀態會隨 `baseEjectionTime` 自動恢復。**唯一要注意**:熔斷驗證期間 backend 會短暫被 ejected,`/` 也會受影響(所有上游都在 ejected 清單裡),等 30s+ 即恢復。
+Expected: timeout → 504 after ~6s (`time_total≈6s`, perTryTimeout 2s × 3 attempts; not 200, not 10s); retry → immediate 503 (`time_total<1s`, retry occurs but upstream keeps failing); circuit-breaking → after the 3rd request requests start being rejected (503), recovering to 200 after stopping for 30s+. **Nothing needs recovery** — the endpoints are the backend's built-in resident capability; not hitting them means no impact at all; the circuit-breaking ejected state auto-recovers per `baseEjectionTime`. **The only thing to note**: during circuit-breaking verification the backend is briefly ejected and `/` is also affected (all upstreams are on the ejected list); it recovers after 30s+.
 
-> 說明:`/fail-500` 也適合驗證重試(500 → retry → 仍 500 → 最終 503);要驗證「重試後成功」需要上游「先失敗後恢復」的邏輯,超出本文檔驗證範圍(可臨時改 `SLOW_DELAY_SECONDS`/自訂端點或縮放副本)。
+> Note: `/fail-500` also suits retry verification (500 → retry → still 500 → finally 503); to verify "retry then success" you need "fail first then recover" upstream logic, which exceeds this document's verification scope (you can temporarily change `SLOW_DELAY_SECONDS`/custom endpoint or scale replicas).
 
-**重試是否「真的發生」的請求級證據(2026-09-01 實測確認)**:backend 因 `log_message` override 不記 access log,waypoint access log 每條只記**最終請求**(重試 attempt 會合併成一條),ztunnel 記錄是**連接級**非請求級——三者都無法直接數 attempt 次數。可靠的做法是**用時間當尺子**打 `/slow`:
-- `/slow`(15s)+ retry `perTryTimeout: 2s` × 3 次 attempt → 實測 **504, `time_total` ≈ 6.0s**,且 waypoint access log 顯示 `504 URX,UT upstream_per_try_timeout`(`URX`=retry limit exceeded、`UT`=upstream per-try timeout)——這兩個 flag 就是重試發生且耗盡的請求級鐵證。
-- 若重試**不**生效,`/slow` 會是 10s(timeout)或 15s(完整 delay),而不是 6s。
-- 對照組 `/fail-503`(503 立即回)→ 最終 `503 URX via_upstream`,`time_total` < 0.1s(503 不消耗時間,與 `/slow` 的 6s 形成鮮明對比,靠 `time_total` 一眼區分重試與超時)。
+**Request-level evidence of whether retry "really happened" (confirmed by live test 2026-09-01)**: the backend does not write access logs due to the `log_message` override; the waypoint access log records only the **final request** per entry (retry attempts merge into one entry); ztunnel records are **connection-level**, not request-level — none of the three can directly count attempts. The reliable approach is to **use time as the ruler** hitting `/slow`:
+- `/slow` (15s) + retry `perTryTimeout: 2s` × 3 attempts → observed **504, `time_total` ≈ 6.0s**, and the waypoint access log shows `504 URX,UT upstream_per_try_timeout` (`URX`=retry limit exceeded, `UT`=upstream per-try timeout) — these two flags are the request-level iron proof that retry occurred and was exhausted.
+- If retry were **not** effective, `/slow` would be 10s (timeout) or 15s (full delay), not 6s.
+- Control group `/fail-503` (503 immediate) → finally `503 URX via_upstream`, `time_total` < 0.1s (503 consumes no time, forming a sharp contrast with `/slow`'s 6s; relying on `time_total`, retry vs timeout is distinguishable at a glance).
 
-**為什麼 Loki 只查得到「一條」日誌(2026-09-01 實測確認)**:別被「數日誌條數」誤導——「一條」是正常現象,不是重試沒發生。原因是觀測分層:
+**Why Loki only ever shows "one" log entry (confirmed by live test 2026-09-01)**: don't be misled by "counting log entries" — "one entry" is the normal phenomenon, not retry not occurring. The reason is the observation layering:
 
 ```
-frontend ──HBONE──> ztunnel(L4) ──> waypoint(L7:retry/超時/熔斷) ──> ztunnel(L4) ──> backend
+frontend ──HBONE──> ztunnel(L4) ──> waypoint(L7: retry/timeout/circuit-breaking) ──> ztunnel(L4) ──> backend
 ```
 
-| 層 | 觀測方式 | 粒度 | 一次 `/slow`(3 次 attempt)看到幾條 |
+| Layer | Observation method | Granularity | How many entries one `/slow` (3 attempts) shows |
 |---|---|---|---|
-| waypoint access log(Loki) | `accessLogFile: /dev/stdout`,promtail 採集 | **每請求一條**,重試 attempt 合併、以 flag 標記 | **1 條**(`504 URX,UT upstream_per_try_timeout`) |
-| ztunnel 日誌 | `connection complete` | **每 HBONE 連接一條**(ambient 的 L4 層) | **3 條**(同一連接 `48890`,間隔 ~2s 各一次) |
-| backend | `log_message` 被 override 成空 | 無 | 0 條 |
-| 客戶端 `time_total` | curl 計時 | 每請求一次 | 6.05s = 2s × 3 |
+| waypoint access log (Loki) | `accessLogFile: /dev/stdout`, collected by promtail | **one per request**, retry attempts merged and marked with flags | **1 entry** (`504 URX,UT upstream_per_try_timeout`) |
+| ztunnel log | `connection complete` | **one per HBONE connection** (ambient's L4 layer) | **3 entries** (same connection `48890`, ~2s apart each) |
+| backend | `log_message` overridden to empty | none | 0 entries |
+| client `time_total` | curl timing | once per request | 6.05s = 2s × 3 |
 
-- **Envoy waypoint 的 access log 就是「一個請求 → 一條」**:重試的每次 attempt 不單獨寫日誌,只在最終那條上追加 `URX`(retry limit exceeded)與 `UT`(per-try timeout)flag。所以「數到一條 + 看到 `URX,UT`」= 重試確實發生並耗盡,這是**請求級鐵證**。
-- 要看**每次 attempt 的明細**,得查 ztunnel 的 `connection complete`(它按 HBONE 連接記,重試會建立新連接/在新連接上轉發);backend 本身無日誌,數不出請求次數。
-- 因此驗證重試的**正確尺子是 `time_total`(6s=2s×3)與 `URX,UT` flag**,而不是「Loki 裡有幾條」。若重試不生效,`/slow` 會是 10s(timeout)或 15s(完整 delay),flag 也會是普通 `-`/`UO` 而非 `URX`。
+- **Envoy waypoint's access log is "one request → one entry"**: each retry attempt does not write its own log, only appends `URX` (retry limit exceeded) and `UT` (per-try timeout) flags to the final entry. So "counted one + saw `URX,UT`" = retry really occurred and was exhausted — this is the **request-level iron proof**.
+- To see the **detail of each attempt**, query ztunnel's `connection complete` (it records per HBONE connection; retries create new connections / forward on new connections); the backend itself has no log, so the request count can't be derived.
+- Therefore the **correct ruler for verifying retry is `time_total` (6s=2s×3) and the `URX,UT` flag**, not "how many entries are in Loki". If retry is not effective, `/slow` would be 10s (timeout) or 15s (full delay), and the flag would be a normal `-`/`UO` not `URX`.
 
-### 5.4 J 階段:身份級授權(合法路徑放行 / 非法路徑拒絕)
+### 5.4 Phase J: identity-level authorization (legal path allowed / illegal path denied)
 
 ```bash
-# 合法路徑:hello-frontend 呼叫 hello-backend,預期 200
+# Legal path: hello-frontend calls hello-backend, expected 200
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code}\n' http://hello-backend.pr-lanes.svc.cluster.local/
 
-# ⚠️ 有副作用(建立臨時 pod,--rm 自動清理):非法身份(default SA)呼叫 hello-backend Service,
-# 因 Service 有 use-waypoint label 會被導去 waypoint,驗證 Policy 1——預期被拒絕
+# ⚠️ has side effects (creates a temporary pod, --rm auto-cleans): illegal identity (default SA) calling the hello-backend Service,
+# because the Service has the use-waypoint label it is directed to the waypoint, verifying Policy 1 — expected rejected
 kubectl -n pr-lanes run authz-test-1 --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
   curl -s -o /dev/null -w '%{http_code}\n' http://hello-backend.pr-lanes.svc.cluster.local/
 
-# ⚠️ 有副作用:繞過 waypoint,直連 Pod IP,驗證 Policy 2 獨立生效——預期被拒絕(連線被拒或 403)
+# ⚠️ has side effects: bypass the waypoint, hit the Pod IP directly, verifying Policy 2 independently — expected rejected (connection refused or 403)
 BACKEND_IP=$(kubectl -n pr-lanes get pod -l app=hello-backend,lane=baseline -o jsonpath='{.items[0].status.podIP}')
 kubectl -n pr-lanes run authz-test-2 --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
   curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 "http://${BACKEND_IP}:8080/"
 ```
 
-預期:第一條 `200`;第二、三條均非 `200`(連線被拒或逾時,`--max-time 5` 避免卡住)。
+Expected: the first `200`; the second and third both non-`200` (connection refused or timeout, `--max-time 5` avoids hanging).
 
-### 5.5 K 階段:指標(compose Prometheus 能拉到 istiod/ztunnel/waypoint)
+### 5.5 Phase K: metrics (compose Prometheus can pull istiod/ztunnel/waypoint)
 
 ```bash
-# 從宿主機直接查 compose Prometheus 的 targets API(只走內網,無需進容器)
+# Query compose Prometheus's targets API directly from the host (internal network only, no need to enter a container)
 curl -s http://172.19.0.4:9090/api/v1/targets | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -276,9 +276,9 @@ for t in data['data']['activeTargets']:
 "
 ```
 
-預期:`istiod up`、`ztunnel up`、`waypoint up`。也可以直接開瀏覽器看 Grafana(`https://grafana.jerome.cloudns.asia`)裡的既有 Prometheus 資料源查這三個 job 的指標。
+Expected: `istiod up`, `ztunnel up`, `waypoint up`. You can also open Grafana (`https://grafana.jerome.cloudns.asia`) in a browser and query the metrics of these three jobs via the existing Prometheus data source.
 
-### 5.6 K 階段:日誌(Loki 能查到 waypoint access log)
+### 5.6 Phase K: logs (Loki can query the waypoint access log)
 
 ```bash
 for i in $(seq 1 3); do kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null http://hello-backend.pr-lanes.svc.cluster.local/; done
@@ -286,35 +286,35 @@ sleep 15
 curl -s "http://10.0.0.95:30113/loki/api/v1/query_range?query=%7Bnamespace%3D%22pr-lanes%22%7D&limit=5" | python3 -m json.tool | head -30
 ```
 
-預期:回傳非空的日誌條目(waypoint access log 或 pod stdout)。也可在 Grafana 的 Loki 資料源(Explore 頁面)用 `{namespace="pr-lanes"}` 查詢。
+Expected: non-empty log entries returned (waypoint access log or pod stdout). You can also query in the Grafana Loki data source (Explore page) with `{namespace="pr-lanes"}`.
 
-### 5.7 K 階段:追蹤(Jaeger 能查到剛才那次呼叫的 trace)
+### 5.7 Phase K: tracing (Jaeger can query the trace of the call just made)
 
 ```bash
 curl -s "http://10.0.0.95:30114/api/services" | python3 -m json.tool
 ```
 
-預期:服務列表包含跟 `hello-backend`/waypoint 相關的條目(**已知限制**:實際 service 名稱是 `waypoint.pr-lanes`,不是 `hello-frontend`/`hello-backend`——ambient mesh 下 span 是用 waypoint 自己的身份打標籤,operationName 才是 `hello-backend:80/*`)。也可以直接開 `https://jaeger.jerome.cloudns.asia`(需 Basic Auth + access list)用瀏覽器查。
+Expected: the service list contains entries related to `hello-backend`/waypoint (**known limitation**: the actual service name is `waypoint.pr-lanes`, not `hello-frontend`/`hello-backend` — under ambient mesh spans are labeled with the waypoint's own identity, and the operationName is `hello-backend:80/*`). You can also open `https://jaeger.jerome.cloudns.asia` directly (requires Basic Auth + access list) and query in a browser.
 
-### 5.8 L 階段:限流(429 行為 + 窗口重置)
+### 5.8 Phase L: rate limiting (429 behavior + window reset)
 
 ```bash
-# 連續灌 70 次請求(閾值 60 req/min),統計狀態碼分布——預期前面多數 200,後面出現 429
+# Inject 70 consecutive requests (threshold 60 req/min), count the status-code distribution — expected mostly 200 first, then 429 appears
 for i in $(seq 1 70); do
   kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code}\n' http://hello-backend.pr-lanes.svc.cluster.local/
 done | sort | uniq -c
 
-# 確認 429 回應帶正確 header
+# Confirm the 429 response carries the correct header
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -D - -o /dev/null http://hello-backend.pr-lanes.svc.cluster.local/ | grep -i x-envoy-ratelimited
 
-# 等窗口重置(60s+)後應恢復 200 —— 這步會多等 65 秒
+# After the window resets (60s+) it should recover to 200 — this step waits an extra 65 seconds
 sleep 65
 kubectl -n pr-lanes exec "$FRONTEND_POD" -- curl -s -o /dev/null -w '%{http_code}\n' http://hello-backend.pr-lanes.svc.cluster.local/
 ```
 
-預期:70 次裡出現一定比例 `429`(視距離上次窗口重置的時間點而定,不必剛好 60/10);429 回應帶 `x-envoy-ratelimited: true`;等待窗口重置後恢復 `200`。
+Expected: among the 70 hits a certain proportion of `429` appears (depending on timing relative to the last window reset, not necessarily exactly 60/10); 429 responses carry `x-envoy-ratelimited: true`; after the window reset it recovers to `200`.
 
-### 5.9 收尾:確認 quota 與其餘 Application 都沒被動到
+### 5.9 Wrap up: confirm the quota and other Applications are untouched
 
 ```bash
 kubectl -n pr-lanes describe resourcequota pr-lanes-quota
@@ -323,21 +323,21 @@ kubectl get applications -n argocd -o custom-columns=NAME:.metadata.name,SYNC:.s
 kubectl -n lab-environment get deployments -o custom-columns=NAME:.metadata.name,REPLICAS:.spec.replicas
 ```
 
-預期:`pr-lanes-quota` 與第 5.0 節記下的基準值一致;`mesh-observability-quota` 用量在額度內;全部 Application 仍 `Synced`/`Healthy`;`lab-environment` 所有 Deployment 仍 `REPLICAS: 0`(本路線圖從未動過它)。
+Expected: `pr-lanes-quota` matches the baseline recorded in section 5.0; `mesh-observability-quota` usage within quota; all Applications still `Synced`/`Healthy`; all `lab-environment` Deployments still `REPLICAS: 0` (this roadmap never touched it).
 
-## 6. 已知限制總覽(不要重複踩坑)
+## 6. Known-limitations overview (don't step on the same pitfalls)
 
-- I:`fault.delay` 疊加同規則 `timeout` 不會被截斷——這是 Envoy 對「故障注入 delay」的行為限制,不代表 timeout 本身不可驗證(真實上游慢時 timeout 會正常截斷,見 5.3);`x-fault-test: abort` 無法觸發熔斷/重試(local reply 不到 upstream)——要行為級驗證得讓上游真的回 5xx(見 5.3);金絲雀權重把 PR 泳道並發容量從 8 降到 7。
-- J:授權 dry-run 觀察期實際上從未觀察到合法請求被 shadow-allow,真正驗證合法路徑是切 Enforce 之後才做的;PR 泳道 backend(`hello-backend-pr-N`)的保護目前只有架構分析佐證,沒有真正 PR 泳道實地測過。
-- K:Envoy trace 有取樣率設定(目前 100%,故意調高,因為沒有真實流量不擔心成本);Jaeger/Loki 都是非持久化儲存,pod 重建會清空;任何要幫 compose 新接一個 k3s NodePort 的人都要記得**兩層前置條件**——docker network 閘道(已修)+ `nodeport-relay@<port>.service`(要逐埠註冊),漏了第二層會出現看起來像閘道又壞了的 `connection refused`。
-- L:限流覆蓋邊界只到 `hello-backend` VIP,不含直連 canary Service 或繞過 waypoint 的流量;waypoint 是單 worker(`concurrency: 1`)所以令牌桶狀態是真全域,不是近似值。
+- I: `fault.delay` stacked with a same-rule `timeout` is not truncated — this is an Envoy behavior limitation for "fault-injection delay", not that timeout itself is unverifiable (with a real slow upstream the timeout truncates normally, see 5.3); `x-fault-test: abort` cannot trigger circuit-breaking/retry (local reply does not reach the upstream) — to verify at the behavior level, the upstream must actually return 5xx (see 5.3); the canary weight reduces PR-lane concurrent capacity from 8 to 7.
+- J: the authorization dry-run observation period never actually observed a legitimate request being shadow-allowed; the real verification of the legal path was only done after switching to Enforce; the protection of the PR-lane backend (`hello-backend-pr-N`) currently has only architectural-analysis support, never tested live against a real PR lane.
+- K: Envoy tracing has a sampling-rate setting (currently 100%, deliberately raised, because there is no real traffic so cost is no concern); Jaeger/Loki are both non-persistent storage, cleared on pod rebuild; anyone helping compose to connect a new k3s NodePort must remember the **two layers of preconditions** — the docker network gateway (fixed) + `nodeport-relay@<port>.service` (register per port); missing the second layer produces `connection refused` that looks like the gateway broke again.
+- L: the rate-limit coverage boundary goes only to the `hello-backend` VIP, not direct-to-canary-Service traffic or waypoint-bypassing traffic; the waypoint is single-worker (`concurrency: 1`) so the token-bucket state is truly global, not an approximation.
 
-## 7. 關聯文檔
+## 7. Related docs
 
-- 路線圖原文:[2026-08-19-k3s-mesh-capabilities-roadmap.md](../superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md)
-- I 階段:[設計文檔](../superpowers/specs/2026-08-22-k3s-phase-i-traffic-resilience-design.md) / [實作計畫](../superpowers/plans/2026-08-22-k3s-phase-i-traffic-resilience.md)
-- J 階段:[設計文檔](../superpowers/specs/2026-08-23-k3s-phase-j-authorization-design.md) / [實作計畫](../superpowers/plans/2026-08-23-k3s-phase-j-authorization.md)
-- K 階段:[設計文檔](../superpowers/specs/2026-08-24-k3s-phase-k-observability-design.md) / [實作計畫](../superpowers/plans/2026-08-24-k3s-phase-k-observability.md)
-- L 階段:[設計文檔](../superpowers/specs/2026-08-25-k3s-phase-l-ratelimit-design.md) / [評估筆記](../superpowers/specs/2026-08-25-k3s-phase-l-ratelimit-evaluation.md) / [實作計畫](../superpowers/plans/2026-08-25-k3s-phase-l-ratelimit.md)
-- K 階段相關事故排查:[compose→k3s NodePort 閘道問題](../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md)、[k3s pod→docker bridge 黑洞](../incidents/2026-08-24-k3s-pod-to-docker-bridge-blackhole.md)
-- 前置階段總結:[F+G 階段總結](2026-08-19-k3s-phase-fg-pr-lanes-summary.md)
+- Roadmap original: [2026-08-19-k3s-mesh-capabilities-roadmap.md](../superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md)
+- Phase I: [design doc](../superpowers/specs/2026-08-22-k3s-phase-i-traffic-resilience-design.md) / [implementation plan](../superpowers/plans/2026-08-22-k3s-phase-i-traffic-resilience.md)
+- Phase J: [design doc](../superpowers/specs/2026-08-23-k3s-phase-j-authorization-design.md) / [implementation plan](../superpowers/plans/2026-08-23-k3s-phase-j-authorization.md)
+- Phase K: [design doc](../superpowers/specs/2026-08-24-k3s-phase-k-observability-design.md) / [implementation plan](../superpowers/plans/2026-08-24-k3s-phase-k-observability.md)
+- Phase L: [design doc](../superpowers/specs/2026-08-25-k3s-phase-l-ratelimit-design.md) / [evaluation notes](../superpowers/specs/2026-08-25-k3s-phase-l-ratelimit-evaluation.md) / [implementation plan](../superpowers/plans/2026-08-25-k3s-phase-l-ratelimit.md)
+- Phase K related incident investigations: [compose→k3s NodePort gateway issue](../incidents/2026-08-24-compose-prometheus-grafana-k3s-nodeport-gateway.md), [k3s pod→docker bridge blackhole](../incidents/2026-08-24-k3s-pod-to-docker-bridge-blackhole.md)
+- Previous-phase summary: [Phase F+G summary](2026-08-19-k3s-phase-fg-pr-lanes-summary.md)

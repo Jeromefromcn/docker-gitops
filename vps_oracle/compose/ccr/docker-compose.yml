@@ -2,7 +2,7 @@ services:
   ccr:
     build:
       context: https://github.com/musistudio/claude-code-router.git#v3.0.20
-    image: claude-code-router:3.0.20   # 构建自 pin 死的 git tag；上游没有发布镜像，这是等价的"锁版本"
+    image: claude-code-router:3.0.20   # built from a pinned git tag; the upstream publishes no image, so this is the equivalent of "version pinning"
     container_name: ccr
     hostname: ccr
     restart: unless-stopped
@@ -14,53 +14,70 @@ services:
         max-size: "10m"
         max-file: "5"
     env_file:
-      - .env   # 需要 CCR_WEB_AUTH_TOKEN（管理面板/RPC 口令）和 ZHIPU_API_KEY（智谱 key），见 .env.example
+      - .env   # needs CCR_WEB_AUTH_TOKEN (the admin panel / RPC password) and ZHIPU_API_KEY (the Zhipu key), see .env.example
     environment:
       TZ: "Asia/Hong_Kong"
       CCR_PUBLIC_BASE_URL: "http://127.0.0.1:3458"
-      # 让容器内所有 node 进程（core server、gateway child 等）都加载 SSE delta
-      # 合併中间件（/data 是持久卷）。Zhipu 等上游按 token 粒度发 SSE delta，
-      # 逐事件转发会打爆 VS Code 扩展的远程渲染管线，见 sse-coalesce.cjs 头注。
-      # 同样机制再挂一个 export-model-routing.cjs：把 claude-code 各 profile
-      # 的模型路由字符串（不含任何 key）导出到 /model-routing/routing.json，
-      # 供 switchboard 只读挂载消费，实现 opus/sonnet/haiku 分档路由。见
-      # export-model-routing.cjs 头注 和
-      # docs/misc/2026-08-20-ccr-third-party-model-compat-lessons.md。
-      # 再挂 patch-subagent-routing.cjs：在 gateway 加载前修掉 server.js 里
-      # subagent 请求被强制路由到 profile 默认 model(flash) 的 bug。它是运行时
-      # 自愈补丁——镜像重建后第一个 node 进程会重新打上，不依赖镜像内状态。见
-      # docs/incidents/2026-08-30-ccr-subagent-flash-routing.md。
+      # Load the SSE delta coalescing middleware into every node process in the
+      # container (core server, gateway child, etc.) (/data is a persistent volume).
+      # Upstreams like Zhipu emit SSE deltas at token granularity; forwarding them
+      # event by event blows up the VS Code extension's remote rendering pipeline,
+      # see the header comment in sse-coalesce.cjs.
+      # The same mechanism also mounts export-model-routing.cjs: it exports each
+      # claude-code profile's model routing strings (containing no keys) to
+      # /model-routing/routing.json for switchboard to consume via a read-only
+      # mount, implementing opus/sonnet/haiku tier routing. See the header comment
+      # in export-model-routing.cjs and
+      # docs/misc/2026-08-20-ccr-third-party-model-compat-lessons.md.
+      # It also mounts patch-subagent-routing.cjs: before the gateway loads, this
+      # fixes the bug in server.js where subagent requests are force-routed to the
+      # profile's default model (flash). It is a runtime self-healing patch — the
+      # first node process after an image rebuild re-applies it, and it does not
+      # depend on any state inside the image. See
+      # docs/incidents/2026-08-30-ccr-subagent-flash-routing.md.
       NODE_OPTIONS: "--require /data/.claude-code-router/sse-coalesce.cjs --require /data/.claude-code-router/export-model-routing.cjs --require /data/.claude-code-router/patch-subagent-routing.cjs"
-      # 合併窗口（毫秒）。Zhipu 每 25-50ms 吐一个 delta，40ms 窗口常只抓到 1-2 个，
-      # 實測合併率僅 3-5x；加大窗口 + thinking 專用大窗口（thinking 佔事件 ~99%
-      # 且顯示平滑度無關緊要）可把合併率提到 15-30x，擴展提問延遲 3min → <1min。
-      # 未設/設 0 的 per-type knob 回落到全局值；CCR_SSE_COALESCE_MS=0 整體禁用。
+      # Coalescing window (milliseconds). Zhipu emits one delta every 25-50ms, and a
+      # 40ms window often catches only 1-2, giving an actual merge ratio of just
+      # 3-5x; enlarging the window plus a dedicated large thinking window (thinking
+      # is ~99% of events and its display smoothness doesn't matter) raises the merge
+      # ratio to 15-30x, cutting the extension's ask latency from 3min to <1min.
+      # Per-type knobs that are unset / set to 0 fall back to the global value;
+      # CCR_SSE_COALESCE_MS=0 disables the whole thing.
       CCR_SSE_COALESCE_MS: "200"
       CCR_SSE_COALESCE_THINKING_MS: "500"
       CCR_SSE_COALESCE_TEXT_MS: "120"
     ports:
-      # 例外：claude 进程跑在宿主机上、不在容器里，够不到 proxy 网络，只能发布到宿主机端口。
-      # 两个端口都只绑 127.0.0.1，不对外暴露；管理面板(3458)如需从别的机器访问，走 SSH 端口转发。
+      # Exception: the claude process runs on the host, not in a container, so it
+      # can't reach the proxy network and can only use published host ports.
+      # Both ports are bound only to 127.0.0.1 and are not exposed externally; to
+      # reach the admin panel (3458) from another machine, use SSH port forwarding.
       #
-      # 容器内只有一个公开入口：nginx 监听 8080，按 URL 路径转发到容器内部私有的
-      # gateway(127.0.0.1:3456) 或 management RPC(127.0.0.1:3459)，见上游 v3.0.20
-      # docker/entrypoint.sh 生成的 nginx server block。所以两条宿主机端口都指向
-      # 容器的 8080——不是两个不同的容器端口——nginx 自己按路径（/v1/*、/messages 等
-      # 走 gateway，/、/api/ccr/rpc 走管理面板）分流，跟请求从哪个宿主机端口进来无关。
-      - "127.0.0.1:3456:8080"   # gateway，jerome/bridget 的 .env 文件里 ANTHROPIC_BASE_URL 指这里
+      # There is a single public entry point inside the container: nginx listens on
+      # 8080 and forwards by URL path to the container's internal, private gateway
+      # (127.0.0.1:3456) or management RPC (127.0.0.1:3459) — see the nginx server
+      # block generated by upstream v3.0.20's docker/entrypoint.sh. So both host
+      # ports point at the container's 8080 — not two different container ports —
+      # and nginx itself routes by path (/v1/*, /messages etc. go to the gateway,
+      # /, /api/ccr/rpc go to the admin panel), regardless of which host port the
+      # request came in on.
+      - "127.0.0.1:3456:8080"   # gateway; the ANTHROPIC_BASE_URL in jerome/bridget's .env files points here
       - "127.0.0.1:3458:8080"   # management UI/RPC
     volumes:
-      - ccr-data:/data   # 装 SQLite 配置 + API key + 日志，属于敏感状态，故意不用仓库内可见的 bind mount
-      # SSE delta 合併中间件代码已入库，只读挂载到 /data 随仓库走版本控制。
-      # core 每次启动会重建 gateway-proxy-preload.cjs，所以中间件不走 preload，
-      # 而是经上面 NODE_OPTIONS --require 直挂（模块加载时自调用 install()）。
+      - ccr-data:/data   # holds SQLite config + API keys + logs — sensitive state, so deliberately not a repo-visible bind mount
+      # The SSE delta coalescing middleware code is committed to the repo and mounted
+      # read-only into /data, version-controlled with the repo. The core rebuilds
+      # gateway-proxy-preload.cjs on every start, so the middleware does not go through
+      # preload but is loaded directly via the NODE_OPTIONS --require above (it calls
+      # install() on module load).
       - ./sse-coalesce.cjs:/data/.claude-code-router/sse-coalesce.cjs:ro
       - ./export-model-routing.cjs:/data/.claude-code-router/export-model-routing.cjs:ro
       - ./patch-subagent-routing.cjs:/data/.claude-code-router/patch-subagent-routing.cjs:ro
-      # 导出文件的落地目录——刻意不放在上面 ccr-data 卷里：那个卷（含
-      # config.sqlite）目录权限是 700 root:root，其他容器挂了也读不到；这里
-      # 单独开一个非敏感的 bind mount，只装模型路由字符串，不含任何 key。
-      # switchboard 那边只读挂载同一个宿主机目录消费。
+      # Landing directory for the exported files — deliberately not inside the
+      # ccr-data volume above: that volume (including config.sqlite) has directory
+      # permissions 700 root:root, so other containers can't read it even when mounted;
+      # here we carve out a separate non-sensitive bind mount holding only the model
+      # routing strings, with no keys. switchboard consumes it via a read-only mount of
+      # the same host directory.
       - ./model-routing:/model-routing
     networks:
       - proxy

@@ -1,11 +1,11 @@
 # vps_gcp
 
-GCP 免费层（free tier）e2-micro 实例。目前这台机器整机**不**纳入本仓库管理——这里只有 `tofu/` 一层，用于练 greenfield IaC 的完整生命周期（从零 apply → destroy → 再 apply 验证可重现）。
+A GCP free-tier e2-micro instance. This machine as a whole is currently **not** managed by this repo — only the `tofu/` layer lives here, for practicing the full greenfield IaC lifecycle (from-scratch apply → destroy → re-apply to verify reproducibility).
 
-## 目前纳管范围
+## Currently managed scope
 
-| 目录 | 是什么 | 约定见 |
+| Directory | What it is | Conventions in |
 |---|---|---|
-| `tofu/` | OpenTofu root module：VPC / subnet / firewall / e2-micro 实例 / API 启用 / 预算告警 | [tofu/README.md](tofu/README.md) |
+| `tofu/` | OpenTofu root module: VPC / subnet / firewall / e2-micro instance / API enablement / budget alert | [tofu/README.md](tofu/README.md) |
 
-机器上跑什么、怎么部署、README 怎么写，另案处理；本目录暂时只此一层。
+What runs on the machine, how it's deployed, and how its README is written are handled separately; for now this directory only contains this one layer.

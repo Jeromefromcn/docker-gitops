@@ -1,105 +1,105 @@
-# ccr 把 subagent 的 pro 请求错误路由成 flash
+# ccr misroutes subagent pro requests as flash
 
-- 日期：2026-08-30
-- 环境：VS Code Claude Code（2.1.251）→ ccr（claude-code-router v3.0.20，自建 Docker 镜像）→ byteplus（火山方舟 deepseek-v4 系列）
-- 现象：主 session 用 pro（opus 档）正常，但 Task 工具 spawn 的 subagent 请求被降级成 flash，回答明显变快/变笨
-- 修复：新增 `vps_oracle/compose/ccr/patch-subagent-routing.cjs`，在 gateway 启动前修掉 server.js 里 `ZPe()` 的一处逻辑；compose 挂载 + `NODE_OPTIONS --require` 注入，运行时自愈、镜像重建不丢
+- Date: 2026-08-30
+- Environment: VS Code Claude Code (2.1.251) → ccr (claude-code-router v3.0.20, self-built Docker image) → byteplus (Volcano Ark deepseek-v4 series)
+- Symptom: the main session using pro (opus tier) works fine, but subagent requests spawned by the Task tool get downgraded to flash, and become noticeably faster/dumber in their answers
+- Fix: added `vps_oracle/compose/ccr/patch-subagent-routing.cjs`, patching one piece of logic in `ZPe()` inside server.js before the gateway starts; mounted via compose + injected via `NODE_OPTIONS --require`, self-healing at runtime and surviving image rebuilds
 
 ---
 
-## 1. 结论先行
+## 1. Conclusion first
 
-**根因在 ccr 的路由代码，不在 Claude Code。** CC 的 subagent 请求 model 栏位正确填的是 pro（完整名 `byteplus/deepseek-v4-pro-ga-260813`），但 ccr 的 `builtin-agent-claude-code` 规则识别到 subagent 标记后，**无条件禁用「client-model」策略**，导致请求自带的 pro 被无视，落到 profile 兜底 `model`（flash）。
+**The root cause is in ccr's routing code, not in Claude Code.** CC's subagent request fills the model field correctly with pro (full name `byteplus/deepseek-v4-pro-ga-260813`), but ccr's `builtin-agent-claude-code` rule, after recognizing the subagent marker, **unconditionally disables the "client-model" strategy**, so the pro carried by the request is ignored and it falls through to the profile's fallback `model` (flash).
 
-## 2. 证据链
+## 2. Evidence chain
 
-### 2.1 现象复现（request-logs）
+### 2.1 Symptom reproduction (request-logs)
 
-主 session 与 subagent 是同一个 CC session，主 session 请求 model=pro，subagent 请求也应该是 pro，但实际路由结果：
+The main session and the subagent are the same CC session; the main session's request is model=pro, and the subagent's request should also be pro, but the actual routing result:
 
 ```
-12203 main         | CC 发 pro   → resolved pro    ✓
-12205 SUB(a51eea)  | CC 发 pro   → resolved FLASH  ✗  ← 根因
-12206 SUB(a51eea)  | CC 发 pro   → resolved FLASH  ✗
+12203 main         | CC sent pro   → resolved pro    ✓
+12205 SUB(a51eea)  | CC sent pro   → resolved FLASH  ✗  ← root cause
+12206 SUB(a51eea)  | CC sent pro   → resolved FLASH  ✗
 ```
 
-同一时刻、同一 session，主 session 走 `default-route`（尊重请求 model=pro），subagent 走 `builtin-agent-claude-code`（强制 profile.model=flash）。
+At the same moment, in the same session, the main session goes via `default-route` (respecting the request's model=pro), while the subagent goes via `builtin-agent-claude-code` (forcing profile.model=flash).
 
-### 2.2 CC 发的 subagent 请求体（记录 proxy 抓包铁证）
+### 2.2 The subagent request body CC sends (recorded proxy capture as hard evidence)
 
 `x-anthropic-billing-header: cc_version=...; cc_entrypoint=claude-vscode; cc_is_subagent=true;`
 
-请求体 `model` 字段 = `byteplus/deepseek-v4-pro-ga-260813`（pro），**CC 没有发错**。
+The request body's `model` field = `byteplus/deepseek-v4-pro-ga-260813` (pro), **CC did not send it wrong**.
 
-### 2.3 ccr 路由决策（trace）
+### 2.3 ccr routing decision (trace)
 
-subagent 请求 hop2：`decision builtins.builtin-agent-claude-code → target: flash`
+Subagent request hop2: `decision builtins.builtin-agent-claude-code → target: flash`
 
-主 session 请求 hop2：`decision builtins.default-route → target: pro`
+Main session request hop2: `decision builtins.default-route → target: pro`
 
-差异就是 subagent 请求带 `x-claude-code-agent-id` + `cc_is_subagent=true` 标记，触发了 builtin 规则。
+The difference is that the subagent request carries the `x-claude-code-agent-id` + `cc_is_subagent=true` markers, triggering the builtin rule.
 
-## 3. 根因
+## 3. Root cause
 
-ccr 的 minified `server.js`（`/app/packages/core/dist/main/server.js`）里，路由决策 `KPe` 的评估链：
+In ccr's minified `server.js` (`/app/packages/core/dist/main/server.js`), the evaluation chain for the routing decision `KPe`:
 
 ```
-g = client-model（请求自带的 model，能被 modelRegistry 解析则保留）
-p = builtin-agent（eQe → profile.model = flash）
-最终 m = A ?? g ?? p
+g = client-model (the request's own model, kept if resolvable by modelRegistry)
+p = builtin-agent (eQe → profile.model = flash)
+final m = A ?? g ?? p
 ```
 
-其中 `g` 受 `ZPe()` 门控：
+Where `g` is gated by `ZPe()`:
 
 ```js
 function ZPe(e,t,r,n){
   if(!gh(e,t,"claude-code")) return true;
-  if(e.builtInClaudeCodeSubagent===!0) return false;   // ← 缺陷
+  if(e.builtInClaudeCodeSubagent===!0) return false;   // ← the defect
   ...
 }
 ```
 
-subagent 请求（`builtInClaudeCodeSubagent=true`）时，`ZPe` 直接 `return false`，**无条件禁用 client-model**。此时：
+For a subagent request (`builtInClaudeCodeSubagent=true`), `ZPe` directly `return false`, **unconditionally disabling client-model**. At this point:
 
-- `XPe`（subagent-env 策略）读 `CLAUDE_CODE_SUBAGENT_MODEL` 环境变量 —— 本 repo 的 profile 没设 → 返回 undefined
-- 于是评估链一路落到 `p`（`eQe` → `profile.model` = flash）
+- `XPe` (the subagent-env strategy) reads the `CLAUDE_CODE_SUBAGENT_MODEL` environment variable — this repo's profile doesn't set it → returns undefined
+- So the evaluation chain falls all the way to `p` (`eQe` → `profile.model` = flash)
 
-**缺陷本质**：subagent 时禁用 client-model 应该以「存在 `CLAUDE_CODE_SUBAGENT_MODEL`」为前提，而不是无条件禁用。没有 subagent 专用模型时，应该回落到 client-model（请求自带的 pro）。
+**The essence of the defect**: disabling client-model for a subagent should be preconditioned on "`CLAUDE_CODE_SUBAGENT_MODEL` exists", not unconditional. When there's no subagent-specific model, it should fall back to client-model (the pro carried by the request).
 
-## 4. 修复
+## 4. Fix
 
-`patch-subagent-routing.cjs` 在 gateway 启动前（`NODE_OPTIONS --require`）把 `ZPe` 改成：
+`patch-subagent-routing.cjs` rewrites `ZPe` before the gateway starts (via `NODE_OPTIONS --require`) into:
 
 ```js
 function ZPe(e,t,r,n){
   if(!gh(e,t,"claude-code")) return true;
   let o=u0(e,t,"claude-code"), i=LP(o?.env?.[w5],t,r);
-  if(e.builtInClaudeCodeSubagent===!0) return !i;   // 有 SUBAGENT_MODEL 才禁用 client-model
+  if(e.builtInClaudeCodeSubagent===!0) return !i;   // disable client-model only when SUBAGENT_MODEL exists
   return !i || !n || i.canonicalSelector.toLowerCase() !== n.canonicalSelector.toLowerCase();
 }
 ```
 
-即：subagent 时只有在 profile 设了 `CLAUDE_CODE_SUBAGENT_MODEL`（`i` 非空）才禁用 client-model（让 `XPe` 精确匹配接管）；否则保留 client-model，尊重请求自带的 model。**不写死任何模型**，完全动态跟随 CC 按档位发的 model。
+That is: for a subagent, client-model is disabled only when the profile sets `CLAUDE_CODE_SUBAGENT_MODEL` (`i` is non-empty), letting `XPe`'s exact matching take over; otherwise client-model is kept, respecting the model carried by the request. **No model is hardcoded** — it fully follows the tier-dependent model CC sends dynamically.
 
-### 修复后验证
+### Verification after the fix
 
 ```
-12295 SUB(ac9937) | CC 发 pro → resolved PRO  ✓
-12297 SUB(ac9937) | CC 发 pro → resolved PRO  ✓
+12295 SUB(ac9937) | CC sent pro → resolved PRO  ✓
+12297 SUB(ac9937) | CC sent pro → resolved PRO  ✓
 ```
 
-trace 显示 subagent 请求改走 `default-route`（与主 session 一致），不再被 `builtin-agent-claude-code` 强制改 flash。
+The trace shows subagent requests now going via `default-route` (consistent with the main session), no longer forced to flash by `builtin-agent-claude-code`.
 
-## 5. 为什么是 patch 脚本而不是改配置
+## 5. Why a patch script rather than a config change
 
-`ZPe` 在镜像层（`/app/packages/core/dist/main/server.js`），没有配置开关。镜像从 pin 死的 git tag v3.0.20 build，所以补丁做成 `--require` 脚本：
+`ZPe` lives at the image layer (`/app/packages/core/dist/main/server.js`) with no config switch. The image is built from a pinned git tag v3.0.20, so the patch is made as a `--require` script:
 
-- **运行时自愈**：每个 node 进程启动时重新打补丁，`docker compose up -d --build` 镜像重建后第一个 node 进程会自动重新打上（已验证：重建后补丁标记 + 新 ZPe 都在，旧 ZPe 清零）
-- **幂等**：检测旧字符串存在才打补丁；已打补丁则跳过；检测不到预期字符串则告警（提示 ccr 可能升级，需人工复核 ZPe 逻辑）
-- **git 可审计**：补丁内容在 `vps_oracle/compose/ccr/patch-subagent-routing.cjs`，与 `sse-coalesce.cjs`、`export-model-routing.cjs` 同款 `--require` 模式
+- **Runtime self-healing**: each node process re-applies the patch at startup; after `docker compose up -d --build` rebuilds the image, the first node process automatically re-applies it (verified: after a rebuild both the patch marker and the new ZPe are present, the old ZPe is zeroed out)
+- **Idempotent**: only patches when the old string is detected; skips if already patched; warns if the expected string can't be detected (hinting ccr may have been upgraded and the ZPe logic needs manual review)
+- **git-auditable**: the patch content is in `vps_oracle/compose/ccr/patch-subagent-routing.cjs`, the same `--require` pattern as `sse-coalesce.cjs` and `export-model-routing.cjs`
 
-## 6. 遗留 / 注意
+## 6. Open items / notes
 
-- 若以后在 ccr 面板给 profile 设了 `CLAUDE_CODE_SUBAGENT_MODEL`，则 subagent 走 `XPe` 精确匹配（`CLAUDE_CODE_SUBAGENT_MODEL == 请求 model` 才命中），不命中仍落 profile.model。这是 ccr 原生设计，本次补丁未改动。
-- 若升级 ccr 到新版本，`ZPe` 的 minified 字符串可能变，补丁脚本会告警「ZPe not found in expected form」——此时需重新核对新版逻辑，更新 `OLD_ZPE`/`NEW_ZPE`。
-- 主 session 里出现的 `query_source: auto_mode` 的 flash 请求（无 agent-id）是 CC 的 auto mode 行为，与本次 bug 无关。
+- If `CLAUDE_CODE_SUBAGENT_MODEL` is later set for the profile in the ccr panel, the subagent goes via `XPe` exact matching (hit only when `CLAUDE_CODE_SUBAGENT_MODEL == request model`); non-matching still falls through to profile.model. This is ccr's native design, unchanged by this patch.
+- If ccr is upgraded to a new version, `ZPe`'s minified string may change, and the patch script will warn "ZPe not found in expected form" — at that point the new version's logic must be re-reviewed and `OLD_ZPE`/`NEW_ZPE` updated.
+- The flash requests with `query_source: auto_mode` (no agent-id) appearing in the main session are CC's auto mode behavior, unrelated to this bug.

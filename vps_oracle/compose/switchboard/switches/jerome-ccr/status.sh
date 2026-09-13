@@ -17,8 +17,9 @@ TIER_VARS = {
     "sonnetModel": "ANTHROPIC_DEFAULT_SONNET_MODEL",
     "haikuModel": "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 }
-# 第三方模型在 cc CLI 里默认按 200k 窗口执行，声明 1M 才放开——与 on.sh 同源
-# （self-heal 只重写上面 TIER_VARS 里的行，常量行不受影响）。
+# Third-party models run against a 200k context window by default in cc CLI;
+# declaring 1M removes the limit — same provenance as on.sh (self-heal only
+# rewrites the lines in TIER_VARS above, leaving the constant line untouched).
 MAX_CONTEXT_LINE = "export CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000\n"
 
 try:
@@ -56,8 +57,9 @@ try:
             if not any(l.startswith(f"export {v}=") for v in TIER_VARS.values())
         ]
         new_lines = kept + [f"export {v}={val}\n" for v, val in desired.items()]
-        # 常量行兜底：即使第一次 off/on 没写（旧文件、或 hand-edit 删掉），
-        # 每次 page-load self-heal 也会补回 MAX_CONTEXT_LINE。
+        # Constant-line fallback: even if the first off/on didn't write it
+        # (an old file, or hand-edited away), every page-load self-heal
+        # re-adds MAX_CONTEXT_LINE.
         if MAX_CONTEXT_LINE not in new_lines:
             new_lines.append(MAX_CONTEXT_LINE)
         if new_lines != lines:

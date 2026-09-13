@@ -4,7 +4,7 @@
 # Deletes stale ~/.vscode-server/cli/servers/<version>/ directories:
 # not among the N most-recently-used entries in lru.json, and not
 # referenced by any live server-main.js process. See design spec's
-# "VS Code server 版本目錄堆積" row.
+# "VS Code server version-directory pile-up" row.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"

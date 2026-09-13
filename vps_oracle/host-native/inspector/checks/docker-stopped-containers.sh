@@ -3,7 +3,7 @@
 #
 # Removes containers in `exited` state whose exit happened more than
 # INSPECTOR_STOPPED_CONTAINER_MAX_AGE_SECONDS ago (default 7 days).
-# Design spec's "Docker 已停止容器" row (auto tier). Uses explicit
+# Design spec's "Docker stopped containers" row (auto tier). Uses explicit
 # per-container `docker rm` of enumerated candidates rather than a
 # blanket prune, so exactly the reported targets are the ones removed.
 set -uo pipefail

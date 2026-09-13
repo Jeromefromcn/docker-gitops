@@ -3,7 +3,7 @@ services:
     image: ghcr.io/mhsanaei/3x-ui@sha256:344f7a68a91e59d592fc355d67e32d8c2041b1c2082a7eaa3c413dc3a5cab7db
     container_name: 3x-ui
     hostname: 3x-ui
-    restart: unless-stopped          # 重启/崩溃自动拉起
+    restart: unless-stopped          # auto-restart on reboot/crash
     logging:
       driver: json-file
       options:
@@ -22,23 +22,25 @@ services:
     tty: true
     environment:
       XRAY_VMESS_AEAD_FORCED: "false"
-      TZ: "Asia/Hong_Kong"           # 容器时区:香港 (UTC+8)
+      TZ: "Asia/Hong_Kong"           # container timezone: Hong Kong (UTC+8)
     volumes:
-      - /etc/x-ui/db:/etc/x-ui/       # 面板数据库持久化
-      - /etc/x-ui/cert:/root/cert/    # 证书持久化
-      - /etc/x-ui/xray/xray-linux-arm64:/app/bin/xray-linux-arm64:ro  # 固定 Xray 26.6.27
+      - /etc/x-ui/db:/etc/x-ui/       # panel database persistence
+      - /etc/x-ui/cert:/root/cert/    # certificate persistence
+      - /etc/x-ui/xray/xray-linux-arm64:/app/bin/xray-linux-arm64:ro  # pin Xray 26.6.27
     ports:
-      - "39876:39876"                 # 节点端口(VLESS + Reality),客户端直连,必须留在宿主机
-      # 面板 46213、订阅服务 51234 不再发布到宿主机,改走 NPM 反代:
+      - "39876:39876"                 # node port (VLESS + Reality), clients connect directly, must stay on the host
+      # The panel (46213) and subscription service (51234) are no longer published to the
+      # host — they now go through the NPM reverse proxy:
       # https://panel.3x.jerome.cloudns.asia / https://sub.3x.jerome.cloudns.asia
     networks:
       proxy:
-        ipv4_address: 172.19.0.2  # 钉死静态 IP：xray 自己的 DNS hosts 覆写（config.json 里
-                                   # domain:jerome.cloudns.asia -> npm 的 172.19.0.3）让走代理的
-                                   # *.jerome.cloudns.asia 流量直接在 proxy 网络内部转给 npm，
-                                   # 不出宿主机、不会被 SNAT 改写来源 —— nginx 看到的来源就是
-                                   # 3x-ui 这个容器自己的 IP，NPM 的 access list 放行的正是这个位址
+        ipv4_address: 172.19.0.2  # pinned static IP: xray's own DNS hosts override (in config.json,
+                                   # domain:jerome.cloudns.asia -> npm's 172.19.0.3) makes proxied
+                                   # *.jerome.cloudns.asia traffic go straight to npm inside the proxy
+                                   # network, without leaving the host or getting its source SNAT-
+                                   # rewritten — so nginx sees the source as this 3x-ui container's
+                                   # own IP, which is exactly the address NPM's access list allows
 
 networks:
   proxy:
-    external: true   # 手动创建一次：docker network create proxy
+    external: true   # create once manually: docker network create proxy

@@ -880,7 +880,7 @@ Expected: Service shows `TYPE NodePort`, port `80:30090/TCP`; curl returns ArgoC
 
 - [ ] **Step 4: Create the NPM proxy host**
 
-In the NPM UI (`https://npm.jerome.cloudns.asia`), per the root README's "给服务接入 NPM 反代" conventions:
+In the NPM UI (`https://npm.jerome.cloudns.asia`), per the root README's "adding a service to the NPM reverse proxy" conventions:
 
 | Field | Value |
 |---|---|
@@ -920,7 +920,7 @@ Access the UI: `https://argocd.jerome.cloudns.asia` (NPM access list restricts i
 
 - [ ] **Step 7: Run the full design-doc verification checklist**
 
-Confirm every item from the [phase B design doc](../specs/2026-08-07-k3s-phase-b-gitops-design.md)'s "驗證清單" now passes:
+Confirm every item from the [phase B design doc](../specs/2026-08-07-k3s-phase-b-gitops-design.md)'s "verification checklist" now passes:
 
 ```bash
 kubectl -n argocd get applications
@@ -950,6 +950,6 @@ git commit -m "Document ArgoCD app-of-apps layout and NPM access"
 
 ## Self-Review Notes
 
-- **Spec coverage:** every item in the phase B design's "驗證清單" maps to a task: `root`/child Applications Synced+Healthy (Task 2 Step 7, Task 3 Step 5, Task 4 Step 8, Task 7 Step 7), phase A resources matching git (Task 3 Step 5), self-heal proof (Task 2 Step 8 for ArgoCD itself, Task 4 Step 9 for a workload), CI build→Trivy→Cosign→GHCR (Task 5), `cosign verify` against Rekor (Task 5 Step 5, Task 6 Step 4), manual tag-bump triggering an ArgoCD sync (Task 6), NPM external reachability with `self-only` (Task 7 Steps 4–5), resolved versions written to README (Task 1 Step 7, and the action versions resolved in Task 5 Step 1 are inlined directly into the committed workflow rather than tabulated — equivalent record, different location, appropriate for the artifact).
+- **Spec coverage:** every item in the phase B design's "verification checklist" maps to a task: `root`/child Applications Synced+Healthy (Task 2 Step 7, Task 3 Step 5, Task 4 Step 8, Task 7 Step 7), phase A resources matching git (Task 3 Step 5), self-heal proof (Task 2 Step 8 for ArgoCD itself, Task 4 Step 9 for a workload), CI build→Trivy→Cosign→GHCR (Task 5), `cosign verify` against Rekor (Task 5 Step 5, Task 6 Step 4), manual tag-bump triggering an ArgoCD sync (Task 6), NPM external reachability with `self-only` (Task 7 Steps 4–5), resolved versions written to README (Task 1 Step 7, and the action versions resolved in Task 5 Step 1 are inlined directly into the committed workflow rather than tabulated — equivalent record, different location, appropriate for the artifact).
 - **Placeholder scan:** every bracketed value (`<ARGOCD_CHART_VERSION>`, `<CHECKOUT_VER>`, `<NEW_SHA>`, etc.) is explicitly instructed to be replaced with a real value produced by a preceding step in the same or an earlier task — not an unresolved TBD.
 - **Type/name consistency:** the `argocd` namespace, Helm release name `argocd`, Application names (`root`, `argocd`, `phase-a-foundation`, `placeholder-hello`), the `workloads` namespace, and the `placeholder-hello` Deployment/Service names are used identically across all seven tasks. The GHCR image path `ghcr.io/jeromefromcn/placeholder-hello` and the two distinct PATs (Task 2's read-only repo credential vs. Task 4's `write:packages` credential) are never conflated.

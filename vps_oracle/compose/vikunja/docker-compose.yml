@@ -12,7 +12,7 @@ services:
         max-size: "10m"
         max-file: "5"
     env_file:
-      - .env   # 需要一行 VIKUNJA_SERVICE_SECRET=<值>
+      - .env   # needs a line VIKUNJA_SERVICE_SECRET=<value>
     environment:
       TZ: "Asia/Hong_Kong"
       VIKUNJA_DATABASE_TYPE: sqlite
@@ -25,7 +25,7 @@ services:
       - /etc/vikunja/db:/db
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = vikunja, Forward Port = 3456（未发布到宿主机）
+    # NPM reverse proxy: Forward Hostname/IP = vikunja, Forward Port = 3456 (not published to the host)
 
   vikunja-notify-relay:
     image: ghcr.io/jeromefromcn/vikunja-notify-relay@sha256:163e88a174aad5e477e475d8d5d4f2dea66f44de08ecf0ea0771ff24327214b7
@@ -49,8 +49,9 @@ services:
       PORT: "8080"
     networks:
       - proxy
-    # 纯内部 glue 服务：接 Vikunja webhook，拼好 project/task/超链接的 HTML 消息后转发给 apprise。
-    # 不接 NPM、不发布端口，只在 proxy 网络内被 vikunja 用容器名访问。见 notify-relay/app.py。
+    # Pure internal glue service: receives the Vikunja webhook, assembles an HTML message with
+    # the project/task/hyperlink, and forwards it to apprise. No NPM and no published port —
+    # only reached by container name from vikunja within the proxy network. See notify-relay/app.py.
 
 networks:
   proxy:

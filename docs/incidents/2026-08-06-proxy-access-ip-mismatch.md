@@ -1,90 +1,90 @@
-# 事故記錄：NPM access list 訪問不了的排查全程
+# Incident: full investigation of the NPM access list unreachable problem
 
-日期：2026-08-06
-狀態：已解決
-本文件刻意不提交 git，純粹留作排查過程的忠實記錄。
+Date: 2026-08-06
+Status: resolved
+This file is deliberately not committed to git, kept purely as a faithful record of the investigation.
 
-## 背景
+## Background
 
-這台機器上跑了一套「先連 3x-ui 代理才能訪問內網服務」的架構：grafana、homepage、dify、trilium、vikunja、apprise、portainer 等服務都掛在 NPM 反代後面，並且套了 NPM 的 Access List，只放行特定 IP；3x-ui 本身不受限制，是唯一的入口。
+This machine runs an architecture of "connect to the 3x-ui proxy first, then you can access internal services": grafana, homepage, dify, trilium, vikunja, apprise, portainer and other services sit behind the NPM reverse proxy, and have NPM's Access List applied so only specific IPs are allowed; 3x-ui itself is unrestricted and is the only entry point.
 
-在這次排查之前，稍早 docker daemon 重啟過一次——**這不是事故，是使用者為了解決另一個問題主動做的操作**（不是這次任務觸發的，也不是意外）。這次重啟連帶讓幾個用相對路徑掛載 volume 的容器（dify-ssrf-proxy、prometheus、blackbox-exporter、grafana、homepage）因為找不到重整理目錄後的舊路徑而掛掉或裸奔，當時已經修復並確認過（那部分才是真正需要處理的問題，daemon 重啟本身是預期中的操作，不是問題）。這次排查一開始不確定跟這次重啟有沒有關係，後來證實無關，但時間點上容易讓人聯想在一起，所以先記一筆。
+Before this investigation, the docker daemon had been restarted once a bit earlier — **this is not the incident, but a user-initiated action to solve another problem** (not triggered by this task, nor an accident). That restart also caused several containers with relative-path volume mounts (dify-ssrf-proxy, prometheus, blackbox-exporter, grafana, homepage) to fail or run unconfigured because they couldn't find the old paths after the reshuffle; those had already been fixed and confirmed at the time (that part was the real problem to handle; the daemon restart itself was an expected operation, not a problem). This investigation at first was not sure whether it was related to that restart; it later proved unrelated, but the timing makes it easy to associate the two, so it is recorded up front.
 
-## 時間線
+## Timeline
 
-### 1. 使用者回報問題
+### 1. User reports the problem
 
-使用者說：npm 等服務還是無法訪問，但 3x-ui 可以訪問；問是不是這次任務改了 access list 配置，還是伺服器 IP 變了，還是容器 IP 變了。
+User said: npm and other services are still unreachable, but 3x-ui is reachable; asking whether this task changed the access list config, or the server IP changed, or the container IP changed.
 
-### 2. 我的第一輪判斷：檢查 access list 內容
+### 2. My first-round judgment: check the access list contents
 
-查了 NPM 的 nginx 設定檔（`/data/nginx/proxy_host/*.conf`），發現 grafana、homepage、dify、trilium、vikunja、apprise、portainer、以及 NPM 自己的管理面板，全部套了同一條規則：
+Checked NPM's nginx config files (`/data/nginx/proxy_host/*.conf`) and found grafana, homepage, dify, trilium, vikunja, apprise, portainer, and NPM's own admin panel all have the same rule applied:
 ```
 allow 172.19.0.2/32;
 allow 161.118.254.107;
 deny all;
 ```
-而 `panel.3x.jerome.cloudns.asia`（3x-ui 的 NPM 反代面板）完全沒有這條限制。
+while `panel.3x.jerome.cloudns.asia` (3x-ui's NPM reverse-proxy panel) has no such restriction at all.
 
-**當時的判斷**：這就是「3x-ui 打得通、其他打不通」的直接原因——不是 3x-ui 特殊，是其他服務都被鎖進一個只放行兩個 IP 的白名單，3x-ui 沒被鎖。這個判斷後來證實是對的方向，但對「172.19.0.2 是誰」的理解當時是錯的（見下）。
+**Judgment at the time**: this is the direct cause of "3x-ui reachable, everything else unreachable" — not that 3x-ui is special, but that all other services are locked into a whitelist that allows only two IPs, and 3x-ui is not locked. This judgment later proved directionally correct, but the understanding of "who 172.19.0.2 is" was wrong at the time (see below).
 
-### 3. 我的第一個誤判：以為 161.118.254.107 是使用者的家用 IP
+### 3. My first misjudgment: thought 161.118.254.107 was the user's home IP
 
-看到白名單裡有個看起來像一般公網 IP 的 `161.118.254.107`，直覺判斷這是「使用者本來的家用/辦公室 IP」，並且假設使用者現在的 IP 換了，導致連不上。**這個判斷後來證實錯誤**——直接 `curl https://ifconfig.me` 測試，發現 `161.118.254.107` 其實是**這台伺服器自己的公網出口 IP**，不是使用者的。
+Saw `161.118.254.107` in the whitelist, which looks like an ordinary public IP, and intuitively judged it to be "the user's original home/office IP", and assumed the user's current IP changed, causing the unreachability. **This judgment later proved wrong** — a direct `curl https://ifconfig.me` test found that `161.118.254.107` is actually **this server's own public egress IP**, not the user's.
 
-判斷依據：`docker exec blackbox-exporter wget https://ifconfig.me` 跟伺服器本機 `curl https://ifconfig.me` 拿到同一個結果，而且 npm 的 access log 裡每分鐘一次的 blackbox_exporter 自我探測請求，來源 IP 一直都是這個值、而且一直都放行成功——確認這是伺服器自己的 IP，不是使用者的。
+Basis: `docker exec blackbox-exporter wget https://ifconfig.me` and the server's own `curl https://ifconfig.me` returned the same result, and in npm's access log the once-a-minute blackbox_exporter self-probe requests always came from this value and were always allowed successfully — confirming this is the server's own IP, not the user's.
 
-我請使用者自己在不透過任何代理的裝置上查一次真正的公網 IP 告訴我，打算把它加進白名單。**這個提議方向也是錯的**（見後面第 8-9 步），因為它違背了使用者原本的架構意圖（見第 6 步）。
+I asked the user to check their real public IP from a device with no proxy at all and tell me, intending to add it to the whitelist. **This proposal direction was also wrong** (see steps 8-9 later), because it violated the user's original architectural intent (see step 6).
 
-### 4. 使用者回報：透過 3x-ui 代理連線
+### 4. User reports: connecting via the 3x-ui proxy
 
-使用者說已經自己連了 3x-ui 的代理，用代理訪問被 access list 限制的服務。
+User said they had already connected to the 3x-ui proxy themselves and used the proxy to access the access-list-restricted services.
 
-**我的判斷**：查了 npm 的 access log，找不到任何一筆新的、對得上這次連線的紀錄，只看到 blackbox_exporter 固定的探測。當時提出假設：可能是 hairpin NAT 問題（同一台機器上的流量繞一圈打回自己的公網 IP，某些雲端環境會卡住），但**明確承認這只是研判，沒有實際驗證**。
+**My judgment**: checked npm's access log and found no new record matching this connection, only blackbox_exporter's fixed probes. Proposed a hypothesis at the time: possibly a hairpin NAT problem (traffic on the same machine looping back to its own public IP, which some cloud environments stall on), but **explicitly acknowledged this was only a judgment, not actually verified**.
 
-### 5. 使用者提供截圖：`ERR_CONNECTION_CLOSED`
+### 5. User provides screenshot: `ERR_CONNECTION_CLOSED`
 
-瀏覽器錯誤是「連線被對方中途關閉」，不是逾時、也不是常見的「連線被拒絕」。我原本預期如果是 access list 擋下來，應該會看到乾淨的 403 頁面，這個錯誤碼不太吻合。
+The browser error is "the connection was closed mid-way by the peer", not a timeout or the common "connection refused". I originally expected that if the access list blocked it, we would see a clean 403 page, so this error code did not quite match.
 
-### 6. 一段離題但誠實記錄的插曲：懷疑進程被入侵
+### 6. A digression, honestly recorded: suspected intrusion
 
-用 `top` 意外看到一個叫 `fail2ban-server` 的進程，查 `dpkg -l`、`pip3 show`、`snap list` 都找不到任何安裝紀錄，`/usr/bin/fail2ban-server` 這個路徑在硬碟上也不存在，沒有對應的 systemd unit。**我當時的判斷是這可能是偽裝成系統服務名稱的可疑進程，向使用者發出了安全警訊。**
+Using `top` I unexpectedly saw a process named `fail2ban-server`. Checking `dpkg -l`, `pip3 show`, `snap list` found no install record, the path `/usr/bin/fail2ban-server` did not exist on disk, and there was no corresponding systemd unit. **My judgment at the time was that this might be a suspicious process masquerading as a system service name, and I issued a security warning to the user.**
 
-後續查證：`/proc/<pid>/exe` 實際指向合法的 `/usr/bin/python3.14`，父進程是 `/app/x-ui`——推斷這是 3x-ui 面板自己內建的 fail2ban 整合功能（用自己打包的腳本啟動，不是系統 apt 裝的，所以查不到安裝紀錄），不是入侵。另外查了 iptables 沒有任何 fail2ban 相關的 chain，排除它在防火牆層面封鎖了什麼。**這是一次判斷錯誤又自我修正的完整過程，如實記錄，不是後來刪掉重寫成「一開始就知道是誤會」。**
+Later verification: `/proc/<pid>/exe` actually points to the legitimate `/usr/bin/python3.14`, and the parent process is `/app/x-ui` — inferring this is 3x-ui's own built-in fail2ban integration (launched by its own packaged script, not installed via system apt, hence no install record), not an intrusion. Also checked iptables and found no fail2ban-related chains, ruling out that it blocked anything at the firewall level. **This is a complete process of an erroneous judgment followed by self-correction, recorded as-is, not later deleted and rewritten as "knew it was a misunderstanding from the start".**
 
-### 7. 直接從伺服器本機測試
+### 7. Testing directly from the server itself
 
-`curl -v https://npm.jerome.cloudns.asia/` 從伺服器本機直接測，拿到乾淨的 200，TLS 握手正常。**這個結果證明 nginx 本身、access list 機制本身沒有問題**——問題出在「透過代理連進來」這條路徑上，不是 NPM 這端本身壞了。
+`curl -v https://npm.jerome.cloudns.asia/` tested directly from the server itself returned a clean 200 with a normal TLS handshake. **This result proves nginx itself and the access list mechanism itself are fine** — the problem is in the "connecting in through the proxy" path, not that the NPM side itself is broken.
 
-### 8. 關鍵轉折：使用者說明原始架構意圖
+### 8. Key turning point: the user explains the original architectural intent
 
-使用者說明：這個 access list 是刻意設計的，用來在公網上打造一個安全的「內網」——大部分服務鎖進白名單，只有連了代理才進得去；白名單放的是「伺服器或伺服器上 docker 網路的 IP」。
+The user explained: this access list is deliberately designed to create a secure "intranet" on the public internet — most services are locked into a whitelist, and only by connecting to the proxy can you get in; the whitelist holds "the IPs of the server, or of docker networks on the server".
 
-我當時要求先把這個理解寫成 README（`vps_oracle/compose/npm/README.md`），寫的時候**仍然假設 `172.19.0.2` 是 npm 自己的 IP**（因為我剛好前一輪查到 npm 當時的實際 IP 就是 172.19.0.2，兩者恰好吻合，讓我沒有進一步懷疑這個假設）。
+I asked at the time to first write this understanding into a README (`vps_oracle/compose/npm/README.md`), and while writing it **still assumed `172.19.0.2` was npm's own IP** (because just the previous round I had found that npm's then-current IP was exactly 172.19.0.2, and the two happened to coincide, so I did not further question this assumption).
 
-### 9. 使用者追問：extra_hosts 會不會導致 IP 漂移
+### 9. User asks a follow-up: would extra_hosts cause IP drift
 
-使用者問：npm 加了 `extra_hosts`（這次任務 Task 6 加的）會不會影響 `proxy` 網路的 IP 分配。
+User asked: npm's added `extra_hosts` (added in this task's Task 6) would it affect the `proxy` network's IP allocation.
 
-**我的判斷**：`extra_hosts` 本身不影響網路 IP 分配邏輯，但它讓 npm 容器被重建過一次（因為 `extra_hosts` 是容器建立時就定型的設定），而 npm 的 compose 檔案當時沒有釘死靜態 IP，所以理論上重建有拿到不同 IP 的風險——雖然這次實測下來剛好還是 172.19.0.2（Docker 重建容器時，剛釋放的 IP 通常會被立刻重新分配回去，只是這不是設定保證的）。使用者說「先加上」，我把 npm 的 `proxy` 網路 IP 釘死在 `172.19.0.2`。**這一步後來證實是往錯誤方向釘死的**（見第 12 步），但當時的邏輯是自洽的，只是建立在「172.19.0.2 是 npm 自己」這個尚未驗證的假設上。
+**My judgment**: `extra_hosts` itself does not affect network IP-allocation logic, but it caused the npm container to be recreated once (because `extra_hosts` is a setting fixed at container creation), and npm's compose file did not pin a static IP at the time, so in theory a recreation risks getting a different IP — though in practice this time it happened to still be 172.19.0.2 (when Docker recreates a container, the just-released IP is usually immediately reallocated back, but this is not guaranteed by config). User said "add it for now", and I pinned npm's `proxy` network IP to `172.19.0.2`. **This step later proved to be pinning in the wrong direction** (see step 12), but the logic at the time was self-consistent, it was just built on the unverified assumption that "172.19.0.2 is npm itself".
 
-### 10. 使用者的關鍵質疑
+### 10. The user's key challenge
 
-使用者問：這樣不對吧，流量是 3x-ui 那個容器過去的，所以 3x-ui 才是應該固定 IP 的容器？
+User asked: that doesn't seem right, traffic goes through the 3x-ui container, so 3x-ui is the container that should have a fixed IP?
 
-**我當時的第一反應是用實測反駁**：另外起一個掛在 `proxy` 網路上的測試容器，直接打公開域名 `npm.jerome.cloudns.asia`（不是內部容器名），結果 nginx log 記錄到的來源是 `161.118.254.107`（伺服器公網 IP），不是那個測試容器自己的 docker 網路 IP。**當時據此判斷**：不管哪個容器發起，只要是打公開域名繞一圈回來，來源都會變成伺服器公網 IP，所以釘 3x-ui 的 IP 沒有意義，問題應該在 xray 自己的轉發邏輯，不在 IP 分配。
+**My first reaction at the time was to rebut with an actual test**: spun up a test container on the `proxy` network and directly hit the public domain `npm.jerome.cloudns.asia` (not the internal container name), and found the source recorded in the nginx log was `161.118.254.107` (the server's public IP), not the test container's own docker network IP. **Judged at the time**: no matter which container initiates, as long as it hits the public domain and loops back around, the source becomes the server's public IP, so pinning 3x-ui's IP is meaningless, and the problem should be in xray's own forwarding logic, not IP allocation.
 
-**這個判斷後來也被推翻**——因為它假設了「3x-ui 的流量一定會走公網域名解析再繞回來」，但這個假設沒有先去查證 3x-ui 實際的轉發機制就直接套用了。
+**This judgment was also later overturned** — because it assumed "3x-ui's traffic must go through public-domain resolution and loop back", but that assumption was applied directly without first verifying 3x-ui's actual forwarding mechanism.
 
-### 11. 使用者提供決定性的歷史事實
+### 11. The user provides decisive historical fact
 
-使用者說：`161.118.254.107` 是後來為了解決另一個「特殊服務」的訪問問題才加上去的，**最開始白名單只有 `172.19.0.2` 一條就能正常工作**。
+User said: `161.118.254.107` was added later to solve access for another "special service"; **the original whitelist had only the single `172.19.0.2` entry and worked fine**.
 
-這個資訊直接跟第 10 步的實測結果矛盾——如果 hairpin 流量一律會變成伺服器公網 IP，那當初只放行 `172.19.0.2`（不含公網 IP）的白名單應該從來都不會放行任何透過 3x-ui 代理進來的流量，但使用者說當初是通的。**這代表第 10 步的推論適用的是「一般容器打公開域名」的情況，不適用於 3x-ui 實際的轉發方式**——3x-ui 必然是用了某種不會觸發 hairpin/SNAT 的轉發機制。
+This information directly contradicts the step-10 test result — if hairpin traffic always becomes the server's public IP, then a whitelist allowing only `172.19.0.2` (without the public IP) should never have allowed any traffic coming in through the 3x-ui proxy, yet the user said it originally worked. **This means the step-10 inference applies to the "ordinary container hitting a public domain" case, and does not apply to 3x-ui's actual forwarding method** — 3x-ui must use some forwarding mechanism that does not trigger hairpin/SNAT.
 
-### 12. 查證 3x-ui/xray 的實際設定，找到根因
+### 12. Verify 3x-ui/xray's actual config, find the root cause
 
-直接讀 3x-ui 容器內的 `/app/bin/config.json`，找到：
+Directly read `/app/bin/config.json` inside the 3x-ui container and found:
 ```json
 "dns": {
     "hosts": {
@@ -92,52 +92,52 @@ deny all;
     }
 }
 ```
-這條 DNS 覆寫規則讓 xray 對所有 `*.jerome.cloudns.asia` 網域**完全不走公網 DNS**，直接在 `proxy` 網路內部把流量送到 `172.19.0.3`——這條路徑完全不出宿主機，不會被 Docker 的 SNAT 改寫來源，nginx 看到的來源就是 **xray（3x-ui 容器）自己真正的 IP**。
+This DNS override rule makes xray, for all `*.jerome.cloudns.asia` domains, **completely bypass public DNS** and send traffic directly to `172.19.0.3` inside the `proxy` network — this path never leaves the host, is not rewritten by Docker's SNAT, and the source nginx sees is **xray's (the 3x-ui container's) own real IP**.
 
-當時查到 `172.19.0.3` 實際上是 **vikunja** 的 IP，不是 npm 的——第一次判斷是「xray 設定寫錯了，應該指向 npm」，準備請示使用者是否要把這個值改成 npm 的實際 IP。
+At the time I found `172.19.0.3` was actually **vikunja**'s IP, not npm's — first judgment was "xray's config is wrong, it should point to npm", and I prepared to ask the user whether to change this value to npm's actual IP.
 
-### 13. 使用者的最終定案
+### 13. The user's final determination
 
-使用者指出：`172.19.0.3` 才應該是 npm 的 IP，`172.19.0.2` 才應該是 3x-ui 的 IP——「按我說的改，然後重啟 docker daemon 讓所有 IP 重新分配」。
+User pointed out: `172.19.0.3` should be npm's IP, and `172.19.0.2` should be 3x-ui's IP — "change it as I said, then restart the docker daemon to reallocate all IPs".
 
-**我的回應**：指出這跟第 9 步剛做的事（npm 釘在 `.2`）直接衝突，且不建議整個重啟 docker daemon（稍早那次意外重啟已經炸過三個服務，重啟 daemon 會動到這台機器上所有容器，風險跟第 9-10 步犯的「先斬後奏」錯誤同一個等級）；改為建議只動 npm、3x-ui、（可能還有 vikunja）這幾個容器。並請使用者明確一次白名單裡 `172.19.0.2` 這條規則原本設計上是要放行誰。
+**My response**: pointed out this directly conflicts with what was just done in step 9 (npm pinned to `.2`), and did not recommend restarting the whole docker daemon (the earlier accidental restart had already broken three services, and restarting the daemon would touch every container on this machine, the same risk level as the "act first, ask later" error made in steps 9-10); instead suggested only touching the npm, 3x-ui, (and possibly vikunja) containers. And asked the user to clarify once and for all who the `172.19.0.2` rule in the whitelist was originally designed to allow.
 
-使用者給出最終、完整的解釋：3x-ui 走 xray 的 DNS 覆寫直接把流量送到 npm（`172.19.0.3`），這條路徑不出宿主機、不被 SNAT 改寫，所以 npm 看到的來源是 3x-ui 自己的 IP，白名單放行 `172.19.0.2` 放行的就是 3x-ui。**至此完全確定正確對應關係：`3x-ui = 172.19.0.2`，`npm = 172.19.0.3`。**
+The user gave the final, complete explanation: 3x-ui uses xray's DNS override to send traffic directly to npm (`172.19.0.3`); this path never leaves the host and is not rewritten by SNAT, so npm sees 3x-ui's own IP as the source, and the whitelist allowing `172.19.0.2` is allowing 3x-ui. **At this point the correct mapping is fully confirmed: `3x-ui = 172.19.0.2`, `npm = 172.19.0.3`.**
 
-## 根因總結
+## Root cause summary
 
-1. `3x-ui` 的 xray 設定裡有一條 DNS 覆寫規則，把所有 `*.jerome.cloudns.asia` 流量直接送到 docker 網路內部的 `172.19.0.3`
-2. 這個值本來就應該等於 npm 自己的 IP，但當時 npm 實際佔用 `172.19.0.2`、`172.19.0.3` 被 vikunja 佔用——兩者都跟 xray 覆寫規則、access list 期望的不一致
-3. NPM 的兩個 access list（`self-only`、`self-only-and-auth`）放行 `172.19.0.2`，這條規則的本意一直都是「放行 3x-ui 自己的 IP」（因為 xray 轉發不會觸發 SNAT，nginx 看到的就是 3x-ui 真正的來源 IP），不是「放行 npm 自己」
-4. 兩個服務都沒有釘靜態 IP，Docker 動態分配讓它們各自落在了錯的位置上
+1. `3x-ui`'s xray config has a DNS override rule sending all `*.jerome.cloudns.asia` traffic directly to `172.19.0.3` inside the docker network
+2. This value should equal npm's own IP, but at the time npm actually occupied `172.19.0.2` and `172.19.0.3` was occupied by vikunja — both inconsistent with the xray override rule and the access list expectation
+3. NPM's two access lists (`self-only`, `self-only-and-auth`) allow `172.19.0.2`, and this rule's intent was always "allow 3x-ui's own IP" (because xray forwarding does not trigger SNAT, nginx sees 3x-ui's real source IP), not "allow npm itself"
+4. Neither service had a pinned static IP; Docker's dynamic allocation put each in the wrong position
 
-## 修復內容
+## What was fixed
 
-- `vps_oracle/compose/3x-ui/docker-compose.yml`：`proxy` 網路釘靜態 IP `172.19.0.2`
-- `vps_oracle/compose/npm/docker-compose.yml`：`proxy` 網路釘靜態 IP `172.19.0.3`（從先前誤釘的 `172.19.0.2` 改過來）
-- 執行順序：停 vikunja（讓出 `.3`）→ 重建 npm（拿到 `.3`，讓出 `.2`）→ 重建 3x-ui（拿到 `.2`）→ 啟動 vikunja（自動落到別的空位 `.5`，使用者說其他 IP 無所謂，沒有另外處理）
-- 沒有重啟 docker daemon，只動了這三個容器
+- `vps_oracle/compose/3x-ui/docker-compose.yml`: pinned static IP `172.19.0.2` on the `proxy` network
+- `vps_oracle/compose/npm/docker-compose.yml`: pinned static IP `172.19.0.3` on the `proxy` network (changed from the earlier wrongly-pinned `172.19.0.2`)
+- Execution order: stop vikunja (vacate `.3`) → rebuild npm (get `.3`, vacate `.2`) → rebuild 3x-ui (get `.2`) → start vikunja (auto lands on another free slot `.5`; user said other IPs don't matter, no further handling)
+- Did not restart the docker daemon, only touched these three containers
 
-## 驗證方式
+## Verification
 
-從 3x-ui 容器內部直接模擬 xray 的轉發路徑：
+Simulated xray's forwarding path directly from inside the 3x-ui container:
 ```bash
 docker exec 3x-ui sh -c "curl -sS -o /dev/null -w 'HTTP:%{http_code}\n' --max-time 5 --resolve npm.jerome.cloudns.asia:443:172.19.0.3 https://npm.jerome.cloudns.asia/"
 ```
-拿到 `HTTP:200`，並且在 npm 的 access log 裡確認來源正確顯示為 `172.19.0.2`：
+Got `HTTP:200`, and confirmed in npm's access log that the source correctly shows `172.19.0.2`:
 ```
 [Client 172.19.0.2] ... "curl/8.21.0"
 ```
 
-## 反思：為什麼繞了這麼多圈才找到
+## Reflection: why did it take so many turns to find
 
-- **一開始把「172.19.0.2 是 npm 自己的 IP」當成沒有明說但心照不宣的預設**，因為當時查到的 npm 實際 IP 剛好就是這個值，兩者巧合吻合，讓我沒有進一步去查證這個假設，直接順著往下推理了好幾步（包括第 9 步主動釘死了錯誤的對應關係）
-- **中間有一次用實測「反駁」使用者的直覺**（第 10 步），但那次實測用的是一般容器打公開域名的情境，沒有先去查 3x-ui 實際的轉發機制是不是走同一條路徑——實測本身沒錯，但套用的場景錯了，這是过早把一個局部驗證結果當成普遍結論
-- **真正的轉折點是使用者在第 11 步提供的歷史事實**（原本只放行 172.19.0.2 就能用）——這個資訊本身沒辦法從伺服器現有狀態推導出來，只有使用者知道；沒有這個資訊，光靠伺服器端排查很可能會在「hairpin NAT 卡住」這個錯誤方向上繼續繞圈子
-- 一路上有兩次誤判被明確指出、查證、修正（fail2ban 的安全疑慮、161.118.254.107 是不是使用者的 IP），採用的策略是每次都直接查證而不是靠猜測辯論，這是排查過程裡少數幾個一次到位的部分
+- **At the start took "172.19.0.2 is npm's own IP" as an unstated but tacit default**, because the npm actual IP I had found happened to be exactly this value, and the two coincided, so I did not further verify this assumption and kept reasoning several steps down the road (including in step 9 proactively pinning the wrong mapping)
+- **In the middle once used an actual test to "rebut" the user's intuition** (step 10), but that test used the "ordinary container hitting a public domain" scenario without first checking whether 3x-ui's actual forwarding mechanism follows the same path — the test itself was not wrong, but the scenario it was applied to was, prematurely turning a local verification result into a universal conclusion
+- **The real turning point was the historical fact the user provided in step 11** (originally allowing just 172.19.0.2 was enough) — this information cannot be derived from the server's current state and only the user knows it; without it, server-side investigation alone would likely have kept going in circles on the wrong direction of "hairpin NAT stall"
+- Along the way there were two misjudgments that were explicitly pointed out, verified, and corrected (the fail2ban security concern, whether 161.118.254.107 was the user's IP); the strategy adopted was to directly verify each time rather than debate by guessing, which was one of the few parts of this investigation that got it right the first time
 
-## 使用者的經驗教訓
+## Lessons for the user
 
-這一套「先連 3x-ui 代理才能訪問內網服務」的防護體系，在這次事件之前**完全沒有寫在任何文件裡**——不管是這個 repo、README、還是其他地方，只存在於使用者腦中。這直接導致 Claude Code 在排查時沒有任何依據可以參考，只能憑伺服器上觀察到的現象（access list 內容、實測結果）反推設計意圖，一路上好幾次因此走偏：把 `172.19.0.2` 誤認成 npm 自己的 IP、以為 `161.118.254.107` 是使用者的家用 IP、甚至一度懷疑伺服器被入侵。這些誤判不是查證方法有問題，而是起點上就沒有「這套系統本來就該長什麼樣子」的正確參照，只能一步步用實驗去猜。
+This whole "connect to the 3x-ui proxy first, then you can access internal services" protection scheme was, before this incident, **not written down anywhere** — not in this repo, not in the README, not elsewhere, only existing in the user's head. This directly meant Claude Code, when investigating, had no basis to refer to and could only reverse-engineer the design intent from phenomena observable on the server (access list contents, test results), going astray several times along the way: mistaking `172.19.0.2` for npm's own IP, thinking `161.118.254.107` was the user's home IP, even suspecting at one point the server was compromised. These misjudgments were not because the verification method was wrong, but because there was no correct reference for "what this system is supposed to look like" at the starting point, and the only option was to use experiments to guess step by step.
 
-這也是為什麼第 8 步一寫完使用者說明架構意圖，就先要求寫成 README——把這類「只存在腦中、別人看不出來的設計意圖」寫下來，是避免下次同樣的事重演一次的關鍵，比單純修好這次的 bug 更重要。
+This is also why, in step 8, once the user explained the architectural intent, I asked to first write it into a README — writing down this kind of "design intent that exists only in someone's head and is invisible to others" is key to preventing the same thing from happening again, and matters more than simply fixing this bug.

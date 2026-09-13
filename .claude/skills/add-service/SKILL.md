@@ -1,75 +1,75 @@
 ---
 name: add-service
-description: 在这个 GitOps 仓库里新增一个服务的完整流程——建 compose 栈、按需为共享资源（minio/postgres/redis）开 prod+dev 两套隔离池、接 NPM 反代、加 homepage 卡片、提交。当用户要「加一个新服务」「部署一个新应用」「新建一个 compose 栈」时使用。
+description: The full flow for adding a new service to this GitOps repo — create a compose stack, provision prod+dev isolated pools for shared resources (minio/postgres/redis) as needed, wire up an NPM reverse proxy, add a homepage card, and commit. Use when the user wants to "add a new service", "deploy a new app", or "create a new compose stack".
 ---
 
-# 新增一个服务
+# Add a new service
 
-逐步执行，**每一步都不能跳**——漏掉 homepage 卡片或 NPM 记录是最常见的遗漏。
+Execute step by step, **don't skip any step** — missing the homepage card or the NPM record is the most common omission.
 
-## 1. 建 compose 栈
+## 1. Create the compose stack
 
-在对应 `<host>/compose/` 下新建 `<compose>/docker-compose.yml`。写之前先读 [`.claude/rules/compose-conventions.md`](../../rules/compose-conventions.md)（编辑该路径下的文件时会自动载入）——时区、日志上限、端口最少暴露、`restart: unless-stopped`、`proxy` 网络、最小权限这几条都是硬约束，CI 会检查。
+Create `<compose>/docker-compose.yml` under the appropriate `<host>/compose/`. Before writing, read [`.claude/rules/compose-conventions.md`](../../rules/compose-conventions.md) (auto-loaded when editing files under that path) — timezone, log size limits, minimal port exposure, `restart: unless-stopped`, the `proxy` network, and least privilege are all hard constraints that CI checks.
 
-不需要对外暴露的服务**不要**挂到 `proxy` 网络上；需要的话也**不要**发布宿主机端口，统一走 NPM 反代到容器内部端口。
+Services that don't need external exposure should **not** be attached to the `proxy` network; even those that do should **not** publish host ports — they all go through NPM reverse-proxied to the container's internal port.
 
-## 2. 共享资源：prod / dev 两套隔离池
+## 2. Shared resources: prod / dev isolated pools
 
-如果这个服务要用到共享的 minio / postgres / redis，**开两套互相隔离的资源**，dev 那套名字加 `_dev` 后缀：
+If this service uses the shared minio / postgres / redis, **provision two mutually isolated sets of resources**, with the dev set suffixed `_dev`:
 
-| 共享资源 | prod | dev |
+| Shared resource | prod | dev |
 |---|---|---|
 | minio | `<name>` bucket | `<name>_dev` bucket |
-| postgres | `<name>` 数据库 | `<name>_dev` 数据库 |
-| redis | `<name>` ACL 用户 | `<name>_dev` ACL 用户 |
+| postgres | `<name>` database | `<name>_dev` database |
+| redis | `<name>` ACL user | `<name>_dev` ACL user |
 
-- postgres 建库走 [`vps_oracle/compose/postgres/init/init-databases.sh`](../../../vps_oracle/compose/postgres/init/init-databases.sh)。
-- redis ACL 用户由 [`vps_oracle/compose/redis/scripts/gen-users-acl.sh`](../../../vps_oracle/compose/redis/scripts/gen-users-acl.sh) 从 `.env` 生成，生成物 `redis/users.acl` 含明文密码、已 gitignore，不要提交。
-- 已存在的 notes / todo **不做追溯改造**，保持现状。
+- postgres database creation goes through [`vps_oracle/compose/postgres/init/init-databases.sh`](../../../vps_oracle/compose/postgres/init/init-databases.sh).
+- redis ACL users are generated from `.env` by [`vps_oracle/compose/redis/scripts/gen-users-acl.sh`](../../../vps_oracle/compose/redis/scripts/gen-users-acl.sh); the generated `redis/users.acl` contains plaintext passwords and is gitignored — don't commit it.
+- The existing notes / todo are **not retrofitted** — leave them as-is.
 
-## 3. 启动
+## 3. Start it
 
 ```bash
 cd <host>/compose/<compose> && docker compose up -d
 ```
 
-仓库目录就是运行目录，没有单独的部署路径。
+The repo directory is the runtime directory — there is no separate deploy path.
 
-## 4. 接 NPM 反代
+## 4. Wire up the NPM reverse proxy
 
-用 `npm-proxy-host` skill。域名 `<service>.jerome.cloudns.asia`；如果这个服务同时要有 dev 环境，dev 用 `<service>.dev.jerome.cloudns.asia`。
+Use the `npm-proxy-host` skill. Domain `<service>.jerome.cloudns.asia`; if this service also needs a dev environment, dev uses `<service>.dev.jerome.cloudns.asia`.
 
-## 5. 加 homepage 卡片
+## 5. Add a homepage card
 
-homepage 2026-08-18 已从 k3s 迁回 compose（见上面「k3s」一节），配置源文件是 **`vps_oracle/compose/homepage/config/services.yaml`**。每新增一个服务，在对应分类（`Infra Services` / `Apps`）下加一张卡片，跟现有条目保持同样格式：
+homepage moved back from k3s to compose on 2026-08-18 (see the k3s section above), and its config source file is **`vps_oracle/compose/homepage/config/services.yaml`**. For each new service, add a card under the appropriate category (`Infra Services` / `Apps`), keeping the same format as existing entries:
 
 ```yaml
-    - <服务名>:
+    - <service name>:
         icon: <icon-name>.png
         href: https://<service>.jerome.cloudns.asia
-        description: <一句话描述，英文>
+        description: <one-line description, in English>
 ```
 
-- `icon`：优先用 [walkxcode/dashboard-icons](https://github.com/walkxcode/dashboard-icons) 里对应的文件名（homepage 会自动去 CDN 拉）；没有专门图标的用 `si-<name>`（simple-icons）顶替，如 `si-anthropic`
-- `description`：访客可见，按下面"暴露内容用英文"的约定用英文
-- 没有 `container`/`server` 字段——迁回 compose 后这个字段本可以恢复（挂 docker.sock），但 2026-08-18 决定继续不挂，保持跟迁移前 k3s 状态一致，只做卡片本身
-- **例外**：安全敏感的服务（如 3x-ui）不上卡片，加之前先问一句
+- `icon`: prefer the matching filename from [walkxcode/dashboard-icons](https://github.com/walkxcode/dashboard-icons) (homepage pulls from the CDN automatically); where there's no dedicated icon, fall back to `si-<name>` (simple-icons), e.g. `si-anthropic`
+- `description`: visitor-visible, so write it in English per the "user-facing content in English" convention below
+- No `container`/`server` field — after moving back to compose this field could have been restored (mounting the docker socket), but on 2026-08-18 we decided to keep it off, staying consistent with the pre-migration k3s state and only providing the card itself
+- **Exception**: security-sensitive services (e.g. 3x-ui) don't get a card — ask before adding one
 
-改完后 `cd vps_oracle/compose/homepage && docker compose up -d` 直接生效，不用 push/ArgoCD。
-## 6. 提交
+After editing, `cd vps_oracle/compose/homepage && docker compose up -d` takes effect directly — no push/ArgoCD needed.
+## 6. Commit
 
 ```bash
 git add <host>/compose/<compose> vps_oracle/compose/homepage/config/services.yaml
 git commit
 ```
 
-一次 commit 一个改动。commit message 用英文（Conventional Commits）。
+One commit per change. Commit messages in English (Conventional Commits).
 
-## 收尾自检
+## Final self-check
 
-- [ ] compose 里有 `logging` / `TZ` / `restart: unless-stopped` / 固定的镜像 tag 或 digest
-- [ ] 没有多余的宿主机端口发布
-- [ ] 密钥在 `.env` 里，不在 compose 里
-- [ ] NPM 记录建好，且**回头复查过** Force SSL / HTTP/2 没被静默重置
-- [ ] homepage 卡片加了（安全敏感的服务除外，加之前先问）
-- [ ] `python3 .github/scripts/check-compose-conventions.py` 通过
+- [ ] compose has `logging` / `TZ` / `restart: unless-stopped` / a pinned image tag or digest
+- [ ] No unnecessary host-port publications
+- [ ] Secrets are in `.env`, not in compose
+- [ ] NPM record created, and **re-checked afterwards** that Force SSL / HTTP/2 weren't silently reset
+- [ ] homepage card added (except security-sensitive services — ask first)
+- [ ] `python3 .github/scripts/check-compose-conventions.py` passes

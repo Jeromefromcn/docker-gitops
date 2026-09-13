@@ -1,57 +1,57 @@
 # vps_oracle/host-native/inspector
 
-Host-level巡檢腳本，非 docker compose 管理（跟 `vps_oracle/host-native/host-firewall/`、`vps_oracle/host-native/npm-nodeport-relay/` 一樣是 `<host>/host-native/` 下直接跑在宿主機的 systemd 服務，見 repo 根 README「目錄結構」一節）。設計背景、分級規則、自我保護規則見
-[`docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md`](../../../docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md)。
+Host-level inspection script, not managed by docker compose (like `vps_oracle/host-native/host-firewall/` and `vps_oracle/host-native/npm-nodeport-relay/`, it's a systemd service that runs directly on the host under `<host>/host-native/`; see the repo root README's "Directory structure" section). For the design background, tiering rules, and self-protection rules, see
+[`docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md`](../../../docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md).
 
-**通知語言**：Telegram 報告標題與內文一律英文（2026-08-16 用戶要求；repo 文件維持中文）。`tests/test-inspect.sh` 有對應斷言（標題、分節標頭、無 CJK 字元）。
+**Notification language**: the Telegram report title and body are English only (2026-08-16 user request; the repo docs remain Chinese). `tests/test-inspect.sh` has a corresponding assertion (title, section headers, no CJK characters).
 
-## 現況（phase 2）
+## Status (phase 2)
 
-已實作（phase 1）：
-- `checks/stray-vscode-sessions.sh` — 游離/卡死的 claude session、脫離連線的 server-main 樹
-- `checks/vscode-server-versions.sh` — 堆積的 `.vscode-server/cli/servers/*` 版本目錄
+Implemented (phase 1):
+- `checks/stray-vscode-sessions.sh` — stray/stuck claude sessions, disconnected server-main trees
+- `checks/vscode-server-versions.sh` — piled-up `.vscode-server/cli/servers/*` version directories
 
-已實作（phase 2，docker 層）：
-- `checks/docker-stopped-containers.sh`（auto）— exited 超過 7 天的容器
-- `checks/docker-dangling-images.sh`（auto）— dangling 超過 7 天的 image
-- `checks/docker-build-cache.sh`（auto）— 超過 7 天的 build cache
-- `checks/docker-unused-networks.sh`（auto）— 無容器掛載的自訂 network
-- `checks/docker-restart-storms.sh`（alert）— RestartCount 異常高 / 持續 Restarting
-- `checks/docker-unused-volumes.sh`（alert）— 無容器掛載的 volume（匿名聚合成一行，具名逐行）
-- `checks/docker-compose-logging-drift.sh`（alert）— compose 服務缺 `logging.options.max-size`
-- `checks/docker-oversized-logs.sh`（alert）— 單檔超過 50MiB 的 `*-json.log`
+Implemented (phase 2, docker layer):
+- `checks/docker-stopped-containers.sh` (auto) — containers exited for more than 7 days
+- `checks/docker-dangling-images.sh` (auto) — images dangling for more than 7 days
+- `checks/docker-build-cache.sh` (auto) — build cache older than 7 days
+- `checks/docker-unused-networks.sh` (auto) — custom networks with no containers attached
+- `checks/docker-restart-storms.sh` (alert) — abnormally high RestartCount / stuck in Restarting
+- `checks/docker-unused-volumes.sh` (alert) — volumes with no containers attached (anonymous aggregated into one line, named listed one per line)
+- `checks/docker-compose-logging-drift.sh` (alert) — compose services missing `logging.options.max-size`
+- `checks/docker-oversized-logs.sh` (alert) — `*-json.log` files over 50MiB each
 
-已實作（phase 2，k3s 層）：
-- `checks/k3s-evicted-pods.sh`（auto）— Failed 殘留 pod
-- `checks/k3s-completed-jobs.sh`（auto）— 完成超過 3 天的 Job
-- `checks/k3s-containerd-images.sh`（auto）— 無容器引用的 containerd image（`sudo crictl`）
-- `checks/k3s-released-pvs.sh`（alert）— Released PV
-- `checks/k3s-stuck-terminating.sh`（alert）— 卡超過 15 分鐘的 Terminating pod
-- `checks/k3s-oom-killed-containers.sh`（alert）— `lastState.terminated.reason=OOMKilled` 且發生在 24 小時內；`k3s-evicted-pods.sh` 抓不到這種情況（pod 全程停留 `Running`，只是 container 被殺重啟），2026-08-17 io_pressure_critical 事件（jaeger/trivy 都因 limit 太緊被 OOM Kill）之後補上
+Implemented (phase 2, k3s layer):
+- `checks/k3s-evicted-pods.sh` (auto) — Failed leftover pods
+- `checks/k3s-completed-jobs.sh` (auto) — Jobs completed for more than 3 days
+- `checks/k3s-containerd-images.sh` (auto) — containerd images with no container referencing them (`sudo crictl`)
+- `checks/k3s-released-pvs.sh` (alert) — Released PVs
+- `checks/k3s-stuck-terminating.sh` (alert) — Terminating pods stuck for more than 15 minutes
+- `checks/k3s-oom-killed-containers.sh` (alert) — `lastState.terminated.reason=OOMKilled` within the last 24 hours; `k3s-evicted-pods.sh` can't catch this case (the pod stays `Running` the whole time, only the container is killed and restarted), added after the 2026-08-17 io_pressure_critical incident (jaeger/trivy were both OOM-killed because their limits were too tight)
 
-已實作（NPM 反代層）：
-- `checks/npm-nginx-config.sh`（alert）— 在 npm 容器裡跑 `nginx -t`。抓的是「配置現在還能跑、但下次冷啟動會起不來」這種看不見的狀態：NPM 的 Custom Location 會把上游主機名寫死進 `proxy_pass`（普通轉發走變數 + Docker DNS，是逐請求解析），一旦那個後端容器消失，nginx 下次載入配置就 emerg 拒絕啟動，**全部**反代站點一起掛，不只是那一個。運行中的 nginx 靠先前解析到的位址繼續跑，所以在重啟之前從監控、面板、日誌都看不出來。`nginx -t` 用的是同一次解析，但跑在獨立行程裡，不影響正在服務的 nginx。2026-08-21 dify 容器停了 45 小時、升級 npm 時才引爆（來龍去脈見 [`vps_oracle/compose/npm/README.md`](../../compose/npm/README.md)）之後補上。
+Implemented (NPM reverse proxy layer):
+- `checks/npm-nginx-config.sh` (alert) — runs `nginx -t` inside the npm container. It catches the invisible "config works now, but the next cold start won't come up" state: NPM's Custom Location bakes the upstream hostname into `proxy_pass` (normal forwarding uses variables + Docker DNS, resolved per request), so once that backend container disappears, nginx refuses to start with an `emerg` on its next config load — and **all** reverse-proxy sites go down together, not just that one. The running nginx keeps going on the previously resolved address, so you can't see it from monitoring, the panel, or logs until restart. `nginx -t` uses the same resolution but runs in a separate process, so it doesn't affect the serving nginx. Added after the 2026-08-21 incident where the dify container was stopped for 45 hours and only blew up during an npm upgrade (full story in [`vps_oracle/compose/npm/README.md`](../../compose/npm/README.md)).
 
-閾值都是各腳本開頭的 env var，可從 systemd unit 的 `Environment=` 或手動執行時覆寫。
+Thresholds are env vars at the top of each script, overridable from the systemd unit's `Environment=` or when running manually.
 
-**範圍邊界**：`vscode-server-versions.sh` 只清 `cli/servers/<version>/` 這種大目錄（單個 500-650M 級別），不動 `~/.vscode-server/code-<commit>` 這類小得多的 CLI tunnel binary（~27M/個）——spec 沒把它們列進范围，之后想扩再加新 check。
+**Scope boundary**: `vscode-server-versions.sh` only cleans the large `cli/servers/<version>/` directories (each in the 500-650M range), and leaves `~/.vscode-server/code-<commit>` — the much smaller CLI tunnel binaries (~27M each) — alone; the spec didn't list them in scope. Add a new check later if there's a desire to expand.
 
-## 執行
+## Running
 
 ```bash
 cd vps_oracle/host-native/inspector
-./inspect.sh                    # 正式跑一次，會發 Telegram
-INSPECTOR_DRY_RUN=1 ./inspect.sh  # 只印 would-kill/would-delete，不動手
+./inspect.sh                    # a real run, sends Telegram
+INSPECTOR_DRY_RUN=1 ./inspect.sh  # only prints would-kill/would-delete, acts on nothing
 ```
 
-## 測試
+## Testing
 
 ```bash
 cd vps_oracle/host-native/inspector
 ./tests/test-common.sh
 ./tests/test-stray-vscode-sessions.sh
 ./tests/test-vscode-server-versions.sh
-./tests/test-inspect.sh        # 最後一段會真的打 apprise inspector-tg，Telegram 群組要收得到
+./tests/test-inspect.sh        # the last part actually hits apprise inspector-tg; the Telegram group must be reachable
 ./tests/test-docker-stopped-containers.sh
 ./tests/test-docker-dangling-images.sh
 ./tests/test-docker-build-cache.sh
@@ -68,9 +68,9 @@ cd vps_oracle/host-native/inspector
 ./tests/test-npm-nginx-config.sh
 ```
 
-`tests/test-common.sh` 是全案最重要的一份測試——它驗證的是「絕不誤殺自己」這條規則本身，不能只靠人工看一遍代碼，見 spec 的「自我保護規則」一節。
+`tests/test-common.sh` is the most important test in the whole project — it verifies the "never mistakenly kill yourself" rule itself, which can't be left to eyeballing the code; see the spec's "self-protection rules" section.
 
-## 部署
+## Deploy
 
 ```bash
 sudo ln -sf $(pwd)/systemd/docker-gitops-inspector.service /etc/systemd/system/
@@ -79,30 +79,30 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now docker-gitops-inspector.timer
 ```
 
-用 symlink 不是複製——改代碼、`git pull`/`git commit` 完就是生效狀態，不用另外跑 install.sh（見 claude-code-notify 的教訓：獨立 install 步驟容易忘記跑）。改動 unit 檔案結構本身（不是 `inspect.sh` 內容）時才需要重新 `daemon-reload`。
+Use symlinks, not copies — after editing code and `git pull`/`git commit`, it's live without running a separate install.sh (see the claude-code-notify lesson: a separate install step is easy to forget to run). You only need to re-`daemon-reload` when the unit file structure itself changes (not the contents of `inspect.sh`).
 
-手動觸發一次：`sudo systemctl start docker-gitops-inspector.service`；看結果：`sudo systemctl status docker-gitops-inspector.service` / `journalctl -u docker-gitops-inspector.service -n 50`。
+Trigger once manually: `sudo systemctl start docker-gitops-inspector.service`; see the result: `sudo systemctl status docker-gitops-inspector.service` / `journalctl -u docker-gitops-inspector.service -n 50`.
 
-## k3s 存取（phase 2 一次性設置）
+## k3s access (one-time setup for phase 2)
 
-k3s checks 不用 admin kubeconfig，用最小權限 SA（`inspector/docker-gitops-inspector`：pods/jobs get+list+delete、PV get+list，其余一律拒絕）：
+The k3s checks don't use the admin kubeconfig; they use a least-privilege SA (`inspector/docker-gitops-inspector`: pods/jobs get+list+delete, PV get+list, everything else denied):
 
 ```bash
 cd vps_oracle/host-native/inspector
-./k3s/setup-kubeconfig.sh     # apply RBAC + 寫 state/kubeconfig（gitignored，600）
+./k3s/setup-kubeconfig.sh     # apply RBAC + write state/kubeconfig (gitignored, 600)
 ```
 
-腳本冪等，重跑安全。RBAC manifest 在 `k3s/rbac.yaml`——不在 `vps_oracle/k3s/manifests/`（那是 ArgoCD 地盤，見 k3s/README）。SA 所在的 `inspector` namespace 由 ArgoCD 管理（`manifests/namespace-inspector.yaml`），所以全新機器上要先等 ArgoCD 同步好 namespace 再跑這個腳本。
+The script is idempotent and safe to rerun. The RBAC manifest is at `k3s/rbac.yaml` — not under `vps_oracle/k3s/manifests/` (that's ArgoCD territory, see k3s/README). The `inspector` namespace where the SA lives is managed by ArgoCD (`manifests/namespace-inspector.yaml`), so on a brand-new machine you must wait for ArgoCD to sync the namespace before running this script.
 
-**2026-08-21 遷移**：SA 原本住在 `workloads`（借它的配額）。已遷到專屬 `inspector` namespace；舊的 `workloads/docker-gitops-inspector` SA 會在 ArgoCD 同步後手動刪除。已嵌入 state/kubeconfig 的 token 屬於遷移前的 SA，功能不受影響——重跑 setup 腳本會換到新 SA。
+**2026-08-21 migration**: the SA used to live in `workloads` (borrowing its quota). It has moved to a dedicated `inspector` namespace; the old `workloads/docker-gitops-inspector` SA will be deleted by hand after ArgoCD syncs. The token already embedded in state/kubeconfig belongs to the pre-migration SA and still works — rerunning the setup script switches to the new SA.
 
-兩個 check 用到密碼免輸入的 `sudo -n`（都是唯讀列舉或單一清理指令）：`docker-oversized-logs.sh`（讀 `/var/lib/docker/containers`）、`k3s-containerd-images.sh`（`crictl` socket 是 root-only）。若日後收回 NOPASSWD，這兩個 check 會在報告裡發 alert 說明被跳過，不會掛住。
+Two checks use passwordless `sudo -n` (both read-only enumeration or a single cleanup command): `docker-oversized-logs.sh` (reads `/var/lib/docker/containers`) and `k3s-containerd-images.sh` (the `crictl` socket is root-only). If NOPASSWD is ever revoked, these two checks will emit an alert in the report saying they were skipped, rather than hanging.
 
 ## apprise target
 
-`inspector-tg` 已於 2026-08-16 註冊完成（沿用 vikunja 既有 bot token，指向 Telegram 群組 "OCI System inspection"）。apprise 已於 2026-08-18 遷回 docker compose（`vps_oracle/compose/apprise`），只在 `proxy` 網路內用容器名給其他容器訪問；inspector 是 host-native 腳本、不在任何 docker network 裡，因此 apprise compose 額外綁了 `127.0.0.1:8000:8000` 給它用，`APPRISE_URL` 預設值也改成 `http://localhost:8000`（見 `lib/common.sh`）。
+`inspector-tg` was registered on 2026-08-16 (reusing vikunja's existing bot token, pointed at the Telegram group "OCI System inspection"). apprise was migrated back to docker compose on 2026-08-18 (`vps_oracle/compose/apprise`), exposed to other containers only by container name inside the `proxy` network; the inspector is a host-native script not on any docker network, so the apprise compose additionally bound `127.0.0.1:8000:8000` for it, and the default `APPRISE_URL` changed to `http://localhost:8000` (see `lib/common.sh`).
 
-## 上線紀律
+## Go-live discipline
 
-1. `INSPECTOR_DRY_RUN=1` 先跑幾輪，核對報告跟實際狀態相符（尤其 `stray-vscode-sessions.sh` 不能把還在互動的 session 判定為游離）。
-2. 正式模式上線後先觀察幾天的 Telegram 報告，確認沒有誤殺才算穩定——不是一上線就信任自動 kill。
+1. Run `INSPECTOR_DRY_RUN=1` a few rounds first, and check the report matches the actual state (especially: `stray-vscode-sessions.sh` must not judge a still-interactive session as stray).
+2. After going live in real mode, watch the Telegram reports for a few days and confirm there are no mistaken kills before considering it stable — don't trust auto-kill the moment it goes live.

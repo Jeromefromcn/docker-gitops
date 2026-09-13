@@ -14,8 +14,8 @@ services:
     environment:
       TZ: "Asia/Hong_Kong"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock   # 必需:控制宿主机 docker,等同 root 权限,已知风险,无法回避
-      - /etc/portainer/data:/data                     # Portainer 自身数据库持久化(stack 定义也存这里,不像 Dockge 需要挂宿主机 compose 目录)
+      - /var/run/docker.sock:/var/run/docker.sock   # required: controls the host docker, equivalent to root, a known and unavoidable risk
+      - /etc/portainer/data:/data                     # Portainer's own database persistence (stack definitions also live here, unlike Dockge which needs the host compose directory mounted)
       # The image ships no tzdata and no /etc/localtime, so the TZ variable above
       # resolves to nothing and Go silently falls back to UTC. Bind-mounting the
       # single zone file (1.2 KB) is what actually makes TZ take effect.
@@ -24,8 +24,8 @@ services:
       - /usr/share/zoneinfo/Asia/Hong_Kong:/usr/share/zoneinfo/Asia/Hong_Kong:ro
     networks:
       - proxy
-    # NPM 反代配置: Forward Hostname/IP = portainer, Forward Port = 9000 (HTTP UI,未发布到宿主机;9443 是自带 HTTPS,交给 NPM 统一做 TLS 就不用它)
+    # NPM reverse proxy: Forward Hostname/IP = portainer, Forward Port = 9000 (HTTP UI, not published to the host; 9443 is its built-in HTTPS, left unused since NPM handles all TLS)
 
 networks:
   proxy:
-    external: true   # 手动创建一次：docker network create proxy
+    external: true   # create once manually: docker network create proxy

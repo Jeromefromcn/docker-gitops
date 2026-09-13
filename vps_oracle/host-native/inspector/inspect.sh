@@ -5,7 +5,7 @@
 # output, and sends exactly one aggregated Telegram report via apprise
 # -- regardless of whether anything needed attention, so "is the
 # inspector still running" is itself observable (design spec's
-# "通知格式" section). All notification text is English by explicit
+# "notification format" section). All notification text is English by explicit
 # user requirement (2026-08-16), even though repo docs are Chinese.
 #
 # Not `set -e`: one check script crashing must not abort the whole run

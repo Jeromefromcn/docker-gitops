@@ -1,6 +1,8 @@
-# 全局 .gitconfig 故意不设 user / credential:
-# 只有 ~/jerome/、~/bridget/、~/evidence/ 三个 account 目录能提交（各自 includeIf 提供身份）
-# 非 account 目录提交会 fatal: 无 user.name —— 这是有意的安全约束, 需要时再加 includeIf 规则
+# The global .gitconfig deliberately sets no user / credential:
+# only the three account directories ~/jerome/, ~/bridget/, ~/evidence/ can
+# commit (each gets its identity from its own includeIf).
+# Committing outside an account directory fails with "fatal: no user.name" —
+# this is an intentional safety constraint; add another includeIf rule when needed.
 
 [includeIf "gitdir:~/jerome/"]
     path = ~/.gitconfig-jerome

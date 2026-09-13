@@ -1,121 +1,121 @@
-# K3s Phase F+G:Istio Ambient Mesh 與 PR 預覽泳道機制
+# K3s Phase F+G: Istio Ambient Mesh and PR Preview Lane Mechanism
 
-日期:2026-08-19
-狀態:已上線並端到端驗證通過
-環境:Oracle VPS 單節點 k3s(Cilium CNI,`kubeProxyReplacement: true`),ArgoCD GitOps
-關聯文檔:[設計文檔](../superpowers/specs/2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md)(完整的方案取捨與理由)、[實施計劃](../superpowers/plans/2026-08-18-k3s-phase-fg-mesh-pr-lanes.md)(14 個任務的逐步執行記錄)、[`vps_oracle/k3s/README.md`](../../vps_oracle/k3s/README.md#istio-ambient--pr-lanes)(運維操作手冊,含 GitHub PAT 輪換、回滾路徑)
-本文檔:面向「這個階段到底做出了什麼、怎麼用、怎麼確認它還活著」的功能總結與驗證手冊,不重複設計文檔的決策過程與計劃文檔的執行細節。
+Date: 2026-08-19
+Status: live and verified end to end
+Environment: Oracle VPS single-node k3s (Cilium CNI, `kubeProxyReplacement: true`), ArgoCD GitOps
+Related docs: [design doc](../superpowers/specs/2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md) (the full trade-off analysis and rationale), [implementation plan](../superpowers/plans/2026-08-18-k3s-phase-fg-mesh-pr-lanes.md) (step-by-step execution record of 14 tasks), [`vps_oracle/k3s/README.md`](../../vps_oracle/k3s/README.md#istio-ambient--pr-lanes) (the day-to-day operations manual, including GitHub PAT rotation and rollback path)
+This document: a feature summary and verification manual aimed at "what exactly this phase produced, how to use it, how to confirm it's still alive" — it does not repeat the decision process in the design doc or the execution details in the plan.
 
 ---
 
-## 1. 一句話總結
+## 1. One-line summary
 
-給集群裝上 Istio Ambient service mesh(僅 `pr-lanes` 一個命名空間入網),讓帶 `pr-lane` label 的 GitHub PR 能自動獲得一條「只複製被改動的那顆服務、其餘全部共用常駐基準環境」的預覽泳道——不帶特殊 header 的請求打到共享的 baseline,帶 `x-pr-lane: <PR 編號>` header 的請求會被 L7 路由到該 PR 專屬的服務版本,PR 關閉後泳道自動回收乾淨,不留殘留資源。
+Install an Istio Ambient service mesh on the cluster (only the single `pr-lanes` namespace is admitted into the mesh), so that a GitHub PR carrying a `pr-lane` label automatically gets a preview lane that "copies only the service that was changed; everything else shares the resident baseline environment" — requests without the special header hit the shared baseline, requests carrying an `x-pr-lane: <PR number>` header are L7-routed to the PR-specific service version, and when the PR closes the lane is cleaned up automatically, leaving no leftover resources.
 
-## 2. 為什麼要做這個
+## 2. Why do this
 
-業界做 PR 預覽環境有兩派做法:「namespace-per-PR」把整套服務複製一份(成本隨服務數 × PR 數線性成長),或「共享底座 + 流量路由」只複製被改動的那一顆服務(Signadot 等工具的思路)。本階段實作後者,但這個做法的價值只有在「至少兩層服務、東西向有一跳可以做路由決策」時才成立——單層服務的話,任何 ingress controller 的 header 分流都能做到,用不上 service mesh。這也是為什麼本階段把原本單層的練手 app `placeholder-hello` 拆成了兩層(`hello-frontend` → `hello-backend`):沒有這第二跳,B 派設計就無從談起。完整的取捨分析見[設計文檔](../superpowers/specs/2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md)開頭的「為什麼是共享底座 + 流量路由」一節。
+The industry has two schools of PR preview environments: "namespace-per-PR" copies the entire set of services (cost grows linearly with services × PRs), or "shared base + traffic routing" copies only the single changed service (the approach of tools like Signadot). This phase implements the latter, but that approach's value only holds when there are "at least two layers of services and an east-west hop where a routing decision can be made" — with a single-layer service, any ingress controller's header splitting can do it, and a service mesh is unneeded. That is also why this phase split the originally single-layer practice app `placeholder-hello` into two layers (`hello-frontend` → `hello-backend`): without that second hop, the "B" school design is moot. The full trade-off analysis is in the "Why shared base + traffic routing" section at the start of the [design doc](../superpowers/specs/2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md).
 
-## 3. 架構總覽
+## 3. Architecture overview
 
 ```mermaid
 flowchart TD
-    Client["外部 / 宿主機 curl<br/>無 header,或帶 X-PR-Lane: N"]
+    Client["External / host curl<br/>no header, or with X-PR-Lane: N"]
 
-    subgraph mesh["pr-lanes 命名空間(集群唯一入網的 namespace)"]
-        Frontend["hello-frontend(baseline)<br/>NodePort 30083<br/>nginx /api → proxy_pass hello-backend<br/>原樣轉發 X-PR-Lane header"]
-        Waypoint["waypoint proxy(Envoy,L7)<br/>讀 HTTPRoute 規則:<br/>x-pr-lane=42 → hello-backend-pr-42<br/>無 match(catch-all)→ baseline"]
-        Baseline["hello-backend(baseline)"]
+    subgraph mesh["pr-lanes namespace (the only namespace in the cluster admitted into the mesh)"]
+        Frontend["hello-frontend (baseline)<br/>NodePort 30083<br/>nginx /api → proxy_pass hello-backend<br/>forwards the X-PR-Lane header as-is"]
+        Waypoint["waypoint proxy (Envoy, L7)<br/>reads HTTPRoute rules:<br/>x-pr-lane=42 → hello-backend-pr-42<br/>no match (catch-all) → baseline"]
+        Baseline["hello-backend (baseline)"]
         Lane42["hello-backend-pr-42"]
         Lane57["hello-backend-pr-57"]
     end
 
-    AppSet["ArgoCD ApplicationSet<br/>PR Generator(30 秒輪詢 GitHub)"]
+    AppSet["ArgoCD ApplicationSet<br/>PR Generator (polls GitHub every 30 seconds)"]
 
     Client --> Frontend
-    Frontend -- "ztunnel 攔截(hello-backend 掛了 waypoint)" --> Waypoint
+    Frontend -- "ztunnel intercepts (hello-backend has a waypoint attached)" --> Waypoint
     Waypoint -- "catch-all" --> Baseline
     Waypoint -. "header match" .-> Lane42
     Waypoint -. "header match" .-> Lane57
-    AppSet -. "動態生成 / 回收" .-> Lane42
-    AppSet -. "動態生成 / 回收" .-> Lane57
+    AppSet -. "dynamically create / reclaim" .-> Lane42
+    AppSet -. "dynamically create / reclaim" .-> Lane57
 
     classDef dynamic stroke-dasharray: 5 5
     class Lane42,Lane57,AppSet dynamic
 ```
 
-命名空間佈局:整個集群只有 `pr-lanes` 一個命名空間帶 `istio.io/dataplane-mode: ambient` 標籤,其餘命名空間(`workloads`、`lab-environment`、`headlamp`、`argocd`、`kube-system` 等)完全不進網格——這是刻意的爆炸半徑控制,不是「網格只給練手用」,而是漸進式納管的第一批。虛線框的節點是由 ApplicationSet 動態生成/回收的部分,不是常駐資源。
+Namespace layout: the entire cluster has only the single `pr-lanes` namespace carrying the `istio.io/dataplane-mode: ambient` label; all other namespaces (`workloads`, `lab-environment`, `headlamp`, `argocd`, `kube-system`, etc.) are entirely outside the mesh — this is deliberately scoped blast-radius control, not "the mesh is only for practice"; it is the first batch of gradual adoption. The dashed-border nodes are the parts dynamically created/reclaimed by the ApplicationSet, not resident resources.
 
-## 4. 功能詳解
+## 4. Feature details
 
-### 4.1 Istio Ambient mesh(範圍限定在 `pr-lanes`)
+### 4.1 Istio Ambient mesh (scoped to `pr-lanes`)
 
-裝的元件:`istiod`(控制平面)+ `ztunnel`(每節點一份的 L4 mTLS 透明代理,DaemonSet)+ `istio-cni`(在 pod 建立時設置流量重定向規則的 CNI chain 插件,DaemonSet)。全部走 Helm + ArgoCD,版本 `1.30.3`。這一批元件本身**不**代表任何命名空間入網——入網與否完全由命名空間的 `istio.io/dataplane-mode: ambient` 標籤決定,目前只有 `pr-lanes` 有這個標籤。
+Installed components: `istiod` (control plane) + `ztunnel` (one-per-node L4 mTLS transparent proxy, DaemonSet) + `istio-cni` (a CNI chain plugin that sets up traffic-redirection rules when a pod is created, DaemonSet). All via Helm + ArgoCD, version `1.30.3`. This batch of components by itself does **not** mean any namespace is admitted — admission is entirely determined by a namespace's `istio.io/dataplane-mode: ambient` label, and currently only `pr-lanes` has it.
 
-Ambient 模式不用 sidecar(每個 pod 額外掛一個 Envoy 容器),而是節點級共享的 `ztunnel` 做 L4 mTLS,只有需要 L7 能力(這裡是 header 路由)的服務才額外掛一個獨立的 waypoint proxy——這是 ambient 相對 sidecar 模式的核心資源優勢,本階段的元件實測記憶體佔用遠低於預算(見第 5.4 節)。
+Ambient mode does not use sidecars (an extra Envoy container per pod), but a node-level shared `ztunnel` for L4 mTLS; only services that need L7 capability (here, header routing) get an additional standalone waypoint proxy — this is ambient's core resource advantage over the sidecar model, and the components in this phase measured far below the memory budget (see section 5.4).
 
-### 4.2 兩層應用拓撲:`hello-frontend` → `hello-backend`
+### 4.2 Two-layer app topology: `hello-frontend` → `hello-backend`
 
-`hello-frontend`:baseline 恆定一份,永遠不隨 PR 複製。nginx,`/` 回自己的靜態頁,`/api` 透過 `proxy_pass` 轉給 `hello-backend`,原樣轉發客戶端帶的 `x-pr-lane` header(nginx `proxy_pass` 預設行為,免費拿到,不需要額外程式碼)。
+`hello-frontend`: always a single baseline copy, never replicated per PR. nginx, `/` serves its own static page, `/api` forwards via `proxy_pass` to `hello-backend`, forwarding the client's `x-pr-lane` header as-is (nginx `proxy_pass` default behavior, gotten for free, no extra code needed).
 
-`hello-backend`:baseline 一份 + 每條泳道各一份。PR 改的就是它——這是刻意的簡化,真實世界的「哪個服務被改」判斷會更複雜,但本階段驗證的是機制骨架而非那個判斷邏輯。
+`hello-backend`: one baseline copy + one per lane. The PR changes it — this is a deliberate simplification; the real-world "which service was changed" determination would be more complex, but this phase validates the mechanism skeleton rather than that determination logic.
 
-檔案位置:`vps_oracle/k3s/apps/hello/k8s/`(baseline 的 Deployment/Service/ConfigMap)、`vps_oracle/k3s/apps/hello/backend/`(Dockerfile + CI 用的靜態頁)、`vps_oracle/k3s/apps/hello/lane/`(泳道用的 Kustomize base,見 4.4)。
+File locations: `vps_oracle/k3s/apps/hello/k8s/` (baseline Deployment/Service/ConfigMap), `vps_oracle/k3s/apps/hello/backend/` (Dockerfile + static page for CI), `vps_oracle/k3s/apps/hello/lane/` (Kustomize base for lanes, see 4.4).
 
-### 4.3 waypoint L7 路由:HTTP header 分流
+### 4.3 waypoint L7 routing: HTTP header splitting
 
-`hello-backend` 這個 Service 掛 `istio.io/use-waypoint: waypoint` 標籤(`vps_oracle/k3s/apps/hello/k8s/backend-service.yaml`),對應一個 waypoint `Gateway` 資源(`waypoint-gateway.yaml`)。路由規則由多份 `HTTPRoute` 疊加:一份**靜態、寫死在 repo 裡**的 catch-all(`backend-httproute.yaml`,無 match 條件,→ baseline),加上**每條泳道各一份、由 ApplicationSet 動態生成**的帶 header match 規則(→ 該 PR 的專屬 Service)。
+The `hello-backend` Service carries the `istio.io/use-waypoint: waypoint` label (`vps_oracle/k3s/apps/hello/k8s/backend-service.yaml`), corresponding to a waypoint `Gateway` resource (`waypoint-gateway.yaml`). Routing rules are composed of multiple `HTTPRoute`s overlaid: one **static, hard-written in the repo** catch-all (`backend-httproute.yaml`, no match condition, → baseline), plus **one per lane, dynamically created by the ApplicationSet** with a header match rule (→ that PR's dedicated Service).
 
-不需要手動排序:Gateway API 規範定義同一 parent 上的多份 `HTTPRoute` 合併時,按「header match 數量」等維度比優先序——泳道規則有 1 個 header match,baseline 規則有 0 個,泳道規則永遠優先,新增/移除泳道都不用碰 baseline 的檔案。
+No manual ordering needed: the Gateway API spec defines that when multiple `HTTPRoute`s on the same parent are merged, priority is compared on dimensions such as "number of header matches" — lane rules have 1 header match, the baseline rule has 0, so lane rules always win; adding/removing lanes never touches the baseline file.
 
-### 4.4 ArgoCD ApplicationSet:PR 觸發的自動生成/更新/回收
+### 4.4 ArgoCD ApplicationSet: PR-triggered auto create/update/reclaim
 
-`vps_oracle/k3s/argocd/apps/pr-lanes-appset.yaml`,用 `pullRequest.github` generator,每 30 秒輪詢一次 GitHub,篩選**帶 `pr-lane` 這個 GitHub label** 的 open PR。每個匹配的 PR 生成一個 `hello-pr-<N>` Application,套用 `vps_oracle/k3s/apps/hello/lane/` 這個 Kustomize base,用 JSON6902 patch 把佔位名稱換成 `hello-backend-pr-<N>`,image tag 換成該 PR 的 head commit SHA。
+`vps_oracle/k3s/argocd/apps/pr-lanes-appset.yaml`, using the `pullRequest.github` generator, polls GitHub every 30 seconds, filtering for open PRs carrying the `pr-lane` GitHub label. Each matching PR generates a `hello-pr-<N>` Application, applying the `vps_oracle/k3s/apps/hello/lane/` Kustomize base and using a JSON6902 patch to replace the placeholder name with `hello-backend-pr-<N>` and the image tag with that PR's head commit SHA.
 
-生命週期完全自動:PR 打上 label → 下一輪詢生成泳道;PR 推新 commit → CI 重新構建簽章,ApplicationSet 下一輪詢更新泳道鏡像;PR 關閉/合併 → 下一輪詢該 PR 不再匹配,Application 連同它管理的 Deployment/Service/HTTPRoute 一併被 ArgoCD 的 `prune: true` + `resources-finalizer.argocd.argoproj.io` 回收,不留殘留。
+Lifecycle is fully automatic: PR labeled → next poll creates the lane; PR pushed a new commit → CI rebuilds and signs, ApplicationSet updates the lane image on the next poll; PR closed/merged → the next poll no longer matches, and the Application together with the Deployment/Service/HTTPRoute it manages is reclaimed by ArgoCD's `prune: true` + `resources-finalizer.argocd.argoproj.io`, leaving no leftovers.
 
-### 4.5 CI 整合:PR 觸發的簽章構建
+### 4.5 CI integration: PR-triggered signed build
 
-`.github/workflows/hello-backend.yml` 新增 `pull_request` 觸發條件(`types: [opened, synchronize, reopened, labeled]`),job 級 `if` 條件過濾掉沒有 `pr-lane` label 的 PR(不浪費 CI 分鐘數)。Tag 用 `github.event.pull_request.head.sha`(**不是** `github.sha`——`pull_request` 事件下 `github.sha` 是 GitHub 自動生成的 merge commit SHA,跟 ApplicationSet 的 `{{.head_sha}}` 對不上,這是這條 pipeline 最容易踩的坑)。構建鏈路(QEMU → buildx arm64 → Trivy 掃描 → Cosign keyless 簽章 → 推 GHCR)跟既有的 `push`-觸發流程共用同一個 job,只是觸發條件和 tag 表達式不同。
+`.github/workflows/hello-backend.yml` adds the `pull_request` trigger condition (`types: [opened, synchronize, reopened, labeled]`), with a job-level `if` condition filtering out PRs without the `pr-lane` label (not wasting CI minutes). Tag uses `github.event.pull_request.head.sha` (**not** `github.sha` — under a `pull_request` event `github.sha` is the merge commit SHA auto-generated by GitHub, which does not match the ApplicationSet's `{{.head_sha}}`; this is the easiest pitfall in this pipeline). The build chain (QEMU → buildx arm64 → Trivy scan → Cosign keyless signing → push to GHCR) reuses the same job as the existing `push`-triggered flow, only the trigger condition and tag expression differ.
 
-### 4.6 Kyverno 安全邊界
+### 4.6 Kyverno security boundary
 
-集群既有的 `restrict-image-registry` 政策(Enforce)只認 `@refs/heads/main` 簽出的 image 簽章。PR 分支構建的 image 簽章身分是 `@refs/pull/<N>/merge`,不符合,會被擋。處理方式是**命名空間範圍的例外**,不是放寬既有政策:
+The cluster's existing `restrict-image-registry` policy (Enforce) only accepts image signatures checked out from `@refs/heads/main`. PR-branch-built images have a signature identity of `@refs/pull/<N>/merge`, which does not match and gets blocked. The handling is a **namespace-scoped exception**, not a relaxation of the existing policy:
 
-1. `restrict-image-registry` 排除 `pr-lanes` 命名空間(`vps_oracle/k3s/kyverno/policies/restrict-image-registry.yaml`)
-2. 新增 `restrict-image-registry-pr-lanes`,只匹配 `pr-lanes`,`subjectRegExp` 同時接受 `@refs/heads/main` 與 `@refs/pull/[0-9]+/merge`,另外因為泳道的 image 是「按 tag(commit SHA)引用,不是按 digest」,額外設了 `verifyDigest: false`(Kyverno 這個欄位預設要求 image 已經是 digest-pinned,PR 泳道刻意不這麼做——SHA tag 本身已經是不可變的,詳見設計文檔的說明)
+1. `restrict-image-registry` excludes the `pr-lanes` namespace (`vps_oracle/k3s/kyverno/policies/restrict-image-registry.yaml`)
+2. A new `restrict-image-registry-pr-lanes` matches only `pr-lanes`, with `subjectRegExp` accepting both `@refs/heads/main` and `@refs/pull/[0-9]+/merge`; additionally, because the lane images are "referenced by tag (commit SHA), not by digest", it also sets `verifyDigest: false` (Kyverno's default for this field requires the image to already be digest-pinned; the PR lane deliberately does not do this — the SHA tag is already immutable, see the design doc for details).
 
-刻意不直接放寬原政策的 regex——那會讓 PR 分支簽章在**整個集群**都能通過驗證,等於用一個練手功能的需求削弱全集群的主幹分支保證。命名空間範圍的例外把代價侷限在 `pr-lanes` 內。另外 `restricted-self-built`(Pod Security Standard 強制)與 `require-vuln-scan-clean`(Trivy CVE 閘門)這兩條政策的 selector 也已更新為涵蓋 `hello-frontend`/`hello-backend`。
+Deliberately not widening the original policy's regex — that would let PR-branch signatures pass verification across the **entire cluster**, weakening the whole cluster's main-branch guarantee to satisfy one practice feature. The namespace-scoped exception confines the cost to `pr-lanes`. Additionally, `restricted-self-built` (Pod Security Standard enforcement) and `require-vuln-scan-clean` (Trivy CVE gate) both had their selectors updated to cover `hello-frontend`/`hello-backend`.
 
-## 5. 如何驗證
+## 5. How to verify
 
-以下全部是實際跑過、有真實輸出的命令,不是理論上「應該可以」。
+Everything below is actually run with real output, not theoretical "should work".
 
-### 5.1 基礎設施健康檢查
+### 5.1 Infrastructure health checks
 
 ```bash
-# mesh 三元件全部 Running,四個對應的 ArgoCD Application 全部 Synced/Healthy
+# The three mesh components all Running; the four corresponding ArgoCD Applications all Synced/Healthy
 kubectl -n istio-system get pods
 kubectl -n argocd get application istio-base istio-istiod istio-cni istio-ztunnel \
   -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status
 
-# 爆炸半徑:整個集群只有 pr-lanes 帶 ambient 標籤
+# Blast radius: the whole cluster only has pr-lanes carrying the ambient label
 kubectl get ns -l istio.io/dataplane-mode=ambient
-# 期望輸出只有一行:pr-lanes
+# Expected output is a single line: pr-lanes
 
-# waypoint 已 Programmed,對應 Deployment Running
+# waypoint is Programmed, corresponding Deployment Running
 kubectl -n pr-lanes get gateway waypoint \
   -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}{"\n"}'
 kubectl -n pr-lanes get deploy waypoint
 
-# Gateway API CRD 已就位
+# Gateway API CRDs are in place
 kubectl get crd | grep gateway.networking.k8s.io
 ```
 
-### 5.2 端到端功能驗證(用真實 PR)
+### 5.2 End-to-end functional verification (with a real PR)
 
 ```bash
-# 1. 開一個改動 hello-backend 的 PR,打上 pr-lane label(標籤不存在的話先建一個)
+# 1. Open a PR that changes hello-backend, label it pr-lane (create the label first if it does not exist)
 gh label create pr-lane --description "Triggers a PR preview lane" --color 0E8A16
 git checkout -b test/verify-pr-lane
 sed -i 's/baseline/baseline — verify test/' vps_oracle/k3s/apps/hello/backend/index.html
@@ -124,93 +124,93 @@ git commit -m "Test change"
 git push -u origin test/verify-pr-lane
 gh pr create --title "Test: verify PR lane" --body "..." --label pr-lane
 
-# 2. 等 CI 構建完成(通常一兩分鐘),ApplicationSet 下一輪詢(≤30 秒)生成泳道
+# 2. Wait for CI to finish building (usually a minute or two); ApplicationSet's next poll (≤30s) creates the lane
 PR_NUM=$(gh pr view test/verify-pr-lane --json number --jq .number)
 gh run watch --exit-status $(gh run list --workflow=hello-backend.yml --limit=1 --json databaseId --jq '.[0].databaseId')
 sleep 35
 kubectl -n argocd get application hello-pr-$PR_NUM \
   -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
-# 期望:Synced Healthy
+# Expected: Synced Healthy
 
-# 3. 核心驗證——baseline 路徑不受泳道影響
+# 3. Core verification — baseline path is not affected by the lane
 NODE_IP=$(hostname -I | awk '{print $1}')
 curl -s http://$NODE_IP:30083/api
-# 期望:<h1>hello-backend (baseline)</h1>,不是 PR 改過的內容
+# Expected: <h1>hello-backend (baseline)</h1>, not the PR-modified content
 
-# 4. 核心驗證——帶 header 才會拿到 PR 的內容
+# 4. Core verification — only with the header do you get the PR content
 curl -s -H "x-pr-lane: $PR_NUM" http://$NODE_IP:30083/api
-# 期望:<h1>hello-backend (baseline — verify test)</h1>
+# Expected: <h1>hello-backend (baseline — verify test)</h1>
 
-# 5. 收尾:關閉 PR,確認完全回收
+# 5. Wrap up: close the PR, confirm full reclamation
 gh pr close $PR_NUM --delete-branch
 sleep 35
-kubectl -n argocd get application hello-pr-$PR_NUM 2>&1   # 期望 NotFound
-kubectl -n pr-lanes get deployment,svc,httproute 2>&1 | grep "pr-$PR_NUM"  # 期望空
+kubectl -n argocd get application hello-pr-$PR_NUM 2>&1   # Expected NotFound
+kubectl -n pr-lanes get deployment,svc,httproute 2>&1 | grep "pr-$PR_NUM"  # Expected empty
 ```
 
-### 5.3 安全邊界驗證(負面測試——拒絕才是通過)
+### 5.3 Security-boundary verification (negative test — rejection is the pass)
 
 ```bash
-# PR 分支簽出的 image 必須能在 pr-lanes 通過驗簽(前面 5.2 步驟 4 能拿到內容已經間接證明這點,
-# 這裡是更直接的驗證:查 Kyverno 準入日誌)
+# A PR-branch-signed image must pass verification inside pr-lanes (step 4 of 5.2 above already indirectly proves this
+# by returning content; here is more direct verification: check the Kyverno admission logs)
 kubectl -n kyverno logs -l app.kubernetes.io/component=admission-controller --tail=200 \
   | grep "hello-backend-pr-$PR_NUM"
 
-# 反向驗證:同一個 PR 分支簽出的 image,部署到 pr-lanes 以外的命名空間,必須被拒絕
+# Reverse verification: the same PR-branch-signed image, deployed to a namespace other than pr-lanes, must be rejected
 NEW_SHA=$(git rev-parse HEAD)
 kubectl -n workloads run kyverno-scope-check --restart=Never \
   --image=ghcr.io/jeromefromcn/hello-backend:$NEW_SHA
-# 期望:被 admission webhook 拒絕,錯誤訊息提到簽章驗證失敗,而不是成功建立 pod
+# Expected: rejected by the admission webhook, with an error message mentioning signature verification failure, not a successfully created pod
 kubectl -n workloads delete pod kyverno-scope-check --ignore-not-found
 
-# 未打 pr-lane label 的 PR 不應該生成任何資源
-gh pr create --title "Test: no label" --body "..."   # 不帶 --label
+# A PR without the pr-lane label should produce no resources
+gh pr create --title "Test: no label" --body "..."   # without --label
 NO_LABEL_PR=$(gh pr view --json number --jq .number)
 sleep 35
-kubectl -n argocd get application hello-pr-$NO_LABEL_PR 2>&1   # 期望 NotFound
+kubectl -n argocd get application hello-pr-$NO_LABEL_PR 2>&1   # Expected NotFound
 gh pr close $NO_LABEL_PR --delete-branch
 ```
 
-### 5.4 資源佔用檢查
+### 5.4 Resource-usage check
 
 ```bash
 kubectl top pods -n istio-system
 kubectl top pods -n pr-lanes
-free -h   # 重點看 swap 有沒有比裝之前明顯上升,而不是看 k8s 配額還剩多少
+free -h   # focus on whether swap rose noticeably vs before the install, not how much k8s quota remains
 ```
 
-2026-08-19 實測參考值(單條泳道存在時):`istiod` 102Mi、`istio-cni` 30Mi、`ztunnel` 12-29Mi、`waypoint` 26Mi,全部遠低於設計文檔的預算上限;host swap 使用量沒有因為本階段安裝而上升。判斷標準是「swap 有沒有惡化 / 既有服務有沒有被 OOMKill」,不是「k8s 配額還剩多少」——配額寬鬆可能只是同機其他服務遷走造成的假象。
+2026-08-19 measured reference values (with a single lane present): `istiod` 102Mi, `istio-cni` 30Mi, `ztunnel` 12-29Mi, `waypoint` 26Mi, all far below the design doc's budget ceiling; host swap usage did not rise due to this phase's install. The judgment criterion is "has swap worsened / have any existing services been OOMKilled", not "how much k8s quota remains" — loose quota may just be an illusion caused by other same-host services migrating away.
 
-## 6. 已知限制
+## 6. Known limitations
 
-以下是設計上刻意接受、不在本階段範圍內的限制,完整討論見設計文檔的「已知限制 / 失敗模式」一節:
+The following are deliberately accepted design limitations outside this phase's scope; the full discussion is in the design doc's "Known limitations / failure modes" section:
 
-- 這是單服務深度的簡化模型——真實系統的多跳 header 傳播、有狀態服務的資料污染問題,本階段沒有驗證
-- header 在 `hello-frontend` 這一跳能免費透傳是因為用了 nginx `proxy_pass` 的預設行為,換成任何自寫服務都需要應用程式碼顯式轉發 inbound header
-- 30 秒輪詢 + ArgoCD 自身同步週期,從 CI 完成到泳道更新有數十秒到分鐘級延遲,不是即時的
-- `pr-lanes` 內任何從本 repo PR 分支簽出的 image 都能部署——範圍侷限在這個命名空間,但命名空間是範圍邊界不是沙箱
-- ApplicationSet 沒有硬性的並發泳道數量上限,靠 `pr-lanes` 的 `ResourceQuota` 當背壓,超額的泳道 pod 會卡在 `Pending`(優雅降級,不是叢集受損)
+- This is a simplified single-service-depth model — multi-hop header propagation in a real system and data-contamination issues for stateful services were not verified in this phase
+- The header passes through `hello-frontend` for free because of nginx `proxy_pass` default behavior; any self-written service would need application code to explicitly forward the inbound header
+- 30-second polling + ArgoCD's own sync cycle means tens of seconds to minute-level delay from CI completion to lane update — not instant
+- Any image in `pr-lanes` checked out from a PR branch of this repo can be deployed — the scope is confined to this namespace, but the namespace is a scope boundary, not a sandbox
+- The ApplicationSet has no hard cap on the number of concurrent lanes; `pr-lanes`'s `ResourceQuota` acts as the backpressure, and excess lane pods stall in `Pending` (graceful degradation, not cluster damage)
 
-## 7. 運維要點:上線過程中踩過、值得記住的坑
+## 7. Operations notes: pitfalls hit and worth remembering during rollout
 
-**Cilium 的 `socketLB` 相關設定,`helm upgrade` 之後必須手動重啟 `cilium-agent`,否則會靜默不生效。** 這是本階段耗時最長的一個問題:waypoint 的 L7 路由規則從頭到尾都是對的,`ztunnel`、`istiod` 的所有配置狀態位也全部顯示正常,但 waypoint 實際上一個請求都沒收到過——根因是 Cilium 這個 chart 沒有把 `cilium-config` ConfigMap 的內容做成 checksum 放在 `cilium` DaemonSet 的 pod template 上,所以純改 Helm values 只會更新 ConfigMap,不會觸發 pod 重啟,而 `socketLB.hostNamespaceOnly` 這類設定是 agent 啟動時讀一次、編譯進 eBPF 程式的——ConfigMap 顯示新值,但運行中的資料面(`node_config.h` 裡的 `ENABLE_SOCKET_LB_FULL` vs `ENABLE_SOCKET_LB_HOST_ONLY`)依然是舊的,全程沒有任何錯誤或告警。
+**Cilium's `socketLB`-related settings require manually restarting `cilium-agent` after `helm upgrade`, otherwise they silently fail to take effect.** This was the longest-running problem of this phase: the waypoint's L7 routing rules were correct from start to finish, and every config status bit of `ztunnel` and `istiod` showed normal, yet the waypoint actually received zero requests — the root cause is that the Cilium chart does not checksum the contents of the `cilium-config` ConfigMap into the `cilium` DaemonSet pod template, so merely changing Helm values only updates the ConfigMap and does not trigger a pod restart, whereas settings like `socketLB.hostNamespaceOnly` are read once at agent startup and compiled into the eBPF program — the ConfigMap shows the new value, but the running data plane (the `ENABLE_SOCKET_LB_FULL` vs `ENABLE_SOCKET_LB_HOST_ONLY` in `node_config.h`) is still the old one, with no error or alert anywhere in the process.
 
-驗證標準必須是**運行中的資料面**,不是 ConfigMap:
+The verification standard must be the **running data plane**, not the ConfigMap:
 
 ```bash
 kubectl -n kube-system rollout restart daemonset/cilium
 kubectl -n kube-system rollout status daemonset/cilium --timeout=180s
 kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
   cilium-dbg status --verbose | grep 'Socket LB Coverage'
-# 期望 Hostns-only;顯示 Full 就代表重啟沒真的發生
+# Expected Hostns-only; showing Full means the restart did not actually happen
 ```
 
-完整的根因分析、為什麼會誤判「已生效」、以及防復發的注釋,都記錄在 `vps_oracle/k3s/cilium/values.yaml` 的 `socketLB:` 區塊上方,以及 `vps_oracle/k3s/README.md` 的 Cilium 升級指令旁邊。
+The full root-cause analysis, why it was misjudged as "already effective", and the recurrence-prevention notes are recorded above the `socketLB:` block in `vps_oracle/k3s/cilium/values.yaml`, and next to the Cilium upgrade instructions in `vps_oracle/k3s/README.md`.
 
-**GitOps 資源不能用 `kubectl apply`/`patch` 做「先試後定」式的驗證性改動。** ArgoCD 的 `selfHeal: true` 會把任何跟 git 不一致的即時改動視為 drift,下一輪 reconcile 就靜默撤銷,不留錯誤訊息——這條規則已經寫進本 repo 根目錄 `CLAUDE.md`,作為長期鐵律。確實需要大量試錯的場景,正確做法是先臨時關掉對應 Application 的 `selfHeal`,實驗完把最終版本寫回 git 再重新打開。
+**GitOps resources must not be modified with `kubectl apply`/`patch` for "try before committing" exploratory changes.** ArgoCD's `selfHeal: true` treats any live change inconsistent with git as drift, and silently reverts it on the next reconcile, leaving no error message — this rule is already written into this repo's root `CLAUDE.md` as a long-term iron rule. For scenarios that genuinely need extensive trial-and-error, the correct approach is to temporarily turn off `selfHeal` on the corresponding Application first, experiment, then write the final version back to git and re-enable it.
 
-## 8. 相關文檔
+## 8. Related docs
 
-- [設計文檔](../superpowers/specs/2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md) —— 完整的方案取捨(為什麼是兩層拓撲、為什麼是命名空間範圍的 Kyverno 例外、資源預算試算)
-- [實施計劃](../superpowers/plans/2026-08-18-k3s-phase-fg-mesh-pr-lanes.md) —— 14 個任務的逐步執行記錄與驗收標準
-- [`vps_oracle/k3s/README.md` 的 Istio Ambient / PR Lanes 章節](../../vps_oracle/k3s/README.md#istio-ambient--pr-lanes) —— 日常運維操作手冊,包含如何開一個真實的測試 PR、GitHub PAT 輪換步驟、回滾路徑
+- [Design doc](../superpowers/specs/2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md) — the full trade-off analysis (why a two-layer topology, why a namespace-scoped Kyverno exception, resource budget estimates)
+- [Implementation plan](../superpowers/plans/2026-08-18-k3s-phase-fg-mesh-pr-lanes.md) — step-by-step execution record and acceptance criteria of 14 tasks
+- [The Istio Ambient / PR Lanes section of `vps_oracle/k3s/README.md`](../../vps_oracle/k3s/README.md#istio-ambient--pr-lanes) — day-to-day operations manual, including how to open a real test PR, GitHub PAT rotation steps, and the rollback path

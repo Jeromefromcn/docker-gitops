@@ -1,81 +1,81 @@
 ---
 name: write-incident
-description: 把一次故障排查写成 docs/incidents/ 下的记录，并补上索引表格那一行。当排查告一段落、用户说「记一下」「写个事故记录」「归档这次排查」，或者一次非平凡的根因分析刚结束时使用。
+description: Write up a troubleshooting session as a record under docs/incidents/ and add the corresponding row to the index table. Use when an investigation wraps up and the user says "note this down", "write an incident record", "archive this investigation", or when a non-trivial root-cause analysis has just finished.
 ---
 
-# 写一篇故障记录
+# Write an incident record
 
-## 什么时候值得写
+## When it's worth writing
 
-根因**不显然**、下次遇到会重新查一遍的，才写。改一个拼写错误不写。判断标准：半年后的自己看到同样的症状，这篇能不能省下排查时间。
+Only write one when the root cause is **non-obvious** and you'd have to re-investigate it from scratch next time. Don't write one for a typo fix. Test: if a future-you six months from now sees the same symptoms, would this record save them the investigation time?
 
-## 1. 先搜一遍
+## 1. Search first
 
 ```bash
-grep -ril '<关键词>' docs/incidents/
+grep -ril '<keyword>' docs/incidents/
 ```
 
-如果已有一篇讲同一个根因，**在那篇末尾加「后记」**，不要新开一篇——`2026-08-15-ccr-vscode-extension-stall.md` 就是这么做的（文末后记二）。
+If a record already covers the same root cause, **add a "postscript" to the end of that one** instead of starting a new one — `2026-08-15-ccr-vscode-extension-stall.md` did exactly this (postscript II at the end).
 
-## 2. 文件名
+## 2. Filename
 
-`docs/incidents/YYYY-MM-DD-<service>-<简短描述>.md`
+`docs/incidents/YYYY-MM-DD-<service>-<short-description>.md`
 
-日期用**事故发生日**，不是写文档的日期。`<service>` 用仓库里的栈名（`npm`、`ccr`、`3x-ui`…），跨组件的用 `a/b` 形式（`k3s/docker`、`compose/k3s`）。
+The date is the **day the incident happened**, not the day you write the doc. `<service>` uses the stack name from the repo (`npm`, `ccr`, `3x-ui`…); cross-component ones use the `a/b` form (`k3s/docker`, `compose/k3s`).
 
-## 3. 骨架
+## 3. Skeleton
 
 ```markdown
-# <一句话说清发生了什么>
+# <one line saying clearly what happened>
 
-- 日期：YYYY-MM-DD
-- 环境：<涉及的组件和版本，精确到能复现的程度>
-- 现象：<用户/监控看到的表象>
-- 修复：<最终改了什么，一句话>
+- Date: YYYY-MM-DD
+- Environment: <components and versions involved, specific enough to reproduce>
+- Symptom: <what the user / monitoring saw>
+- Fix: <what was ultimately changed, in one line>
 
 ---
 
-## 1. 结论先行
+## 1. Conclusion first
 
-**根因在 X，不在 Y。** <三五句话讲完，让读者不看后面也能用>
+**The root cause is X, not Y.** <finish in a few sentences so the reader can act without reading the rest>
 
-## 2. 证据链
+## 2. Evidence chain
 
-<按时间/推理顺序给命令和输出。贴真实输出，不要转述>
+<give commands and output in time/reasoning order. paste real output, don't paraphrase>
 
-## 3. 根因
+## 3. Root cause
 
-<机制层面的解释：为什么这个条件下必然会这样>
+<explain at the mechanism level: why this necessarily happens under these conditions>
 
-## 4. 修复
+## 4. Fix
 
-<改了哪些文件、执行了什么、为什么选这个方案而不是另一个>
+<which files changed, what was run, and why this approach over another>
 
-## 5. 验证
+## 5. Verification
 
-<怎么确认真的修好了——命令 + 期望输出>
+<how to confirm it's actually fixed — command + expected output>
 
-## 6. 遗留 / 教训
+## 6. Leftovers / lessons
 
-<还没解决的部分；下次怎么更快发现；有没有该补的巡检 check>
+<what's still unresolved; how to spot it faster next time; whether there's an inspection check that should be added>
 ```
 
-小事故可以合并章节（见 `2026-08-19-npm-to-k3s-nodeport-outage.md` 的六节写法），但 **「结论先行」永远放最前面**——这是这批文档一致的风格。
+Minor incidents may merge sections (see the six-section style in `2026-08-19-npm-to-k3s-nodeport-outage.md`), but **"conclusion first" always goes at the very front** — that's the consistent style of this set of docs.
 
-## 4. 补索引（不能漏）
+## 4. Add the index entry (don't miss it)
 
-在 [`docs/incidents/README.md`](../../../docs/incidents/README.md) 的表格里加一行，**按时间倒序插到最上面**：
+Add a row to the table in [`docs/incidents/README.md`](../../../docs/incidents/README.md), **inserted at the top in reverse chronological order**:
 
 ```markdown
-| YYYY-MM-DD | <service> | <一句话简述，含根因> | [链接](YYYY-MM-DD-<service>-<描述>.md) |
+| YYYY-MM-DD | <service> | <one-line summary including the root cause> | [link](YYYY-MM-DD-<service>-<description>.md) |
 ```
 
-简述要包含根因，不能只写症状——这张表是用来「扫一眼找同类问题」的。
+The summary must include the root cause, not just the symptom — this table is for "spotting similar issues at a glance".
 
-## 5. 想想要不要补巡检
+## 5. Consider whether to add an inspection check
 
-如果这次故障是「早点发现就不会这么严重」，考虑给 [`vps_oracle/host-native/inspector/`](../../../vps_oracle/host-native/inspector/) 加一个 check——用 `inspector-check` skill。`npm-nginx-config.sh` 和 `k3s-memory` 相关的 check 都是这么来的。
+If this incident was "the kind that would've been far less severe if caught earlier", consider adding a check under [`vps_oracle/host-native/inspector/`](../../../vps_oracle/host-native/inspector/) — use the `inspector-check` skill. The `npm-nginx-config.sh` and `k3s-memory` checks all came about this way.
 
-## 6. 语言
+## 6. Language
 
-正文按仓库习惯用中文；commit message 用英文。
+Write the body in Chinese per repo convention; commit messages in English.

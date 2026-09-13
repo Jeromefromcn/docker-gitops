@@ -3,7 +3,7 @@ import os
 
 env_path = "/home/ubuntu/.claude-account/evidence.env"
 tmp_path = env_path + ".tmp"
-content = "# 空 = Jerome（默認 ~/.claude）。switchboard 是唯一應該改寫這個文件的东西。\n"
+content = "# Empty = Jerome (default ~/.claude). switchboard is the only thing that should rewrite this file.\n"
 with open(tmp_path, "w") as f:
     f.write(content)
 os.chmod(tmp_path, 0o600)

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # checks/docker-restart-storms.sh
 #
-# Flags containers whose RestartCount is异常 high or whose state is
-# stuck in `restarting`. Design spec's "Docker 重啟風暴" row (ALERT
+# Flags containers whose RestartCount is unusually high or whose state is
+# stuck in `restarting`. Design spec's "Docker restart storm" row (ALERT
 # ONLY — auto-restart can mask a config error; surfacing it is the
 # point, resolving it is not the inspector's job).
 set -uo pipefail

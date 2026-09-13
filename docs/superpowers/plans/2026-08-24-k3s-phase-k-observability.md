@@ -561,7 +561,7 @@ global:
     # exceeded the whole namespace's budget (Task 7 discovered this via
     # repeated FailedCreate/exceeded-quota events on the waypoint
     # Deployment's ReplicaSet). This is the design doc's own stated
-    # waypoint budget (phase F+G design, 元件與設定 table), just never
+    # waypoint budget (phase F+G design, Components and configuration table), just never
     # actually wired in anywhere until now. Do not raise pr-lanes-quota
     # instead -- it's deliberately sized around this exact budget,
     # including its ~8-concurrent-PR-lane capacity math.
@@ -865,7 +865,7 @@ Compose changes apply via `docker compose up -d` (already done in Step 3), not v
 - Consumes: NodePorts `30110`/`30111`/`30112` (Task 4), `30113` (Task 2), `30114` (Task 3); the network fix (Task 5).
 - Produces: nothing further tasks in this plan depend on — Task 7 is end-to-end verification.
 
-> **Shipped 2026-08-24 (DONE, commits `977197d`/`9b0197c`/`012402c`)** — execution surfaced a second prerequisite beyond Task 5's gateway fix: every k3s NodePort consumed by a docker-bridge container needs a registered `nodeport-relay@<port>.service` host-netns socat instance (see the design doc's 已知限制 "第二層前置條件" bullet, and `vps_oracle/npm-nodeport-relay/README.md`). The 5 new ports were registered in `012402c` (`nodeport-relay@30110`–`30114`). Also: the `waypoint` scrape job required `metrics_path: /stats/prometheus` (`9b0197c`) — it's an Envoy stats-admin port, not a plain `/metrics` endpoint.
+> **Shipped 2026-08-24 (DONE, commits `977197d`/`9b0197c`/`012402c`)** — execution surfaced a second prerequisite beyond Task 5's gateway fix: every k3s NodePort consumed by a docker-bridge container needs a registered `nodeport-relay@<port>.service` host-netns socat instance (see the design doc's "Known limitations" section, the "second prerequisite layer" bullet, and `vps_oracle/npm-nodeport-relay/README.md`). The 5 new ports were registered in `012402c` (`nodeport-relay@30110`–`30114`). Also: the `waypoint` scrape job required `metrics_path: /stats/prometheus` (`9b0197c`) — it's an Envoy stats-admin port, not a plain `/metrics` endpoint.
 
 - [ ] **Step 1: Read the current Prometheus config and add three scrape jobs**
 
@@ -1025,7 +1025,7 @@ Expected: `up{job="waypoint"}` returns a value of `1`. The Loki query returns re
 
 - [ ] **Step 4: Record implementation findings back into the design doc**
 
-Open [docs/superpowers/specs/2026-08-24-k3s-phase-k-observability-design.md](../specs/2026-08-24-k3s-phase-k-observability-design.md)'s "已知限制" section and add findings from this plan's execution:
+Open [docs/superpowers/specs/2026-08-24-k3s-phase-k-observability-design.md](../specs/2026-08-24-k3s-phase-k-observability-design.md)'s "Known limitations" section and add findings from this plan's execution:
 - The actual Jaeger service name(s) that showed up for mesh traffic (Task 3 Step 6 / Task 7 Step 3), since the design doc didn't predict this in advance
 - Whether Task 3's tracing worked on the first attempt or needed a fix (e.g. a provider-name mismatch) — if it needed a fix, note what the actual mismatch was, so a future reader doesn't have to re-derive it
 - The final confirmed NodePort assignments if any differed from the Global Constraints table (e.g. a last-minute collision found in Task 1 Step 1 that forced different numbers)
@@ -1034,8 +1034,8 @@ Open [docs/superpowers/specs/2026-08-24-k3s-phase-k-observability-design.md](../
 git add docs/superpowers/specs/2026-08-24-k3s-phase-k-observability-design.md
 git commit -m "Record Phase K implementation findings in the design doc
 
-Closes the open items in 已知限制 about actual Jaeger service naming
-and whether the tracing wiring worked on the first attempt."
+Closes the open items in Known limitations about actual Jaeger service
+naming and whether the tracing wiring worked on the first attempt."
 git push
 ```
 
@@ -1051,6 +1051,6 @@ Expected: commits from Tasks 1-7, touching exactly the files listed across this 
 
 ## Self-Review Notes
 
-- **Spec coverage:** every item in the design doc's 驗證清單 maps to a task here — item 1 (namespace/Application/pods) is Task 1 Step 5 + Task 2/3 Step 5; item 2 (quota isolation) is Task 1 Step 5 and Task 7 Step 1; item 3 (network fix minimal check) is Task 5 Step 3; item 4 (Prometheus targets UP) is Task 6 Step 5; item 5 (Grafana datasource connectivity) is Task 6 Step 6; item 6 (metrics/logs/traces visible for real traffic) is Task 7 Step 3; item 7 (`lab-environment` unchanged) is Task 7 Step 2; item 8 (all Applications healthy) is Task 7 Step 1. The design doc's "元件與設定" table row for the default-gateway fix maps directly to Task 5; the istiod/ztunnel/waypoint metrics row maps to Task 4; the Istio tracing row maps to Task 3.
+- **Spec coverage:** every item in the design doc's verification checklist maps to a task here — item 1 (namespace/Application/pods) is Task 1 Step 5 + Task 2/3 Step 5; item 2 (quota isolation) is Task 1 Step 5 and Task 7 Step 1; item 3 (network fix minimal check) is Task 5 Step 3; item 4 (Prometheus targets UP) is Task 6 Step 5; item 5 (Grafana datasource connectivity) is Task 6 Step 6; item 6 (metrics/logs/traces visible for real traffic) is Task 7 Step 3; item 7 (`lab-environment` unchanged) is Task 7 Step 2; item 8 (all Applications healthy) is Task 7 Step 1. The design doc's "Components and configuration" table row for the default-gateway fix maps directly to Task 5; the istiod/ztunnel/waypoint metrics row maps to Task 4; the Istio tracing row maps to Task 3.
 - **Placeholder scan:** no TBD/TODO. Task 3 Step 6 and Task 7 Step 3 explicitly instruct recording the *actual* observed Jaeger service name rather than assuming one in advance — that's an honestly-framed unknown with a concrete resolution step (Task 7 Step 4), not a placeholder.
 - **Type/name consistency:** `zipkin-mesh-observability` (the extensionProvider name) is spelled identically in Task 3 Step 2 (`istiod-values.yaml`) and Step 3 (`pr-lanes-telemetry.yaml`'s `providers[].name`) — a mismatch here is called out explicitly in Task 3 Step 6 as the most likely failure mode. NodePort numbers (`30110`-`30114`) are consistent across Global Constraints, Task 4's two Services, Task 2/3's Loki/Jaeger Services, and Task 6's Prometheus/Grafana config. Service/selector names (`istiod-metrics`, `ztunnel-metrics`, `waypoint-metrics`, `loki`, `jaeger`, `jaeger-query`) match between each Task 2-4 creation step and Task 6/7's consuming steps. `mesh-observability-quota`'s hard limits in Task 1 Step 2 match the combined Loki/Jaeger/Promtail resource requests/limits written in Task 2/3.

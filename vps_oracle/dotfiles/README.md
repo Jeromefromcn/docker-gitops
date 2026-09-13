@@ -1,85 +1,85 @@
 # dotfiles
 
-这台机器（`vps_oracle`）上一部分不属于 docker compose、也不属于 k3s 的**本机配置**，用软链的方式纳入本仓库管理：真身放在这个目录下由 git 追踪，原本的位置（`$HOME` 或系统目录）变成指向这里的软链。这样编辑、看历史、回滚都走 git，不用记两份。
+Part of this machine's (`vps_oracle`) **local config** that belongs to neither docker compose nor k3s, managed in this repo via symlinks: the real files live here under git tracking, and their original locations (`$HOME` or a system directory) become symlinks pointing here. This way editing, viewing history, and rollback all go through git, without keeping two copies.
 
-## 谁链到哪、是什么
+## What links where and what it is
 
-| 仓库内路径 | 软链到（系统里的真实路径） | 是什么 |
+| Repo path | Symlinks to (real system path) | What it is |
 |---|---|---|
-| `claude/CLAUDE.md` | `~/.claude/CLAUDE.md` | Claude Code 全局助理指令（跨所有项目生效，不只是这个仓库）：沟通风格、任务前先讲approach、git/shell/testing/security 的默认规矩、以及一条 Superpowers Policy（K8s/Compose/YAML 这类明确的运维改动不用跑 superpowers 流程，逻辑代码改动按需跑，混合/不确定的情况先问）。里面关于"绝对路径要配重建脚本"那条就是因为搭这套 dotfiles 方案才加的 |
-| `claude/claude-direnv-wrapper.sh` | `~/.claude/claude-direnv-wrapper.sh` | VS Code 扩展 `claudeCode.claudeProcessWrapper` 设置指向的包装脚本：`source direnv-load.sh` 后 `exec` 真正的 claude 进程，让 claude 进程也能吃到当前目录的 direnv 环境变量。若扩展没能把 claude 二进制路径当第一个参数传进来（2026-08-23 实际复现过一次：扩展自己解析内建二进制路径失败，静默漏传路径参数，`$1` 直接变成一个 `--xxx` flag），bash 的 `exec` 内建会把这个 flag 误当成自己的选项解析，报 `exec: --: invalid option`——补了个判断：`$1` 不是真实可执行文件时退回 PATH 里的 `claude`，不会整个 spawn 失败 |
-| `claude/direnv-load.sh` | `~/.claude/direnv-load.sh` | 对当前目录跑 `direnv export bash` 并 `eval` 结果，`timeout 5` 防止 direnv 卡住；没装 direnv 或没有 `.envrc` 时安静跳过。被下面两个脚本和 wrapper 脚本 source |
-| `claude/direnv-bash-env.sh` | `~/.claude/direnv-bash-env.sh` | 非交互 bash 的 `$BASH_ENV`：交互式 shell（`$-` 里带 `i`）直接 return，只在非交互场景（Claude Code 的 Bash 工具起的子进程、claude 进程本身）自动 source `direnv-load.sh`，让这些非交互场景也能拿到当前目录的 direnv 环境变量 |
-| `claude/settings.json` | `~/.claude/settings.json` | Claude Code 的权限规则（allow 列表）、hooks 注册、`enabledPlugins`/`extraKnownMarketplaces` 这些真正值得纳管的部分。`claude-code-notify` 的 `install.sh` 部署时会往这个文件的 `hooks.Stop`/`hooks.StopFailure`/`hooks.PermissionRequest` 里自动写入三条 command hook（指向 `~/.claude/claude-code-notify/hooks/*.sh`），软链之后这个自动改写照常发生在仓库里的真身上，改动会体现在 `git diff` 里，不需要手动同步。**但整份文件是唯一一份 `~/.claude/settings.json`**，Claude Code 没有 global 层级的 `settings.local.json` 可拆分易变字段，所以 `model`/`theme`/`tui`/`effortLevel`/`switchModelsOnFlag`/`remoteControlAtStartup`/`agentPushNotifEnabled`/`autoMode.environment` 这些纯 CLI 会话偏好也被一起带进了 git（`/model`、`/theme` 之类交互操作会直接写盘到这份文件，是 Claude Code 自身的行为，改不了）。这些字段的 diff 没有配置审计价值，不用为它们专门找 commit 时机，等下次因为 permissions/hooks 有实质变化要提交时顺手带上就行；`model` 这个字段尤其可以直接忽略——`ANTHROPIC_MODEL` 环境变量的优先级高于这里的 `model` key，真要固定默认模型应该设在 `shell/.bashrc`（也在本仓库纳管）里，而不是靠这个 key |
-| `claude-code-notify/.claude-code-notify-hooks.json` | `~/.claude/.claude-code-notify-hooks.json` | **不是要手动编辑的配置，是 `claude-code-notify` 的 `install.sh`/`installer.py` 自己管理的状态文件**（`installer.py` 里 `STATE_FILENAME = ".claude-code-notify-hooks.json"`，`load_state`/`save_state` 读写它）：记录它在 `settings.json` 里注册了哪些 hook 条目，方便下次 reinstall/uninstall 时准确识别哪些是自己装的、能安全移除。纳管这份的价值是留一份"当前实际注册了哪些 hook"的历史记录，不是给人改的 |
-| `claude-code-notify/config.env` | `~/.claude/claude-code-notify/config.env` | **真身，不进 git**（原因见下一节）。`ROUTE_<n>_DIR`/`ROUTE_<n>_CHAT_ID`/`ROUTE_<n>_BOT_TOKEN` 用最长前缀匹配决定某个目录下跑的 session 该通知到哪个 Telegram chat、用哪个 bot，未命中的目录退回文件开头 `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` 这两个全局默认值 |
-| `claude-code-notify/config.env.example` | （不软链，直接进 git） | 上面那份的占位符模板：保留 `ROUTE_<n>_DIR` 结构（哪些目录配了独立路由这件事本身有记录价值）和非敏感项（`NOTIFY_RATELIMIT_SECONDS` 等），但 `CHAT_ID`/`BOT_TOKEN` 换成占位符 |
-| `shell/.bashrc` | `~/.bashrc` | bash 交互式 shell 启动配置。前 117 行是 Debian 默认模板（history、彩色 prompt、`ls`/`grep` 系列 alias、bash completion），没改过；后面是这台机器加的：`bun`/`nvm`/`opencode` 的 PATH、`direnv hook bash`、`sdkman`（官方要求必须放文件最后）、`KUBECONFIG`，以及 `ds-on`/`ds-off` 这对 alias——临时把 `~/.claude/.credentials.json` 挪开、改用 `ANTHROPIC_BASE_URL` 指向 DeepSeek 网关，`ds-off` 再挪回来切回官方订阅。`ds-on` 原本把 DeepSeek key 直接写死在这里，2026-08-23 发现后拆到了 `.bash_secrets`（见下） |
-| `shell/.bash_aliases` | `~/.bash_aliases` | 被 `.bashrc` 顺手 source。四条 alias：`clauded`（`claude --dangerously-skip-permissions` 的简写）、`tmuxac`/`tmuxkc`（attach/kill 名叫 `claude` 的 tmux session）、`tmuxec`（跑 `~/claude/jerome/start-claude.sh`） |
-| `shell/.bash_secrets` | `~/.bash_secrets` | **真身，不进 git**。目前只有一行：`ds-on`/`ds-off` 用的 `DEEPSEEK_API_KEY`。`.bashrc` 用 `[ -f ~/.bash_secrets ] && . ~/.bash_secrets` 引入，不存在时安静跳过（不会导致 shell 启动失败） |
-| `shell/.bash_secrets.example` | （不软链，直接进 git） | 上面那份的占位符模板 |
-| `shell/.profile` | `~/.profile` | login shell 环境变量。标准 Debian 模板（source `.bashrc`、把 `~/bin`、`~/.local/bin` 加进 PATH）+ JetBrains Toolbox 加的一行 PATH + `KUBECONFIG` |
-| `git/.gitconfig` | `~/.gitconfig` | **故意不设全局 `user`/`credential`**——只有 `~/jerome/`、`~/bridget/`、`~/evidence/` 三个 account 目录能提交（各自 includeIf 提供身份）。非 account 目录下 commit 会 `fatal: 无 user.name`，这是有意的安全约束，防止用错误身份提交；以后需要新的提交目录就加一条 includeIf |
-| `git/.gitconfig-jerome` | `~/.gitconfig-jerome` | jerome account 的 git 身份（`Jerome Jiang`）和 credential helper 指向 `git-credential-gh-token`（动态读 `~/.gh-token-jerome`）。被 `includeIf gitdir:~/jerome/` 引用。与 bridget/evidence 结构完全对称 |
-| `git/.gitconfig-bridget` | `~/.gitconfig-bridget` | bridget account 的 git 身份（`Bridget Lai`）和 credential helper 指向 `git-credential-gh-token`（动态读 `~/.gh-token-bridget`）。被 `includeIf gitdir:~/bridget/` 引用 |
-| `git/.gitconfig-evidence` | `~/.gitconfig-evidence` | evidence account 的 git 身份（`Jerome Jiang`）和 credential helper 指向 `git-credential-gh-token`（动态读 `~/.gh-token-evidence`）。被 `includeIf gitdir:~/evidence/` 引用 |
-| `git/git-credential-gh-token` | （不软链，直接进 git） | **git credential helper**：认证时根据当前 repo 目录自动判断 account（`~/jerome/`/`~/bridget/`/`~/evidence/`），从 `~/.gh-token-<account>` 实时读 token 拼出凭据。token 唯一来源是 `~/.gh-token-*`，**没有 `.git-credentials-*` 文件**，换 token 只改一处下次 git 自动用新的 |
-| `shell-env/bridget.envrc` | `~/bridget/.envrc` | bridget 项目目录的 direnv 环境：source `~/.claude-provider/bridget.env` + `~/.claude-account/bridget.env`（这两个是真密钥，不纳管）、`GH_TOKEN` 运行时 cat `~/.gh-token-bridget`。内容无字面密钥，直接进 git |
-| `shell-env/jerome.envrc` | `~/jerome/.envrc` | jerome 项目目录的 direnv 环境：source claude provider/account env + `GH_TOKEN` 运行时 cat `~/.gh-token-jerome`（与 bridget/evidence 结构完全对称） |
-| `shell-env/evidence.envrc` | `~/evidence/.envrc` | evidence 项目目录的 direnv 环境：source claude provider/account env + `GH_TOKEN` 运行时 cat `~/.gh-token-evidence` |
-| `claude-jerome/CLAUDE.md` | `~/claude/jerome/CLAUDE.md` | `tmuxac` alias 启动的独立 Claude 实例（DevOps persona）的项目级指令 |
-| `claude-jerome/start-claude.sh` | `~/claude/jerome/start-claude.sh` | 在 tmux session 里启动那个独立 Claude 实例的脚本（被 `.bash_aliases` 的 `tmuxac` 引用） |
-| `claude-jerome/.claude/settings.local.json` | `~/claude/jerome/.claude/settings.local.json` | 那个实例的 Claude Code 权限规则（大量 docker/journalctl 只读 allow）。无密钥，纳管；靠 `.gitignore` 的 `!` 例外绕开全局 `settings.local.json` 忽略规则 |
-| `config/git-ignore` | `~/.config/git/ignore` | git 全局忽略规则（当前只有一条 `**/.claude/settings.local.json`） |
-| `config/rclone.conf` | `~/.config/rclone/rclone.conf` | rclone 配置。含 OAuth token，**真身 gitignore 挡，只 `rclone.conf.example` 进 git**（见下） |
-| `config/gh-config.yml` | `~/.config/gh/config.yml` | GitHub CLI 的全局配置（git_protocol、editor、aliases 等），无密钥 |
-| `config/gh-hosts.yml` | `~/.config/gh/hosts.yml` | GitHub CLI 的主机认证信息，含 `oauth_token`，**真身 gitignore 挡，只 `gh-hosts.yml.example` 进 git** |
-| `config/helm-repositories.yaml` | `~/.config/helm/repositories.yaml` | helm 的 repo 列表（cilium/argo/kyverno/trivy-operator/sealed-secrets/aqua），无密钥 |
-| `vscode/machine-settings.json` | `~/.vscode-server/data/Machine/settings.json` | VS Code Server 机器级设置：`claudeCode.claudeProcessWrapper` 指向上面那支 wrapper 脚本、`claudeCode.allowDangerouslySkipPermissions`、`claudeCode.useTerminal`、git 默认 clone 目录等。注意这是 `~/.vscode-server/` 里当前这一份 server 数据目录下的文件，不是随扩展版本升级的东西 |
-| `link.sh` | — | 重建以上所有软链的脚本，见下 |
+| `claude/CLAUDE.md` | `~/.claude/CLAUDE.md` | Claude Code global assistant instructions (applies across all projects, not just this repo): communication style, state the approach before a task, default git/shell/testing/security rules, and a Superpowers Policy (clear-cut K8s/Compose/YAML ops changes skip the superpowers flow, code-logic changes run it as needed, mixed/uncertain cases ask first). The "absolute paths need a regeneration script" rule in there was added precisely because of building out this dotfiles setup |
+| `claude/claude-direnv-wrapper.sh` | `~/.claude/claude-direnv-wrapper.sh` | The wrapper script pointed to by the VS Code extension's `claudeCode.claudeProcessWrapper` setting: it `source`s `direnv-load.sh`, then `exec`s the real claude process so the claude process also gets the current directory's direnv env vars. If the extension fails to pass the claude binary path as the first argument (reproduced once on 2026-08-23: the extension failed to resolve its own built-in binary path and silently dropped the path argument, so `$1` became a literal `--xxx` flag), bash's `exec` builtin would parse that flag as its own option and report `exec: --: invalid option` — a check was added: when `$1` isn't a real executable, fall back to the `claude` on `PATH`, so the whole spawn doesn't fail |
+| `claude/direnv-load.sh` | `~/.claude/direnv-load.sh` | Runs `direnv export bash` for the current directory and `eval`s the result, with `timeout 5` to guard against direnv hanging; silently skips when direnv isn't installed or there's no `.envrc`. Sourced by the two scripts below and the wrapper script |
+| `claude/direnv-bash-env.sh` | `~/.claude/direnv-bash-env.sh` | Non-interactive bash's `$BASH_ENV`: interactive shells (`$-` contains `i`) return immediately, and only non-interactive contexts (Claude Code's Bash tool child processes, the claude process itself) auto-`source` `direnv-load.sh` so those non-interactive contexts also get the current directory's direnv env vars |
+| `claude/settings.json` | `~/.claude/settings.json` | The parts of Claude Code really worth managing: permission rules (allow list), hook registrations, `enabledPlugins`/`extraKnownMarketplaces`. During `claude-code-notify`'s `install.sh` deploy it auto-writes three command hooks into this file's `hooks.Stop`/`hooks.StopFailure`/`hooks.PermissionRequest` (pointing at `~/.claude/claude-code-notify/hooks/*.sh`); after symlinking, that auto-rewrite still happens on the real file in the repo, so the change shows up in `git diff` with no manual sync. **But the whole file is the single `~/.claude/settings.json`** — Claude Code has no global-level `settings.local.json` to split mutable fields into, so the pure CLI session preferences `model`/`theme`/`tui`/`effortLevel`/`switchModelsOnFlag`/`remoteControlAtStartup`/`agentPushNotifEnabled`/`autoMode.environment` are also carried into git (interactive actions like `/model`/`/theme` write directly to this file on disk — that's Claude Code's own behavior, not changeable). These fields' diffs have no config-audit value; don't hunt for a commit timing specifically for them, just carry them along next time there's a substantive permissions/hooks change to commit. The `model` field in particular can be ignored outright — the `ANTHROPIC_MODEL` env var takes precedence over the `model` key here, and if you really want a fixed default model it should be set in `shell/.bashrc` (also managed in this repo), not via this key |
+| `claude-code-notify/.claude-code-notify-hooks.json` | `~/.claude/.claude-code-notify-hooks.json` | **Not config you edit by hand — it's the state file managed by `claude-code-notify`'s own `install.sh`/`installer.py`** (`installer.py` sets `STATE_FILENAME = ".claude-code-notify-hooks.json"`, and `load_state`/`save_state` read/write it): it records which hook entries it registered in `settings.json`, so on the next reinstall/uninstall it can accurately identify what it installed itself and remove it safely. Managing this in git is valuable as a history of "which hooks are actually registered right now", not as something for people to edit |
+| `claude-code-notify/config.env` | `~/.claude/claude-code-notify/config.env` | **The real file, not in git** (reason in the next section). `ROUTE_<n>_DIR`/`ROUTE_<n>_CHAT_ID`/`ROUTE_<n>_BOT_TOKEN` use longest-prefix matching to decide which Telegram chat and which bot a session running under a given directory should notify; unmatched directories fall back to the `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` global defaults at the top of the file |
+| `claude-code-notify/config.env.example` | (not symlinked, in git directly) | A placeholder template for the above: keeps the `ROUTE_<n>_DIR` structure (which directories have a dedicated route is itself worth recording) and the non-sensitive items (`NOTIFY_RATELIMIT_SECONDS` etc.), but `CHAT_ID`/`BOT_TOKEN` become placeholders |
+| `shell/.bashrc` | `~/.bashrc` | bash interactive-shell startup config. The first 117 lines are the Debian default template (history, colored prompt, `ls`/`grep` alias family, bash completion), untouched; what follows is what this machine added: `bun`/`nvm`/`opencode` PATH entries, `direnv hook bash`, `sdkman` (officially required to be at the very end of the file), `KUBECONFIG`, and the `ds-on`/`ds-off` alias pair — `ds-on` temporarily moves `~/.claude/.credentials.json` aside and points `ANTHROPIC_BASE_URL` at the DeepSeek gateway, `ds-off` moves it back to switch back to the official subscription. `ds-on` originally hardcoded the DeepSeek key here; after it was spotted on 2026-08-23 it was split out into `.bash_secrets` (see below) |
+| `shell/.bash_aliases` | `~/.bash_aliases` | Sourced by `.bashrc`. Four aliases: `clauded` (shorthand for `claude --dangerously-skip-permissions`), `tmuxac`/`tmuxkc` (attach/kill the tmux session named `claude`), `tmuxec` (runs `~/claude/jerome/start-claude.sh`) |
+| `shell/.bash_secrets` | `~/.bash_secrets` | **The real file, not in git**. Currently one line: the `DEEPSEEK_API_KEY` used by `ds-on`/`ds-off`. `.bashrc` loads it with `[ -f ~/.bash_secrets ] && . ~/.bash_secrets`, silently skipping when absent (won't fail shell startup) |
+| `shell/.bash_secrets.example` | (not symlinked, in git directly) | Placeholder template for the above |
+| `shell/.profile` | `~/.profile` | login-shell environment variables. Standard Debian template (source `.bashrc`, add `~/bin` and `~/.local/bin` to PATH) + one PATH line added by JetBrains Toolbox + `KUBECONFIG` |
+| `git/.gitconfig` | `~/.gitconfig` | **Deliberately sets no global `user`/`credential`** — only the three account directories `~/jerome/`, `~/bridget/`, `~/evidence/` can commit (each via its own includeIf providing identity). Committing outside an account directory fails with `fatal: no user.name`; that's an intentional safety constraint to prevent committing under the wrong identity; add a new includeIf whenever a new commit directory is needed |
+| `git/.gitconfig-jerome` | `~/.gitconfig-jerome` | git identity for the jerome account (`Jerome Jiang`) and a credential helper pointing at `git-credential-gh-token` (dynamically reads `~/.gh-token-jerome`). Referenced by `includeIf gitdir:~/jerome/`. Fully symmetric in structure with bridget/evidence |
+| `git/.gitconfig-bridget` | `~/.gitconfig-bridget` | git identity for the bridget account (`Bridget Lai`) and a credential helper pointing at `git-credential-gh-token` (dynamically reads `~/.gh-token-bridget`). Referenced by `includeIf gitdir:~/bridget/` |
+| `git/.gitconfig-evidence` | `~/.gitconfig-evidence` | git identity for the evidence account (`Jerome Jiang`) and a credential helper pointing at `git-credential-gh-token` (dynamically reads `~/.gh-token-evidence`). Referenced by `includeIf gitdir:~/evidence/` |
+| `git/git-credential-gh-token` | (not symlinked, in git directly) | **git credential helper**: at auth time it determines the account from the current repo directory (`~/jerome/`/`~/bridget/`/`~/evidence/`) and assembles credentials by reading the token live from `~/.gh-token-<account>`. The single source of the token is `~/.gh-token-*` — **there are no `.git-credentials-*` files** — so changing a token only changes one place and the next git auth uses the new value automatically |
+| `shell-env/bridget.envrc` | `~/bridget/.envrc` | direnv environment for the bridget project directory: source `~/.claude-provider/bridget.env` + `~/.claude-account/bridget.env` (these two are real secrets, not managed), `GH_TOKEN` `cat`s `~/.gh-token-bridget` at runtime. No literal secret in the contents, goes into git directly |
+| `shell-env/jerome.envrc` | `~/jerome/.envrc` | direnv environment for the jerome project directory: source claude provider/account env + `GH_TOKEN` `cat`s `~/.gh-token-jerome` at runtime (fully symmetric in structure with bridget/evidence) |
+| `shell-env/evidence.envrc` | `~/evidence/.envrc` | direnv environment for the evidence project directory: source claude provider/account env + `GH_TOKEN` `cat`s `~/.gh-token-evidence` at runtime |
+| `claude-jerome/CLAUDE.md` | `~/claude/jerome/CLAUDE.md` | Project-level instructions for the standalone Claude instance (DevOps persona) started by the `tmuxac` alias |
+| `claude-jerome/start-claude.sh` | `~/claude/jerome/start-claude.sh` | Script to start that standalone Claude instance in a tmux session (referenced by `.bash_aliases`'s `tmuxac`) |
+| `claude-jerome/.claude/settings.local.json` | `~/claude/jerome/.claude/settings.local.json` | Claude Code permission rules for that instance (many docker/journalctl read-only allows). No secrets, managed; uses a `.gitignore` `!` exception to bypass the global `settings.local.json` ignore rule |
+| `config/git-ignore` | `~/.config/git/ignore` | git global ignore rules (currently just one: `**/.claude/settings.local.json`) |
+| `config/rclone.conf` | `~/.config/rclone/rclone.conf` | rclone config. Contains an OAuth token — **the real file is blocked by gitignore, only `rclone.conf.example` goes into git** (see below) |
+| `config/gh-config.yml` | `~/.config/gh/config.yml` | GitHub CLI global config (git_protocol, editor, aliases, etc.), no secrets |
+| `config/gh-hosts.yml` | `~/.config/gh/hosts.yml` | GitHub CLI host auth info, contains `oauth_token` — **the real file is blocked by gitignore, only `gh-hosts.yml.example` goes into git** |
+| `config/helm-repositories.yaml` | `~/.config/helm/repositories.yaml` | helm repo list (cilium/argo/kyverno/trivy-operator/sealed-secrets/aqua), no secrets |
+| `vscode/machine-settings.json` | `~/.vscode-server/data/Machine/settings.json` | VS Code Server machine-level settings: `claudeCode.claudeProcessWrapper` pointing at the wrapper script above, `claudeCode.allowDangerouslySkipPermissions`, `claudeCode.useTerminal`, default git clone directory, etc. Note this is the file under the current server data directory in `~/.vscode-server/`, not something that upgrades with the extension version |
+| `link.sh` | — | Script to rebuild all the symlinks above, see below |
 
-**没有纳管、以后也不要往这个目录塞的东西**：`~/.claude/.credentials.json`、`~/.claude/history.jsonl`、`~/.claude/stats-cache.json`、`~/.claude.json`、`~/.gh-token-*`、`~/.git-credentials-*`、`~/.bash_history`、`~/.viminfo` 这类真密钥或纯本机生成状态——即使软链也不该进 git，仓库 `.gitignore` 也没有为它们开例外。`claude-code-notify` 工具本体（`~/.claude/claude-code-notify/` 里的 `claude_code_notify/`、`hooks/`、`state/`、`debug.log`）是另一个独立仓库（`~/jerome/claude-code-notify`）`install.sh` 部署出来的产物，这里只管它的**配置**，不管它本身。
+**Things deliberately not managed here, and that you shouldn't move in later**: `~/.claude/.credentials.json`, `~/.claude/history.jsonl`, `~/.claude/stats-cache.json`, `~/.claude.json`, `~/.gh-token-*`, `~/.git-credentials-*`, `~/.bash_history`, `~/.viminfo` — real secrets or purely machine-generated state that shouldn't go into git even via symlink, and the repo `.gitignore` has no exception for them either. The `claude-code-notify` tool itself (`claude_code_notify/`, `hooks/`, `state/`, `debug.log` under `~/.claude/claude-code-notify/`) is a product deployed by another standalone repo's (`~/jerome/claude-code-notify`) `install.sh`; this directory only manages its **config**, not the tool itself.
 
-## GitHub token 的单一来源（每个账号一个 token，一处存储）
+## Single source of truth for GitHub tokens (one token per account, one storage location)
 
-三个 account（jerome/bridget/evidence）各有一个 GitHub token，**只存在 `~/.gh-token-<account>` 一处**（裸 token）。两个消费者都从这里读：
+The three accounts (jerome/bridget/evidence) each have one GitHub token, stored **only in `~/.gh-token-<account>`** (the bare token). Two consumers read from there:
 
-| 消费者 | 怎么读 |
+| Consumer | How it reads |
 |---|---|
-| `.envrc` `export GH_TOKEN` | `cat ~/.gh-token-<account>`（给 gh CLI 等）|
-| git https 认证 | `git/git-credential-gh-token` helper：git 认证时实时 `cat ~/.gh-token-<account>` 拼出凭据 |
+| `.envrc` `export GH_TOKEN` | `cat ~/.gh-token-<account>` (for gh CLI etc.) |
+| git https auth | the `git/git-credential-gh-token` helper: at git auth time it `cat`s `~/.gh-token-<account>` live to assemble credentials |
 
-**没有 `.git-credentials-*` 文件**——git 不再用 `store` helper，改用自定义 helper 动态读。**换 token 只改 `~/.gh-token-<account>` 一处**，git 下次认证自动用新值，不需要任何同步步骤。
+**There are no `.git-credentials-*` files** — git no longer uses the `store` helper, it uses a custom helper that reads dynamically. **Changing a token only changes `~/.gh-token-<account>`**, and the next git auth uses the new value automatically with zero sync steps.
 
-helper 里写死了"account → GitHub 用户名"映射（jerome→Jeromefromcn、bridget→BridgetLai、evidence→Jeromefromcn），加新 account 要在 `git-credential-gh-token` 里加映射、加一条 includeIf、建 `.envrc`。
+The helper hardcodes the "account → GitHub username" mapping (jerome→Jeromefromcn, bridget→BridgetLai, evidence→Jeromefromcn). Adding a new account means adding the mapping in `git-credential-gh-token`, adding an includeIf, and creating a `.envrc`.
 
-## 带密钥的文件怎么处理：真身 + `.example`
+## How files with secrets are handled: real file + `.example`
 
-`config.env`（Telegram bot token）、`.bash_secrets`（DeepSeek API key）、`config/rclone.conf`（gdrive OAuth token）、`config/gh-hosts.yml`（GitHub CLI oauth_token）都属于"文件大部分内容值得纳管，但里面混了真密钥"的情况，处理方式跟本仓库每个 compose 栈自己的 `.env` 一样：真身放仓库里但被 `.gitignore` 挡住（`config.env` 靠 `*.env` 规则、`.bash_secrets` 靠专门加的 `.bash_secrets` 规则、`rclone.conf`/`gh-hosts.yml` 靠专门加的路径规则，`git add --dry-run` 可以验证——`git check-ignore` 在只匹配到 `.gitignore` 里 `!` 开头的排除规则时，非 verbose 和 `-v` 两种模式给的 exit code 不一致，容易看错，别用它做最终判断），只有占位符版本的 `*.example` 进 git 留个结构记录。改真实值就改真身（软链目标那份），结构变了（比如加一条新的 `ROUTE_N`、换一个 gdrive 账号）记得同步更新 `.example`。
+`config.env` (Telegram bot token), `.bash_secrets` (DeepSeek API key), `config/rclone.conf` (gdrive OAuth token), and `config/gh-hosts.yml` (GitHub CLI oauth_token) all fall into "most of the file is worth managing, but real secrets are mixed in" — handled the same way as each compose stack's own `.env` in this repo: the real file lives in the repo but is blocked by `.gitignore` (`config.env` via the `*.env` rule, `.bash_secrets` via the dedicated `.bash_secrets` rule, `rclone.conf`/`gh-hosts.yml` via dedicated path rules; `git add --dry-run` can verify — `git check-ignore` returns inconsistent exit codes between non-verbose and `-v` modes when only an `!` negation rule matches, so don't use it as the final judge), and only the placeholder `*.example` versions go into git to leave a structural record. To change a real value, edit the real file (the symlink target); when the structure changes (e.g. add a new `ROUTE_N`, switch gdrive accounts), remember to update the `.example` to match.
 
-`.bashrc` 是反过来的处理方式：整份文件本身没有秘密性，只是其中一行字面值是密钥，所以没有整份拆两份，而是把那一行单独抽到 `.bash_secrets` 里，`.bashrc` 改成引用变量（`$DEEPSEEK_API_KEY`）而不是字面值——`.bashrc` 本身照常进 git，看得到 `ds-on` 这个 alias 的完整逻辑，只是取不到真实 key。
+`.bashrc` is the reverse approach: the whole file has no secrecy, only one line in it is a literal secret value, so instead of splitting the file into two it extracts that single line into `.bash_secrets` and `.bashrc` references a variable (`$DEEPSEEK_API_KEY`) rather than the literal — `.bashrc` itself still goes into git as usual, so you can see the full logic of the `ds-on` alias, minus the real key.
 
-## VS Code 的 reconnection-grace-time（记一笔，这台机器上管不到）
+## VS Code's reconnection-grace-time (a note; not manageable on this machine)
 
-VS Code 断线重连的宽限时间目前被设成 24 小时（`ps aux` 能看到跑起来的 `code-* command-shell --reconnection-grace-time 86400`，即 `VSCODE_RECONNECTION_GRACE_TIME=86400000ms`；VS Code Server 自己的内建默认值只有 3 小时，`108e5ms`，明显是被覆盖过的）。
+The grace period for VS Code disconnect-reconnect is currently set to 24 hours (`ps aux` shows `code-* command-shell --reconnection-grace-time 86400` running, i.e. `VSCODE_RECONNECTION_GRACE_TIME=86400000ms`; VS Code Server's own built-in default is only 3 hours, `108e5ms`, clearly overridden).
 
-查过：这个 `command-shell --reconnection-grace-time 86400` 是本机 VS Code 客户端 SSH 连进来时自己组出来送过来执行的命令行参数，**不是这台服务器上任何文件配置出来的**——这台机器上只看得到执行结果（`ps aux`、日志里的 `VSCODE_RECONNECTION_GRACE_TIME`），看不到设置来源。真正的开关大概率在本机 VS Code 的 User Settings（`remote.SSH.*` 之类）或本机 SSH config 里，那份配置活在本机，这台服务器上没有对应的文件，`vscode/machine-settings.json`（远端 Machine 级设置）管不到它，这套 dotfiles 机制也纳管不了。以后再想不起"24 小时那个是哪里设的"，先看这条，别再满机器搜一遍。
+Checked: this `command-shell --reconnection-grace-time 86400` is a command-line argument assembled and sent for execution by the local VS Code client when it connects in over SSH — **not configured by any file on this server** — this machine only shows the execution result (`ps aux`, `VSCODE_RECONNECTION_GRACE_TIME` in logs), not the source of the setting. The actual switch is most likely in the local VS Code User Settings (`remote.SSH.*` and the like) or the local SSH config; that config lives on the local machine, there's no corresponding file on this server, `vscode/machine-settings.json` (remote Machine-level settings) can't reach it, and this dotfiles mechanism can't manage it either. Next time you can't remember "where the 24-hour one is set", read this note first instead of searching the whole machine again.
 
-## 用 link.sh 重建软链
+## Rebuild symlinks with link.sh
 
-这个目录本身可以移动（仓库整个搬家，或者换一台新机器重新 clone），但软链里存的是当时的绝对路径，搬完不会自动跟着变。跑一次 `link.sh` 就会把上表里每一项重新连好：
+This directory itself can move (the whole repo relocated, or a fresh clone on a new machine), but the symlinks store the absolute paths that were valid at the time, and they don't follow automatically. Running `link.sh` once reconnects every entry in the table above:
 
 ```bash
-./link.sh          # 只处理"目标路径不存在"或"软链指向别处"的情况，不碰已经存在的真实文件
-./link.sh --force  # 连真实文件也覆盖（新机器上原本就有一份默认 .bashrc 之类，需要这个才会覆盖）
+./link.sh          # only handles "target path missing" or "symlink points elsewhere"; doesn't touch pre-existing real files
+./link.sh --force  # also overwrites real files (a new machine ships with a default .bashrc etc.; this is required to overwrite them)
 ```
 
-新机器上第一次跑，大概率需要 `--force`——系统会自带一份默认的 `.bashrc`/`.gitconfig` 之类，不是软链，脚本默认不会动它。
+The first run on a new machine very likely needs `--force` — the system ships with a default `.bashrc`/`.gitconfig` etc., which aren't symlinks, and the script won't touch them by default.
 
-## 加一个新文件进来
+## Adding a new file
 
-1. 确认不含真实密钥（含密钥的按 `config.env` 的模式拆成真身 + `.example`）
-2. 复制到这个目录下对应的子目录（没有合适的子目录就新建一个），保留原文件名
-3. 用 `ln -sf <仓库里的路径> <系统里的原路径>` 把原路径接管成软链，`readlink` 确认一下
-4. 把新文件加进 `link.sh` 的 `PAIRS` 数组，加进上面的表格
-5. `git add` 对应文件（`.example` 记得也一起加，真身会被 `.gitignore` 自动挡掉）
+1. Confirm it contains no real secret (for files with secrets, split into real file + `.example` following the `config.env` pattern)
+2. Copy it into the corresponding subdirectory here (create one if none fits), keeping the original filename
+3. Use `ln -sf <repo path> <original system path>` to take over the original path as a symlink, and confirm with `readlink`
+4. Add the new file to the `PAIRS` array in `link.sh`, and add it to the table above
+5. `git add` the corresponding file (remember to add the `.example` too; the real file is auto-blocked by `.gitignore`)
