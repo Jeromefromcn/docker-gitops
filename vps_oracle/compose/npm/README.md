@@ -13,14 +13,14 @@ Most of the services behind NPM (grafana, homepage, dify, trilium, vikunja, appr
 
 Both are written into `networks.proxy.ipv4_address` in their respective `docker-compose.yml`; otherwise Docker's dynamic allocation could swap the IP when the container is rebuilt. If either of these two services drifts, proxied traffic would be sent to the wrong place or blocked by the access list (this happened once on 2026-08-06: npm was temporarily pinned alone at `172.19.0.2`, which didn't match the `172.19.0.3` in the xray override rule, so no service could be reached through the proxy — it took a long while before discovering these two IPs had been swapped).
 
-## Current Access Lists (verified via the NPM API, 2026-08-24)
+## Current Access Lists
 
-| Access List | Allow rules | Used by how many proxy hosts | Extra requirement |
-|---|---|---|---|
-| `self-only` (id 1) | `172.19.0.2/32` (3x-ui's IP on the `proxy` network), `161.118.254.107` (the server's current public IP) | 17 | None |
-| `self-only-and-auth` (id 2) | Same two as above | 10 | Also requires Basic Auth (account `jerome`) |
+| Access List | Allow rules | Extra requirement |
+|---|---|---|
+| `self-only` (id 1) | `172.19.0.2/32` (3x-ui's IP on the `proxy` network), `161.118.254.107` (the server's current public IP) | None |
+| `self-only-and-auth` (id 2) | Same two as above | Also requires Basic Auth (account `jerome`) |
 
-The 10 proxy hosts using `self-only-and-auth` are all **admin panels without built-in auth**: `npm` (NPM's own admin panel), `grafana`, `portainer`, `cc-window` (the host-native Claude Code multi-session dashboard, added 2026-08-24, see [`vps_oracle/host-native/cc-window/README.md`](../../host-native/cc-window/README.md)), `redisinsight` (the unified Redis management UI, see [`vps_oracle/compose/redis/README.md`](../../compose/redis/README.md), added 2026-08-24), `jaeger` (mesh-observability's distributed tracing UI, reverse-proxied to k3s NodePort 30114, added 2026-08-24), etc. Rule: **any service without built-in auth must always use `self-only-and-auth`, not `self-only`** (`self-only` only blocks the "source", not the "who" — any user/process on the same machine can still access it).
+`self-only-and-auth` is for **admin panels without built-in auth** (e.g. `npm`'s own admin panel, `grafana`, `portainer`, `cc-window`, `redisinsight`, `jaeger`). Rule: **any service without built-in auth must always use `self-only-and-auth`, not `self-only`** (`self-only` only blocks the "source", not the "who" — any user/process on the same machine can still access it). The number of proxy hosts on each list changes as services are added/removed — check live via the NPM API (`GET /api/nginx/proxy-hosts`) rather than trusting a number written here.
 
 `161.118.254.107` is the server's current public egress IP (findable via `curl https://ifconfig.me`), **not permanently fixed** — if Oracle ever changes this machine's public IP, both access lists must be updated, otherwise traffic coming straight in from the public internet without going through 3x-ui (e.g. blackbox_exporter's own probes) would be blocked.
 
@@ -101,7 +101,7 @@ Only these three things, all requiring manual action and none happening on their
 
 | Trigger action | Impact scope |
 |---|---|
-| Editing the `self-only` access list (e.g. the public IP changed and needs an updated allow rule) | Rewrites the 15 host configs under it, including 24 |
+| Editing the `self-only` access list (e.g. the public IP changed and needs an updated allow rule) | Rewrites every host config under it, including 24 |
 | Editing or enabling host 24 in the panel | Rewrites 24 |
 | Re-**requesting** (not renewing) dify's certificate | Rewrites the hosts using that domain |
 

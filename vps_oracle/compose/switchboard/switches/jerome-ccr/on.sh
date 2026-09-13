@@ -33,6 +33,10 @@ content = (
 # "showing pro by default". Same mechanism as the three tier variables below:
 # ccr only exports strings; switchboard is responsible for mapping them onto
 # the CLI process environment.
+# NOTE: bridget-ccr/on.sh and evidence-ccr/on.sh describe this same fallback
+# landing on the "opus" tier rather than "pro" — unconfirmed whether that's a
+# genuine per-profile difference or a stale copy-paste; verify against actual
+# CCR behavior before relying on either wording.
 if routing.get("model"):
     content += f"export ANTHROPIC_DEFAULT_MODEL={routing['model']}\n"
 if routing.get("opusModel"):

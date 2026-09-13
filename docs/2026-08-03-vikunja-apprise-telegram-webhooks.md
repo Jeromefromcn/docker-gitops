@@ -1,8 +1,8 @@
-# 2026-08-03 Vikunja → Apprise → Telegram notification plumbing
+# Vikunja → Apprise → Telegram notification plumbing
 
-> **[2026-08-12 update]** This document was written *before* the "per-Vikunja-account Telegram routing + task-completion notification" feature. The architecture / event-count / Apprise-target descriptions below reflect the state at that time (a single `vikunja-tg` target, three events) and are now outdated. The current implementation (four events, a per-account `vikunja-tg-{username}` target) is in [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md). This document is kept as the original design record, with a few spots marked below as subsequently outdated and updated.
+Forwards Vikunja's task events (assigned to me, reminder due, overdue, completed) to each Vikunja account's own Telegram group, with the message carrying the project name, task title, and a task hyperlink. `vikunja-notify-relay` is the second service in the `vps_oracle/compose/vikunja` compose stack (same `docker-compose.yml` as the `vikunja` app itself, code under `vps_oracle/compose/vikunja/notify-relay/`), and there is also the separate `vps_oracle/compose/apprise` stack.
 
-Forwards Vikunja's task events (assigned to me, reminder due, overdue) to the Telegram group "Vikunja Notification", with the message carrying the project name, task title, and a task hyperlink. `vikunja-notify-relay` is the second service in the `vps_oracle/compose/vikunja` compose stack (same `docker-compose.yml` as the `vikunja` app itself, code under `vps_oracle/compose/vikunja/notify-relay/`), and there is also the separate `vps_oracle/compose/apprise` stack.
+For the investigation, decision rationale, and evolution behind the current design (why routing is per-account, why `task.updated` needed special handling to catch completions without duplicating assignment notices), see [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md).
 
 ## Architecture
 
@@ -11,7 +11,7 @@ Vikunja (webhook, 4 per project)
   → POST http://vikunja-notify-relay:8080/         (inside the proxy network, direct by container name, raw payload forwarded as-is)
     → relay reads project.title / task.title / task.id from the payload, assembles an HTML message:
       "Project: <b>xxx</b>\nTask: <a href=\"https://vikunja.jerome.cloudns.asia/tasks/{id}\">yyy</a>"
-      → POST http://apprise:8000/notify/vikunja-tg-{username}   ({title, body, format:"html"}, no remap; username read from the payload, routed per account — see the update note at the top)
+      → POST http://apprise:8000/notify/vikunja-tg-{username}   ({title, body, format:"html"}, no remap; username read from the payload, routed per account)
         → tgram:// target (stored in apprise's persistent store, key=vikunja-tg-{username}, one per Vikunja account)
           → that account's Telegram group (one group per person, task title rendered as a clickable hyperlink)
 ```
@@ -25,8 +25,6 @@ Comparing, a small independent container is actually simplest: `python:3.12.7-al
 
 ## The four registered events
 
-> **[2026-08-12 update]** The table below originally had only three events (no `task.updated`); `task.updated` was later re-registered for the "task completion" notification — see the last row and the update note below the table.
-
 | Vikunja event | Trigger timing | Notes |
 |---|---|---|
 | `task.assignee.created` | a task is assigned to someone | sent to whoever it's assigned to, routed by `assignee.username` in the payload (no longer assumes a single-user instance) |
@@ -36,7 +34,7 @@ Comparing, a small independent container is actually simplest: `python:3.12.7-al
 
 All delivered to `vikunja-notify-relay`; the relay dispatches by the payload's `event_name` into different message titles (emoji + one line), with the body always the same three-line "project name / task title / link" format.
 
-**`task.updated`: from "not registered" to "completion detection" (2026-08-12 update)**: this section's original conclusion was "`task.updated` is not registered" — an early version had registered it, intending "task completion" notifications, but discovered that the assignment action itself also triggers `task.updated` as a side effect (Vikunja internal behavior), and registering both events would yield two duplicate messages for one assignment; so at the time it was changed to use only `task.assignee.created` and `task.updated` was dropped entirely. That concern itself was not wrong, but a different solution came later: instead of "don't register it at all", re-register `task.updated` and have the relay do its own "completion detection" — only when `data.task.done == true` and `done_at` falls near the event timestamp (`DONE_WINDOW_SECONDS`, default 10 seconds) does it count as "just done" and forward; everything else (including the assignee-triggered `task.updated`) is ignored outright, so it won't duplicate `task.assignee.created`. For the investigation details, decision rationale, and known limitations (`repeat_after` recurring tasks don't get completion notifications), see [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md).
+**`task.updated`: completion detection**: `task.updated` also fires as a side effect of the assignment action itself (Vikunja internal behavior), so simply registering it would yield a duplicate message alongside `task.assignee.created` for every new assignment. To avoid that, the relay does its own "completion detection": only when `data.task.done == true` and `done_at` falls near the event timestamp (`DONE_WINDOW_SECONDS`, default 10 seconds) does it count as "just done" and get forwarded; every other `task.updated` (including the assignee-triggered one) is ignored outright. For the investigation details, decision rationale, and known limitations (`repeat_after` recurring tasks don't get completion notifications), see [`docs/superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md`](superpowers/specs/2026-08-12-vikunja-per-user-telegram-routing-design.md).
 
 Full event set (`GET /api/v1/webhooks/events`): `project.deleted`, `project.shared.team`, `project.shared.user`, `project.updated`, `task.assignee.created`, `task.assignee.deleted`, `task.attachment.created`, `task.attachment.deleted`, `task.comment.created`, `task.comment.deleted`, `task.comment.edited`, `task.created`, `task.deleted`, `task.overdue`, `task.relation.created`, `task.relation.deleted`, `task.reminder.fired`, `task.updated`, `tasks.overdue`.
 
@@ -53,7 +51,7 @@ Checked the Vikunja source (`pkg/models/task_overdue_reminder.go`): `task.overdu
 
 ## Reproducing / adding a webhook for a new project
 
-> **[2026-08-12 update]** Step 1 originally configured a single shared `vikunja-tg` target; it's now changed to one `vikunja-tg-<username>` target per Vikunja account (see below). Step 3 now registers four events (newly added `task.updated`), and is done per-project, unrelated to accounts — a new account only needs step 1 and does not need to re-run step 3 (unless a new project was also created).
+Step 1 configures one `vikunja-tg-<username>` target per Vikunja account. Step 3 registers the four events and is done per-project, unrelated to accounts — a new account only needs step 1 and does not need to re-run step 3 (unless a new project was also created).
 
 ```bash
 # 1. apprise side: configure one target per Vikunja account (not a shared one),
@@ -81,4 +79,4 @@ Missing step 1 (or a typoed username) produces no visible error — that account
 
 ## Verification method
 
-After changing code, first `curl -X POST` the relay's `http://vikunja-notify-relay:8080/` directly with a hand-written fake payload (`{"event_name":"task.assignee.created","data":{"task":{"id":1,"title":"..."},"project":{"title":"..."}}}`), and check `docker logs vikunja-notify-relay` for `forwarded task.assignee.created -> apprise (jerome): 200` (the log format carries the username, see `delivery_log_line` in `app.py`; 2026-08-12 update: early versions had no username in the log, format was `forwarded ... -> apprise: 200`), and whether Telegram received the message; then create a task in a real project, assign it to yourself, and confirm the whole chain (`docker logs vikunja`, `docker logs vikunja-notify-relay`, `docker logs apprise` all need checking for errors). Both stages were tested repeatedly at rollout, including using temporary projects + a temporary http-echo container to capture the real payload structure of `task.assignee.created`/`task.updated`/`task.reminder.fired`/`task.overdue` (deleted immediately after use).
+After changing code, first `curl -X POST` the relay's `http://vikunja-notify-relay:8080/` directly with a hand-written fake payload (`{"event_name":"task.assignee.created","data":{"task":{"id":1,"title":"..."},"project":{"title":"..."}}}`), and check `docker logs vikunja-notify-relay` for `forwarded task.assignee.created -> apprise (jerome): 200` (the log format carries the username; see `delivery_log_line` in `app.py`), and whether Telegram received the message; then create a task in a real project, assign it to yourself, and confirm the whole chain (`docker logs vikunja`, `docker logs vikunja-notify-relay`, `docker logs apprise` all need checking for errors). Both stages were tested repeatedly at rollout, including using temporary projects + a temporary http-echo container to capture the real payload structure of `task.assignee.created`/`task.updated`/`task.reminder.fired`/`task.overdue` (deleted immediately after use).

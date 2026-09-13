@@ -41,7 +41,7 @@ Use the `npm-proxy-host` skill. Domain `<service>.jerome.cloudns.asia`; if this 
 
 ## 5. Add a homepage card
 
-homepage moved back from k3s to compose on 2026-08-18 (see the k3s section above), and its config source file is **`vps_oracle/compose/homepage/config/services.yaml`**. For each new service, add a card under the appropriate category (`Infra Services` / `Apps`), keeping the same format as existing entries:
+homepage moved back from k3s to compose on 2026-08-18 (see the "k3s" section of the root [README.md](../../../README.md)), and its config source file is **`vps_oracle/compose/homepage/config/services.yaml`**. For each new service, add a card under the appropriate category (`Infra Services` / `Apps`), keeping the same format as existing entries:
 
 ```yaml
     - <service name>:

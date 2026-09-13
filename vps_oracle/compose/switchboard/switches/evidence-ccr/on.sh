@@ -27,6 +27,10 @@ content = (
 # on it, otherwise it falls back to cc's built-in default and ccr re-maps it
 # to the opus tier. Same mechanism as the three tier variables below (see
 # jerome-ccr/on.sh).
+# NOTE: jerome-ccr/on.sh describes this same fallback landing on the "pro"
+# tier rather than "opus" — unconfirmed whether that's a genuine per-profile
+# difference or a stale copy-paste; verify against actual CCR behavior before
+# relying on either wording.
 if routing.get("model"):
     content += f"export ANTHROPIC_DEFAULT_MODEL={routing['model']}\n"
 if routing.get("opusModel"):

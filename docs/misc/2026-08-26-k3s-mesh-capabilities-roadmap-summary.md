@@ -109,7 +109,7 @@ The 10 verification points correspond to the four major capability groups. **The
 | [ ] | J | Identity-level authorization | legal/illegal two paths | legal 200, illegal non-200 | 5.4 |
 | [ ] | K | Metrics | compose Prometheus targets | `istiod/ztunnel/waypoint up` | 5.5 |
 | [ ] | K | Logs | Loki query `pr-lanes` | non-empty log entries | 5.6 |
-scm-history-item:/home/ubuntu/jerome/docker-gitops?%7B%22repositoryId%22%3A%22scm0%22%2C%22historyItemId%22%3A%22c3d47724f94221efc9577929b139345fd01a98f9%22%2C%22historyItemParentId%22%3A%22682be36b4e71c002279803d4fb8a3f039814fbb0%22%2C%22historyItemDisplayId%22%3A%22c3d4772%22%7D| [ ] | K | Tracing | Jaeger query service | includes waypoint-related service | 5.7 |
+| [ ] | K | Tracing | Jaeger query service | includes waypoint-related service | 5.7 |
 | [ ] | L | Rate limiting | inject 70 requests | 429 + `x-envoy-ratelimited` appears, recovers to 200 after window reset | 5.8 |
 
 ⚠️ Note: the behavior-level verification of **timeout/retry/circuit-breaking** is done directly against the RPC-ified backend's built-in endpoints (`/slow`, `/fail-503`, `/fail-500`), see 5.3 — **no need** to temporarily modify the backend image. Among them **circuit-breaking** briefly puts the backend into the ejected state; after verifying, wait for `baseEjectionTime: 30s` to pass for natural recovery.
