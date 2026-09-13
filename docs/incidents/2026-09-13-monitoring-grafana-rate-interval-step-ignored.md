@@ -76,3 +76,22 @@ docker logs grafana --tail 100 | grep -iE "error|failed"   # no provisioning err
 - **Don't declare a Grafana dashboard fix verified from a raw Prometheus query alone.** Prometheus will happily run whatever window you hand it manually; the only way to know what Grafana itself sends is Query Inspector (Panel menu → Inspect → Query) or an equivalent capture of the actual `/api/ds/query` request. This is the second time in this session a "verified" fix (bumping `"step"`) turned out to not be wired to anything real.
 - The Prometheus datasource (`vps_oracle/compose/monitoring/grafana/provisioning/datasources/prometheus.yml`) still has no `jsonData.timeInterval` set, so Grafana's rate-window fallback keeps assuming a 15s scrape interval dashboard-wide regardless of any real job's actual interval. Harmless now that every rate()-heavy panel carries an explicit `"interval"` override, but worth remembering if a future dashboard is added without one.
 - Separately (unrelated to this incident, found while trying to query Grafana's API for diagnosis): `GF_SECURITY_ADMIN_PASSWORD` in `vps_oracle/compose/monitoring/.env` does not match any live account — the real admin login is `jerome` (`id=1`), not `admin`; `GF_SECURITY_ADMIN_PASSWORD` only seeds the bootstrap `admin` user on a brand-new database and has had no effect since. Not fixed here since it isn't broken, just misleading if someone edits `.env` expecting it to change a live password.
+
+---
+
+## Postscript I — the 15m scrape interval causes instant (gauge/stat) panels to *intermittently* blank, independently of the rate() issue
+
+Same day, after the `step`→`interval` fix landed and rate() panels (CPU Basic, Network) started working, the user reported the opposite regression: "gcp 的監控除了 cpu 其他數據都沒有了" — CPU (rate-based) showed values but RAM / Load / Disk / Uptime (instant gauges/stats) were empty.
+
+**Second, unrelated root cause**: Grafana's **instant** query (a panel with `instant: true`) asks Prometheus for the newest single sample within a fixed **5-minute lookback**. The GCP target is scraped every **15 minutes**, so its newest sample is 0–15 minutes old, older than the 5-minute lookback for roughly 2/3 of each cycle — outside that window Prometheus returns "no data" and the panel blanks. Evidence, at 18:32:59 the GCP target's newest sample was 18:25:53 (7 minutes old, > 5m lookback):
+
+```bash
+$ date '+%H:%M:%S'                            # 18:32:59 (host)
+$ # samples of a direct metric in the last 60m:
+$ docker exec prometheus wget -qO- 'http://localhost:9090/api/v1/query?query=node_memory_MemTotal_bytes{job="node_gcp"}[60m]'
+# 17:40:53  17:55:53  18:10:53  18:25:53     <- 4 samples, 15m apart
+```
+
+This is **not caused by the `interval` field** and is not what the `interval` fix was for. It is the fundamental consequence of choosing a 15m scrape interval: it is longer than Grafana's built-in 5m instant lookback. CPU's rate() panels were unaffected only because a range query (12 hours of points at some step) can always be computed regardless of how recently the *newest* point is.
+
+**Decision: keep 15m and accept intermittent blanks** (user's call, prioritizing GCP free-tier egress over always-on instant gauges). The blanking is periodic, not permanent — each instant panel has data for ~5 minutes after each scrape lands, then empties until the next scrape. If a future change wants these gauges always populated without raising the scrape interval, the options are: raise the datasource `jsonData.timeInterval` (affects rate() windows too), give each instant panel a longer `relativeTimeRange`/lookback semantics (value lags up to 15m), or shorten the scrape interval back toward 5m (~100MB/month, still well under the 1GB free tier).
