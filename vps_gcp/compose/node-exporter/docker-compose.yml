@@ -1,0 +1,30 @@
+services:
+  node-exporter:
+    # amd64 digest — vps_gcp's e2-micro is amd64, unlike oracle's arm64, so this must not
+    # be copied from vps_oracle/compose/monitoring/docker-compose.yml's arm64 digest for
+    # the same v1.12.1 tag (confirmed the hard way: "exec format error" under QEMU-less
+    # amd64). Get it with: docker manifest inspect prom/node-exporter:v1.12.1
+    image: prom/node-exporter@sha256:da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e234b4f171e0d92798  # v1.12.1
+    container_name: node-exporter
+    hostname: node-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - '--path.rootfs=/host'
+    # Bound to this host's tailscale IP only (not 0.0.0.0) — same pattern as
+    # vps_gcp/compose/verify/: reachable from oracle's prometheus container over the
+    # oracle<->gcp tailscale mesh (confirmed reachable directly, no extra routing needed),
+    # nothing on the public interface. Update this IP if the gcp node ever re-registers
+    # with tailscale.
+    ports:
+      - "100.96.184.44:9100:9100"

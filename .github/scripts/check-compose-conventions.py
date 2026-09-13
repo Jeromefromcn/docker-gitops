@@ -22,6 +22,9 @@ PORT_EXCEPTIONS = {
     ("npm", "app"): "the reverse proxy itself terminates 80/443",
     ("ccr", "ccr"): "consumer is the host-native claude CLI; bound to 127.0.0.1 only",
     ("apprise", "apprise"): "bound to 127.0.0.1 only",
+    ("node-exporter", "node-exporter"): "bound to gcp's tailscale IP only; oracle's "
+        "prometheus scrapes it over the tailscale mesh (cross-host, no shared docker "
+        "`proxy` network is possible)",
 }
 
 # Environment values that look like credentials but aren't. Each entry needs
