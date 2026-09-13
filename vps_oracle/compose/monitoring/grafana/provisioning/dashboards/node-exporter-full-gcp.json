@@ -174,7 +174,7 @@
           "legendFormat": "CPU",
           "range": false,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -185,7 +185,7 @@
           "legendFormat": "Mem",
           "range": false,
           "refId": "B",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -196,7 +196,7 @@
           "legendFormat": "I/O",
           "range": false,
           "refId": "C",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -207,7 +207,7 @@
           "legendFormat": "Irq",
           "range": false,
           "refId": "D",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "Pressure",
@@ -290,7 +290,7 @@
           "legendFormat": "",
           "range": false,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "CPU Busy",
@@ -373,7 +373,7 @@
           "instant": true,
           "range": false,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "Sys Load",
@@ -446,7 +446,7 @@
           "instant": true,
           "range": false,
           "refId": "B",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "RAM Used",
@@ -528,7 +528,7 @@
           "instant": true,
           "range": false,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "SWAP Used",
@@ -611,7 +611,7 @@
           "instant": true,
           "range": false,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "Root FS Used",
@@ -764,7 +764,7 @@
           "instant": true,
           "range": false,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "RAM Total",
@@ -843,7 +843,7 @@
           "instant": true,
           "range": false,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "SWAP Total",
@@ -927,7 +927,7 @@
           "instant": true,
           "range": false,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "RootFS Total",
@@ -1006,7 +1006,7 @@
           "instant": true,
           "range": false,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "Uptime",
@@ -1192,7 +1192,7 @@
           "legendFormat": "Busy System",
           "range": true,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1201,7 +1201,7 @@
           "legendFormat": "Busy User",
           "range": true,
           "refId": "B",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1210,7 +1210,7 @@
           "legendFormat": "Busy Iowait",
           "range": true,
           "refId": "C",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1219,7 +1219,7 @@
           "legendFormat": "Busy IRQs",
           "range": true,
           "refId": "D",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1228,7 +1228,7 @@
           "legendFormat": "Busy Other",
           "range": true,
           "refId": "E",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1237,7 +1237,7 @@
           "legendFormat": "Idle",
           "range": true,
           "refId": "F",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "CPU Basic",
@@ -1404,7 +1404,7 @@
           "legendFormat": "Total",
           "range": true,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1413,7 +1413,7 @@
           "legendFormat": "Used",
           "range": true,
           "refId": "B",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1422,7 +1422,7 @@
           "legendFormat": "Cache + Buffer",
           "range": true,
           "refId": "C",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1431,7 +1431,7 @@
           "legendFormat": "Free",
           "range": true,
           "refId": "D",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1440,7 +1440,7 @@
           "legendFormat": "Swap used",
           "range": true,
           "refId": "E",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "Memory Basic",
@@ -1546,7 +1546,7 @@
           "legendFormat": "Rx {{device}}",
           "range": true,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         },
         {
           "editorMode": "code",
@@ -1555,7 +1555,7 @@
           "legendFormat": "Tx {{device}}",
           "range": true,
           "refId": "B",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "Network Traffic Basic",
@@ -1650,7 +1650,7 @@
           "legendFormat": "{{mountpoint}}",
           "range": true,
           "refId": "A",
-          "step": 1800
+          "interval": "30m"
         }
       ],
       "title": "Disk Space Used Basic",
@@ -1910,7 +1910,7 @@
               "legendFormat": "System - Processes executing in kernel mode",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -1919,7 +1919,7 @@
               "legendFormat": "User - Normal processes executing in user mode",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -1928,7 +1928,7 @@
               "legendFormat": "Nice - Niced processes executing in user mode",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -1937,7 +1937,7 @@
               "legendFormat": "Iowait - Waiting for I/O to complete",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -1946,7 +1946,7 @@
               "legendFormat": "Irq - Servicing interrupts",
               "range": true,
               "refId": "E",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -1955,7 +1955,7 @@
               "legendFormat": "Softirq - Servicing softirqs",
               "range": true,
               "refId": "F",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -1964,7 +1964,7 @@
               "legendFormat": "Steal - Time spent in other operating systems when running in a virtualized environment",
               "range": true,
               "refId": "G",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -1973,7 +1973,7 @@
               "legendFormat": "Idle - Waiting for something to happen",
               "range": true,
               "refId": "H",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -1982,7 +1982,7 @@
               "legendFormat": "Guest CPU usage",
               "range": true,
               "refId": "I",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "CPU",
@@ -2247,7 +2247,7 @@
               "legendFormat": "Apps - Memory used by user-space applications",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2256,7 +2256,7 @@
               "legendFormat": "PageTables - Memory used to map between virtual and physical memory addresses",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2265,7 +2265,7 @@
               "legendFormat": "SwapCache - Memory that keeps track of pages that have been fetched from swap but not yet been modified",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2274,7 +2274,7 @@
               "legendFormat": "Slab - Memory used by the kernel to cache data structures for its own use (caches like inode, dentry, etc)",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2283,7 +2283,7 @@
               "legendFormat": "Cache - Parked file data (file content) cache",
               "range": true,
               "refId": "E",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2292,7 +2292,7 @@
               "legendFormat": "Buffers - Block device (e.g. harddisk) cache",
               "range": true,
               "refId": "F",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2301,7 +2301,7 @@
               "legendFormat": "Unused - Free memory unassigned",
               "range": true,
               "refId": "G",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2310,7 +2310,7 @@
               "legendFormat": "Swap - Swap space used",
               "range": true,
               "refId": "H",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2319,7 +2319,7 @@
               "legendFormat": "Hardware Corrupted - Amount of RAM that the kernel identified as corrupted / not working",
               "range": true,
               "refId": "I",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory",
@@ -2429,7 +2429,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2438,7 +2438,7 @@
               "legendFormat": "{{device}} - Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic",
@@ -2548,7 +2548,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2557,7 +2557,7 @@
               "legendFormat": "{{device}} - Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Saturation",
@@ -2666,7 +2666,7 @@
               "legendFormat": "{{device}} - Read",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2674,7 +2674,7 @@
               "legendFormat": "{{device}} - Write",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Disk IOps",
@@ -2784,7 +2784,7 @@
               "legendFormat": "{{device}} - Read",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2793,7 +2793,7 @@
               "legendFormat": "{{device}} - Write",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Disk Throughput",
@@ -2892,7 +2892,7 @@
               "metric": "",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2902,7 +2902,7 @@
               "legendFormat": "{{mountpoint}} - Free",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -2912,7 +2912,7 @@
               "legendFormat": "{{mountpoint}} - Size",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Filesystem Space Available",
@@ -3010,7 +3010,7 @@
               "legendFormat": "{{mountpoint}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Filesystem Used",
@@ -3109,7 +3109,7 @@
               "legendFormat": "{{device}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Disk I/O Utilization",
@@ -3231,7 +3231,7 @@
               "legendFormat": "CPU - Some",
               "range": true,
               "refId": "CPU some",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3240,7 +3240,7 @@
               "legendFormat": "Memory - Some",
               "range": true,
               "refId": "Memory some",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3249,7 +3249,7 @@
               "legendFormat": "Memory - Full",
               "range": true,
               "refId": "Memory full",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3258,7 +3258,7 @@
               "legendFormat": "I/O - Some",
               "range": true,
               "refId": "I/O some",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3267,7 +3267,7 @@
               "legendFormat": "I/O - Full",
               "range": true,
               "refId": "I/O full",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3276,7 +3276,7 @@
               "legendFormat": "IRQ - Full",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Pressure Stall Information",
@@ -3409,7 +3409,7 @@
               "legendFormat": "Committed_AS \u2013 Memory promised to processes (not necessarily used)",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3418,7 +3418,7 @@
               "legendFormat": "CommitLimit - Max allowable committed memory",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Committed",
@@ -3516,7 +3516,7 @@
               "legendFormat": "Writeback \u2013 Memory currently being flushed to disk",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3525,7 +3525,7 @@
               "legendFormat": "WritebackTmp \u2013 FUSE temporary writeback buffers",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3534,7 +3534,7 @@
               "legendFormat": "Dirty \u2013 Memory marked dirty (pending write to disk)",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3543,7 +3543,7 @@
               "legendFormat": "NFS Unstable \u2013 Pages sent to NFS server, awaiting storage commit",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Writeback and Dirty",
@@ -3641,7 +3641,7 @@
               "legendFormat": "SUnreclaim \u2013 Non-reclaimable slab memory (kernel objects)",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3650,7 +3650,7 @@
               "legendFormat": "SReclaimable \u2013 Potentially reclaimable slab memory (e.g., inode cache)",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Slab",
@@ -3749,7 +3749,7 @@
               "legendFormat": "Mapped \u2013 Memory mapped from files (e.g., libraries, mmap)",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3758,7 +3758,7 @@
               "legendFormat": "Shmem \u2013 Shared memory used by processes and tmpfs",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3768,7 +3768,7 @@
               "legendFormat": "ShmemHugePages \u2013 Shared memory (shmem/tmpfs) allocated with HugePages",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3778,7 +3778,7 @@
               "legendFormat": "PMD Mapped \u2013 Shmem/tmpfs backed by Transparent HugePages (PMD)",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Shared and Mapped",
@@ -3908,7 +3908,7 @@
               "legendFormat": "Inactive \u2013 Less recently used memory, more likely to be reclaimed",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -3917,7 +3917,7 @@
               "legendFormat": "Active \u2013 Recently used memory, retained unless under pressure",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory LRU Active / Inactive (%)",
@@ -4016,7 +4016,7 @@
               "legendFormat": "Inactive_file - File-backed memory on inactive LRU list",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4025,7 +4025,7 @@
               "legendFormat": "Inactive_anon \u2013 Anonymous memory on inactive LRU (incl. tmpfs & swap cache)",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4034,7 +4034,7 @@
               "legendFormat": "Active_file - File-backed memory on active LRU list",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4043,7 +4043,7 @@
               "legendFormat": "Active_anon \u2013 Anonymous memory on active LRU (incl. tmpfs & swap cache)",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory LRU Active / Inactive Detail",
@@ -4142,7 +4142,7 @@
               "legendFormat": "KernelStack \u2013 Kernel stack memory (per-thread, non-reclaimable)",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4152,7 +4152,7 @@
               "legendFormat": "PerCPU \u2013 Dynamically allocated per-CPU memory (used by kernel modules)",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4162,7 +4162,7 @@
               "legendFormat": "Bounce Memory \u2013 I/O buffer for DMA-limited devices",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Kernel / CPU / IO",
@@ -4290,7 +4290,7 @@
               "legendFormat": "Vmalloc Free Chunk \u2013 Largest available block in vmalloc area",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4299,7 +4299,7 @@
               "legendFormat": "Vmalloc Total \u2013 Total size of the vmalloc memory area",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4308,7 +4308,7 @@
               "legendFormat": "Vmalloc Used \u2013 Portion of vmalloc area currently in use",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Vmalloc",
@@ -4406,7 +4406,7 @@
               "legendFormat": "AnonHugePages \u2013 Anonymous memory using HugePages",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4415,7 +4415,7 @@
               "legendFormat": "AnonPages \u2013 Anonymous memory (non-file-backed)",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Anonymous",
@@ -4514,7 +4514,7 @@
               "legendFormat": "Unevictable \u2013 Kernel-pinned memory (not swappable)",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4523,7 +4523,7 @@
               "legendFormat": "Mlocked \u2013 Application-locked memory via mlock()",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Unevictable and MLocked",
@@ -4625,7 +4625,7 @@
               "legendFormat": "DirectMap 1G \u2013 Memory mapped with 1GB pages",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4635,7 +4635,7 @@
               "legendFormat": "DirectMap 2M \u2013 Memory mapped with 2MB pages",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4645,7 +4645,7 @@
               "legendFormat": "DirectMap 4K \u2013 Memory mapped with 4KB pages",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory DirectMap",
@@ -4743,7 +4743,7 @@
               "legendFormat": "HugePages Used \u2013 Currently allocated",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4752,7 +4752,7 @@
               "legendFormat": "HugePages Reserved \u2013 Promised but unused",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4761,7 +4761,7 @@
               "legendFormat": "HugePages Surplus \u2013 Dynamic pool extension",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4770,7 +4770,7 @@
               "legendFormat": "HugePages Total \u2013 Reserved memory",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory HugePages",
@@ -4894,7 +4894,7 @@
               "legendFormat": "Pagesin - Page in ops",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -4903,7 +4903,7 @@
               "legendFormat": "Pagesout - Page out ops",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Pages In / Out",
@@ -5013,7 +5013,7 @@
               "legendFormat": "Pswpin - Pages swapped in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5022,7 +5022,7 @@
               "legendFormat": "Pswpout - Pages swapped out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Pages Swap In / Out",
@@ -5158,7 +5158,7 @@
               "legendFormat": "Pgfault - Page major and minor fault ops",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5167,7 +5167,7 @@
               "legendFormat": "Pgmajfault - Major page fault ops",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5176,7 +5176,7 @@
               "legendFormat": "Pgminfault - Minor page fault ops",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Memory Page Faults",
@@ -5291,7 +5291,7 @@
               "legendFormat": "OOM Kills",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "OOM Killer",
@@ -5403,7 +5403,7 @@
               "legendFormat": "Estimated error",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5413,7 +5413,7 @@
               "legendFormat": "Offset local vs reference",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5423,7 +5423,7 @@
               "legendFormat": "Maximum error",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Time Synchronized Drift",
@@ -5521,7 +5521,7 @@
               "legendFormat": "PLL Time Constant",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Time PLL Adjust",
@@ -5619,7 +5619,7 @@
               "legendFormat": "Sync status (1 = ok)",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5629,7 +5629,7 @@
               "legendFormat": "Frequency Adjustment",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5640,7 +5640,7 @@
               "legendFormat": "Tick Interval",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5651,7 +5651,7 @@
               "legendFormat": "TAI Offset",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Time Synchronized Status",
@@ -5749,7 +5749,7 @@
               "legendFormat": "PPS Frequency Offset",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5759,7 +5759,7 @@
               "legendFormat": "PPS Frequency Stability",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "PPS Frequency / Stability",
@@ -5857,7 +5857,7 @@
               "legendFormat": "PPS Jitter",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5867,7 +5867,7 @@
               "legendFormat": "PPS Shift",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "PPS Time Accuracy",
@@ -5969,7 +5969,7 @@
               "legendFormat": "PPS Calibrations/sec",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5979,7 +5979,7 @@
               "legendFormat": "PPS Errors/sec",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5989,7 +5989,7 @@
               "legendFormat": "PPS Stability Exceeded/sec",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -5999,7 +5999,7 @@
               "legendFormat": "PPS Jitter Events/sec",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "PPS Sync Events",
@@ -6115,7 +6115,7 @@
               "legendFormat": "Blocked (I/O Wait)",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -6124,7 +6124,7 @@
               "legendFormat": "Runnable (Ready for CPU)",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Processes Status",
@@ -6308,7 +6308,7 @@
               "legendFormat": "{{ state }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Processes Detailed States",
@@ -6406,7 +6406,7 @@
               "legendFormat": "Process Forks per second",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Processes Forks",
@@ -6522,7 +6522,7 @@
               "legendFormat": "CPU {{ cpu }} - Running",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -6533,7 +6533,7 @@
               "legendFormat": "CPU {{cpu}} - Waiting Queue",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -6543,7 +6543,7 @@
               "legendFormat": "CPU {{cpu}}",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "CPU Saturation per Core",
@@ -6672,7 +6672,7 @@
               "legendFormat": "Number of PIDs",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -6682,7 +6682,7 @@
               "legendFormat": "PIDs limit",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "PIDs Number and Limit",
@@ -6811,7 +6811,7 @@
               "legendFormat": "Allocated threads",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -6821,7 +6821,7 @@
               "legendFormat": "Threads limit",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Threads Number and Limit",
@@ -6933,7 +6933,7 @@
               "legendFormat": "Context switches",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -6942,7 +6942,7 @@
               "legendFormat": "Interrupts",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Context Switches / Interrupts",
@@ -7070,7 +7070,7 @@
               "legendFormat": "Load 1m",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -7079,7 +7079,7 @@
               "legendFormat": "Load 5m",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -7088,7 +7088,7 @@
               "legendFormat": "Load 15m",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -7097,7 +7097,7 @@
               "legendFormat": "CPU Core Count",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "System Load",
@@ -7262,7 +7262,7 @@
               "legendFormat": "CPU {{ cpu }}",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -7272,7 +7272,7 @@
               "legendFormat": "Max",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -7282,7 +7282,7 @@
               "legendFormat": "Min",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "CPU Frequency Scaling",
@@ -7380,7 +7380,7 @@
               "legendFormat": "CPU {{ cpu }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "CPU Schedule Timeslices",
@@ -7479,7 +7479,7 @@
               "legendFormat": "{{ type }} - {{ info }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "IRQ Detail",
@@ -7607,7 +7607,7 @@
               "legendFormat": "Entropy available",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -7616,7 +7616,7 @@
               "legendFormat": "Entropy pool max",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Entropy",
@@ -7749,7 +7749,7 @@
               "legendFormat": "{{ chip_name }} {{ sensor }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "expr": "node_hwmon_temp_crit_alarm_celsius{instance=\"$node\",job=\"$job\"} * on(chip) group_left(chip_name) node_hwmon_chip_names{instance=\"$node\",job=\"$job\"}",
@@ -7758,7 +7758,7 @@
               "interval": "",
               "legendFormat": "{{ chip_name }} {{ sensor }} Critical Alarm",
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -7768,7 +7768,7 @@
               "legendFormat": "{{ chip_name }} {{ sensor }} Critical",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "expr": "node_hwmon_temp_crit_hyst_celsius{instance=\"$node\",job=\"$job\"} * on(chip) group_left(chip_name) node_hwmon_chip_names{instance=\"$node\",job=\"$job\"}",
@@ -7777,7 +7777,7 @@
               "interval": "",
               "legendFormat": "{{ chip_name }} {{ sensor }} Critical Hysteresis",
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "expr": "node_hwmon_temp_max_celsius{instance=\"$node\",job=\"$job\"} * on(chip) group_left(chip_name) node_hwmon_chip_names{instance=\"$node\",job=\"$job\"}",
@@ -7786,7 +7786,7 @@
               "interval": "",
               "legendFormat": "{{ chip_name }} {{ sensor }} Max",
               "refId": "E",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Hardware Temperature Monitor",
@@ -7904,7 +7904,7 @@
               "legendFormat": "{{name}} - {{type}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Cooling Device Utilization",
@@ -8006,7 +8006,7 @@
               "legendFormat": "{{ power_supply }} online",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Power Supply",
@@ -8105,7 +8105,7 @@
               "legendFormat": "{{ chip_name }} {{ sensor }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -8116,7 +8116,7 @@
               "legendFormat": "{{ chip_name }} {{ sensor }} rpm min",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Hardware Fan Speed",
@@ -8304,7 +8304,7 @@
               "legendFormat": "Activating",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -8314,7 +8314,7 @@
               "legendFormat": "Active",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -8324,7 +8324,7 @@
               "legendFormat": "Deactivating",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -8334,7 +8334,7 @@
               "legendFormat": "Failed",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -8344,7 +8344,7 @@
               "legendFormat": "Inactive",
               "range": true,
               "refId": "E",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Systemd Units State",
@@ -8443,7 +8443,7 @@
               "legendFormat": "{{ name }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Systemd Sockets Current",
@@ -8542,7 +8542,7 @@
               "legendFormat": "{{ name }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Systemd Sockets Accepted",
@@ -8641,7 +8641,7 @@
               "legendFormat": "{{ name }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Systemd Sockets Refused",
@@ -8779,7 +8779,7 @@
               "legendFormat": "{{device}} - Read",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -8787,7 +8787,7 @@
               "legendFormat": "{{device}} - Write",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Disk Read/Write IOps",
@@ -8912,7 +8912,7 @@
               "legendFormat": "{{device}} - Read",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -8923,7 +8923,7 @@
               "legendFormat": "{{device}} - Write",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Disk Read/Write Data",
@@ -9048,7 +9048,7 @@
               "legendFormat": "{{device}} - Read",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -9057,7 +9057,7 @@
               "legendFormat": "{{device}} - Write",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Disk Average Wait Time",
@@ -9171,7 +9171,7 @@
               "legendFormat": "{{device}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Average Queue Size",
@@ -9295,7 +9295,7 @@
               "legendFormat": "{{device}} - Read",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -9303,7 +9303,7 @@
               "legendFormat": "{{device}} - Write",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Disk R/W Merged",
@@ -9417,7 +9417,7 @@
               "legendFormat": "{{device}} - General IO",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -9426,7 +9426,7 @@
               "legendFormat": "{{device}} - Discard/TRIM",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -9435,7 +9435,7 @@
               "legendFormat": "{{device}} - Flush (write cache)",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Time Spent Doing I/Os",
@@ -9548,7 +9548,7 @@
               "legendFormat": "{{device}} - Discards completed",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -9557,7 +9557,7 @@
               "legendFormat": "{{device}} - Discards merged",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -9566,7 +9566,7 @@
               "legendFormat": "{{device}} - Flush",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Disk Ops Discards / Flush",
@@ -9679,7 +9679,7 @@
               "legendFormat": "{{device}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Disk Sectors Discarded Successfully",
@@ -9793,7 +9793,7 @@
               "legendFormat": "{{device}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Instantaneous Queue Size",
@@ -9935,7 +9935,7 @@
               "legendFormat": "Max open files",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -9944,7 +9944,7 @@
               "legendFormat": "Open files",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "File Descriptor",
@@ -10042,7 +10042,7 @@
               "legendFormat": "{{mountpoint}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "File Nodes Free",
@@ -10141,7 +10141,7 @@
               "legendFormat": "{{mountpoint}} - ReadOnly",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -10151,7 +10151,7 @@
               "legendFormat": "{{mountpoint}} - Device error",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Filesystem in ReadOnly / Error",
@@ -10249,7 +10249,7 @@
               "legendFormat": "{{mountpoint}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "File Nodes Size",
@@ -10375,7 +10375,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -10385,7 +10385,7 @@
               "legendFormat": "{{device}} - Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic by Packets",
@@ -10496,7 +10496,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -10505,7 +10505,7 @@
               "legendFormat": "{{device}} - Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic Errors",
@@ -10616,7 +10616,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -10625,7 +10625,7 @@
               "legendFormat": "{{device}} - Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic Drop",
@@ -10736,7 +10736,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -10745,7 +10745,7 @@
               "legendFormat": "{{device}} - Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic Compressed",
@@ -10843,7 +10843,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic Multicast",
@@ -10941,7 +10941,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic NoHandler",
@@ -11039,7 +11039,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic Frame",
@@ -11150,7 +11150,7 @@
               "legendFormat": "{{device}} - Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -11159,7 +11159,7 @@
               "legendFormat": "{{device}} - Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic Fifo",
@@ -11270,7 +11270,7 @@
               "legendFormat": "{{device}} - Tx out",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic Collision",
@@ -11368,7 +11368,7 @@
               "legendFormat": "{{device}} - Tx out",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Network Traffic Carrier Errors",
@@ -11466,7 +11466,7 @@
               "legendFormat": "{{ device }} ARP Table",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "ARP Entries",
@@ -11594,7 +11594,7 @@
               "legendFormat": "NF conntrack entries",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -11603,7 +11603,7 @@
               "legendFormat": "NF conntrack limit",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "NF Conntrack",
@@ -11702,7 +11702,7 @@
               "legendFormat": "{{interface}} - Operational state UP",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -11784,7 +11784,7 @@
               "legendFormat": "{{ device }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Speed",
@@ -11857,7 +11857,7 @@
               "legendFormat": "{{ device }}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "MTU",
@@ -11971,7 +11971,7 @@
               "legendFormat": "Allocated Sockets",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -11981,7 +11981,7 @@
               "legendFormat": "In-Use Sockets",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -11991,7 +11991,7 @@
               "legendFormat": "Orphaned Sockets",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -12001,7 +12001,7 @@
               "legendFormat": "TIME_WAIT Sockets",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Sockstat TCP",
@@ -12101,7 +12101,7 @@
               "legendFormat": "UDPLite - In-Use Sockets",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -12111,7 +12111,7 @@
               "legendFormat": "UDP - In-Use Sockets",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Sockstat UDP",
@@ -12211,7 +12211,7 @@
               "legendFormat": "Total sockets",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Sockstat Used",
@@ -12311,7 +12311,7 @@
               "legendFormat": "FRAG - In-Use Sockets",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -12321,7 +12321,7 @@
               "legendFormat": "RAW - In-Use Sockets",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Sockstat FRAG / RAW",
@@ -12421,7 +12421,7 @@
               "legendFormat": "TCP",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -12431,7 +12431,7 @@
               "legendFormat": "UDP",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -12539,7 +12539,7 @@
               "legendFormat": "TCP",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -12549,7 +12549,7 @@
               "legendFormat": "UDP",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Sockstat Average Socket Memory",
@@ -12649,7 +12649,7 @@
               "legendFormat": "TCP",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -12659,7 +12659,7 @@
               "legendFormat": "UDP",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "TCP/UDP Kernel Buffer Memory Pages",
@@ -12771,7 +12771,7 @@
               "legendFormat": "CPU {{cpu}} - Processed",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -12781,7 +12781,7 @@
               "legendFormat": "CPU {{cpu}} - Dropped",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Softnet Packets",
@@ -12884,7 +12884,7 @@
               "legendFormat": "CPU {{cpu}} - Times Squeezed",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Softnet Out of Quota",
@@ -13003,7 +13003,7 @@
               "legendFormat": "CPU {{cpu}} - Processed",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13013,7 +13013,7 @@
               "legendFormat": "CPU {{cpu}} - Dropped",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Softnet RPS",
@@ -13139,7 +13139,7 @@
               "legendFormat": "IP Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13148,7 +13148,7 @@
               "legendFormat": "IP Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Netstat IP In / Out Octets",
@@ -13263,7 +13263,7 @@
               "interval": "",
               "legendFormat": "TCP Rx in",
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13273,7 +13273,7 @@
               "legendFormat": "TCP Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "TCP In / Out",
@@ -13384,7 +13384,7 @@
               "legendFormat": "UDP Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13394,7 +13394,7 @@
               "legendFormat": "UDP Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "UDP In / Out",
@@ -13509,7 +13509,7 @@
               "legendFormat": "ICMP Rx in",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13519,7 +13519,7 @@
               "legendFormat": "ICMP Tx out",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "ICMP In / Out",
@@ -13618,7 +13618,7 @@
               "legendFormat": "Listen Overflows",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13628,7 +13628,7 @@
               "legendFormat": "Listen Drops",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13638,7 +13638,7 @@
               "legendFormat": "SYN Retransmits",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13788,7 +13788,7 @@
               "legendFormat": "UDP Rx in Errors",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13798,7 +13798,7 @@
               "legendFormat": "UDP No Listener",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13816,7 +13816,7 @@
               "legendFormat": "UDP Rx in Buffer Errors",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -13826,7 +13826,7 @@
               "legendFormat": "UDP Tx out Buffer Errors",
               "range": true,
               "refId": "E",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "UDP Errors",
@@ -13924,7 +13924,7 @@
               "legendFormat": "ICMP Rx In",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "ICMP Errors",
@@ -14038,7 +14038,7 @@
               "legendFormat": "SYN Cookies Failed",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14048,7 +14048,7 @@
               "legendFormat": "SYN Cookies Validated",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14058,7 +14058,7 @@
               "legendFormat": "SYN Cookies Sent",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "TCP SynCookie",
@@ -14187,7 +14187,7 @@
               "legendFormat": "Current Connections",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14197,7 +14197,7 @@
               "legendFormat": "Max Connections",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "TCP Connections",
@@ -14295,7 +14295,7 @@
               "legendFormat": "UDP Rx in Queue",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14305,7 +14305,7 @@
               "legendFormat": "UDP Tx out Queue",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "UDP Queue",
@@ -14404,7 +14404,7 @@
               "legendFormat": "Active Opens",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14414,7 +14414,7 @@
               "legendFormat": "Passive Opens",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "TCP Direct Transition",
@@ -14514,7 +14514,7 @@
               "legendFormat": "Established",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14524,7 +14524,7 @@
               "legendFormat": "FIN_WAIT2",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14534,7 +14534,7 @@
               "legendFormat": "Listen",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14544,7 +14544,7 @@
               "legendFormat": "TIME_WAIT",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14554,7 +14554,7 @@
               "legendFormat": "CLOSE_WAIT",
               "range": true,
               "refId": "E",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "TCP Stat Persistent",
@@ -14653,7 +14653,7 @@
               "legendFormat": "SYN_SENT",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14662,7 +14662,7 @@
               "legendFormat": "SYN_RECV",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14671,7 +14671,7 @@
               "legendFormat": "FIN_WAIT1",
               "range": true,
               "refId": "C",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14680,7 +14680,7 @@
               "legendFormat": "CLOSE",
               "range": true,
               "refId": "D",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14689,7 +14689,7 @@
               "legendFormat": "LAST_ACK",
               "range": true,
               "refId": "E",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14698,7 +14698,7 @@
               "legendFormat": "CLOSING",
               "range": true,
               "refId": "F",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "TCP Stat Transient",
@@ -14796,7 +14796,7 @@
               "legendFormat": "RX Queued (waiting to be read)",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -14805,7 +14805,7 @@
               "legendFormat": "TX Queued (waiting to be sent)",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "TCP Socket Queue",
@@ -14921,7 +14921,7 @@
               "legendFormat": "{{collector}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Node Exporter Scrape Time",
@@ -15019,7 +15019,7 @@
               "legendFormat": "Process CPU Usage",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Exporter Process CPU Usage",
@@ -15171,7 +15171,7 @@
               "legendFormat": "Virtual Memory",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -15180,7 +15180,7 @@
               "legendFormat": "Virtual Memory Limit",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Exporter Processes Memory",
@@ -15332,7 +15332,7 @@
               "legendFormat": "Maximum open file descriptors",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -15341,7 +15341,7 @@
               "legendFormat": "Open file descriptors",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Exporter File Descriptor Usage",
@@ -15421,7 +15421,7 @@
               "legendFormat": "{{collector}}",
               "range": true,
               "refId": "A",
-              "step": 1800
+              "interval": "30m"
             },
             {
               "editorMode": "code",
@@ -15431,7 +15431,7 @@
               "legendFormat": "textfile",
               "range": true,
               "refId": "B",
-              "step": 1800
+              "interval": "30m"
             }
           ],
           "title": "Node Exporter Scrape",
