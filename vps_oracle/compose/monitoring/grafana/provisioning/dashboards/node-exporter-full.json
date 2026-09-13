@@ -15450,10 +15450,7 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "node_gcp",
-          "value": "node_gcp"
-        },
+        "current": {},
         "datasource": {
           "type": "prometheus",
           "uid": "prometheus"
@@ -15520,8 +15517,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Node Exporter Full - GCP",
-  "uid": "node-exporter-full-gcp",
+  "title": "Node Exporter Full",
+  "uid": "rYdddlPWk",
   "version": 101,
   "weekStart": "",
   "gnetId": 1860

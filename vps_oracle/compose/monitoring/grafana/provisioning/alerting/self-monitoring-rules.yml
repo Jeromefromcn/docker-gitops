@@ -114,7 +114,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'up{job="node"}'
+              expr: 'up{job="node_oracle"}'
           - refId: B
             datasourceUid: '__expr__'
             model:

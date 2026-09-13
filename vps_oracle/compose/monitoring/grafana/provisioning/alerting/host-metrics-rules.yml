@@ -24,7 +24,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+              expr: '100 - (avg(rate(node_cpu_seconds_total{mode="idle", job="node_oracle"}[5m])) * 100)'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -54,7 +54,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+              expr: '100 - (avg(rate(node_cpu_seconds_total{mode="idle", job="node_oracle"}[5m])) * 100)'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -84,7 +84,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))'
+              expr: '100 * (1 - (node_memory_MemAvailable_bytes{job="node_oracle"} / node_memory_MemTotal_bytes{job="node_oracle"}))'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -114,7 +114,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))'
+              expr: '100 * (1 - (node_memory_MemAvailable_bytes{job="node_oracle"} / node_memory_MemTotal_bytes{job="node_oracle"}))'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -144,7 +144,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 * (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"}))'
+              expr: '100 * (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs",job="node_oracle"} / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs",job="node_oracle"}))'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -174,7 +174,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 * (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"}))'
+              expr: '100 * (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs",job="node_oracle"} / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs",job="node_oracle"}))'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -204,7 +204,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'node_load5 / count(count(node_cpu_seconds_total) by (cpu))'
+              expr: 'node_load5{job="node_oracle"} / count(count(node_cpu_seconds_total{job="node_oracle"}) by (cpu))'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -234,7 +234,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'node_load5 / count(count(node_cpu_seconds_total) by (cpu))'
+              expr: 'node_load5{job="node_oracle"} / count(count(node_cpu_seconds_total{job="node_oracle"}) by (cpu))'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -270,7 +270,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'rate(node_pressure_io_waiting_seconds_total[5m]) * 100'
+              expr: 'rate(node_pressure_io_waiting_seconds_total{job="node_oracle"}[5m]) * 100'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -300,7 +300,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'rate(node_pressure_io_stalled_seconds_total[5m]) * 100'
+              expr: 'rate(node_pressure_io_stalled_seconds_total{job="node_oracle"}[5m]) * 100'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -330,7 +330,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'rate(node_pressure_memory_stalled_seconds_total[5m]) * 100'
+              expr: 'rate(node_pressure_memory_stalled_seconds_total{job="node_oracle"}[5m]) * 100'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -360,7 +360,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'node_procs_blocked'
+              expr: 'node_procs_blocked{job="node_oracle"}'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -395,7 +395,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 * (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes))'
+              expr: '100 * (1 - (node_memory_SwapFree_bytes{job="node_oracle"} / node_memory_SwapTotal_bytes{job="node_oracle"}))'
           - refId: B
             datasourceUid: prometheus
             relativeTimeRange:
@@ -404,7 +404,7 @@ groups:
             model:
               refId: B
               instant: true
-              expr: '100 * (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)'
+              expr: '100 * (node_memory_MemAvailable_bytes{job="node_oracle"} / node_memory_MemTotal_bytes{job="node_oracle"})'
           - refId: C
             datasourceUid: '__expr__'
             model:
@@ -440,7 +440,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 * (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes))'
+              expr: '100 * (1 - (node_memory_SwapFree_bytes{job="node_oracle"} / node_memory_SwapTotal_bytes{job="node_oracle"}))'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -470,7 +470,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'node_memory_SwapTotal_bytes'
+              expr: 'node_memory_SwapTotal_bytes{job="node_oracle"}'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -500,7 +500,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'predict_linear(node_memory_MemAvailable_bytes[6h], 6*3600)'
+              expr: 'predict_linear(node_memory_MemAvailable_bytes{job="node_oracle"}[6h], 6*3600)'
           - refId: B
             datasourceUid: '__expr__'
             model:
