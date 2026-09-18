@@ -6,7 +6,7 @@ services:
     # amd64). Get it with: docker manifest inspect prom/node-exporter:v1.12.1
     image: prom/node-exporter@sha256:da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e234b4f171e0d92798  # v1.12.1
     container_name: node-exporter
-    hostname: node-exporter
+    hostname: vps-gcp
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
