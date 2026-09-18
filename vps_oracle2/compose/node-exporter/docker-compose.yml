@@ -1,0 +1,26 @@
+services:
+  node-exporter:
+    # arm64 digest (oracle2 is Ampere A1, aarch64 — same as vps_oracle), NOT vps_gcp's amd64
+    # one. Get it with: docker manifest inspect prom/node-exporter:v1.12.1
+    image: prom/node-exporter@sha256:c9ef89f9464f09e7234decaae68a80ab856ff0014435677a99fd48b03dd410ea  # v1.12.1
+    container_name: node-exporter
+    hostname: node-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - '--path.rootfs=/host'
+    # Bound to this host's tailscale IP only (not 0.0.0.0) — same pattern as
+    # vps_gcp/compose/node-exporter/: scraped by oracle's prometheus over the tailscale
+    # mesh, nothing on the public interface. Update this IP if the node ever re-registers.
+    ports:
+      - "100.100.140.33:9100:9100"

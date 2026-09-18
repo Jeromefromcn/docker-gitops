@@ -62,3 +62,19 @@ current IP / `ssh vps-oracle2` alias.
 Free tier note: Oracle halved the Always-Free Ampere A1.Flex pool from
 4 OCPU/24GB to 2 OCPU/12GB tenancy-wide on 2026-06-15. The instance is sized
 at the full 2/12 allotment.
+
+## Host setup outside tofu (2026-09-19)
+
+- **Tailscale mesh**: installed natively, joined with `--advertise-tags=tag:oracle2`
+  (tagged nodes have key expiry disabled). Tailnet ACL: `tag:oracle-hub` →
+  `tag:oracle2`, one-directional — oracle2 cannot initiate anything toward oracle or
+  gcp. Do **not** put oracle2 in `tag:oracle-hub`: it would inherit oracle-hub's
+  access to gcp-lab.
+- **Firewall**: OCI security list allows only 22/TCP + ICMP (unchanged), the host's
+  iptables rejects everything else, and `rpcbind` (111) is disabled. Services are
+  reached over tailscale only.
+- **Monitoring**: `../compose/node-exporter/` (bound to `100.100.140.33:9100`, run with
+  `docker --context oracle2 compose ...`; the context is
+  `docker context create oracle2 --docker "host=ssh://ubuntu@vps-oracle2"`) is scraped
+  by oracle's prometheus under the existing `node_oracle` job, so it appears in the
+  `node-exporter-full-oracle` dashboard's Nodename dropdown.

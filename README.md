@@ -37,6 +37,7 @@ docker-gitops/
 │   ├── compose/                   #   node-exporter + verify (run via `docker --context gcp`)
 │   └── tofu/                      # OpenTofu greenfield lifecycle practice
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
+│   ├── compose/                   #   node-exporter (run via `docker --context oracle2`)
 │   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
 ├── docs/                          # history & design archives: incidents/, misc/, container-topology/, superpowers/
 ├── .claude/                       # rules/ + skills/ (loaded automatically), agents/, hooks/
