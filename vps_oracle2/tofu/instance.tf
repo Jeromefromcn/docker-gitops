@@ -7,8 +7,8 @@
 resource "oci_core_instance" "main" {
   compartment_id      = var.compartment_id
   availability_domain = "ZDhe:AP-SINGAPORE-1-AD-1"
-  shape                = "VM.Standard.A1.Flex"
-  display_name         = "vps-oracle2"
+  shape               = "VM.Standard.A1.Flex"
+  display_name        = "vps-oracle2"
 
   shape_config {
     ocpus         = 2

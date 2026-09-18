@@ -32,7 +32,7 @@ resource "oci_core_internet_gateway" "igw" {
 
 resource "oci_core_default_route_table" "rt" {
   manage_default_resource_id = oci_core_vcn.main.default_route_table_id
-  display_name                = "Default Route Table for vcn-20260918-1902"
+  display_name               = "Default Route Table for vcn-20260918-1902"
 
   route_rules {
     destination       = "0.0.0.0/0"
@@ -43,7 +43,7 @@ resource "oci_core_default_route_table" "rt" {
 
 resource "oci_core_default_security_list" "sl" {
   manage_default_resource_id = oci_core_vcn.main.default_security_list_id
-  display_name                = "Default Security List for vcn-20260918-1902"
+  display_name               = "Default Security List for vcn-20260918-1902"
 
   egress_security_rules {
     protocol    = "all"
