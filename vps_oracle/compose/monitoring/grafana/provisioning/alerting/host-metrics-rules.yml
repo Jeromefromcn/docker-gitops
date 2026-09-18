@@ -14,7 +14,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "CPU usage above 75% for 15 minutes on vps_oracle"
+          summary: "CPU usage above 75% for 15 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -24,7 +24,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 - (avg(rate(node_cpu_seconds_total{mode="idle", job="node_oracle"}[5m])) * 100)'
+              expr: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle", job="node_oracle"}[5m])) * 100)'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -44,7 +44,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "CPU usage above 90% for 10 minutes on vps_oracle"
+          summary: "CPU usage above 90% for 10 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -54,7 +54,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '100 - (avg(rate(node_cpu_seconds_total{mode="idle", job="node_oracle"}[5m])) * 100)'
+              expr: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle", job="node_oracle"}[5m])) * 100)'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -74,7 +74,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Memory usage above 80% for 15 minutes on vps_oracle"
+          summary: "Memory usage above 80% for 15 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -104,7 +104,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Memory usage above 90% for 10 minutes on vps_oracle"
+          summary: "Memory usage above 90% for 10 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -134,7 +134,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Disk usage above 75% on vps_oracle root filesystem"
+          summary: "Disk usage above 75% on {{ $labels.instance }} root filesystem"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -164,7 +164,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Disk usage above 85% on vps_oracle root filesystem"
+          summary: "Disk usage above 85% on {{ $labels.instance }} root filesystem"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -194,7 +194,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Load average (5m) above 1.0 per core for 15 minutes on vps_oracle"
+          summary: "Load average (5m) above 1.0 per core for 15 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -204,7 +204,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'node_load5{job="node_oracle"} / count(count(node_cpu_seconds_total{job="node_oracle"}) by (cpu))'
+              expr: 'node_load5{job="node_oracle"} / on (instance) count by (instance) (count by (instance, cpu) (node_cpu_seconds_total{job="node_oracle"}))'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -224,7 +224,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Load average (5m) above 2.0 per core for 10 minutes on vps_oracle"
+          summary: "Load average (5m) above 2.0 per core for 10 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -234,7 +234,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'node_load5{job="node_oracle"} / count(count(node_cpu_seconds_total{job="node_oracle"}) by (cpu))'
+              expr: 'node_load5{job="node_oracle"} / on (instance) count by (instance) (count by (instance, cpu) (node_cpu_seconds_total{job="node_oracle"}))'
           - refId: B
             datasourceUid: '__expr__'
             model:
@@ -260,7 +260,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "IO PSI 'some' above 20% for 10 minutes on vps_oracle (processes waiting on IO)"
+          summary: "IO PSI 'some' above 20% for 10 minutes on {{ $labels.instance }} (processes waiting on IO)"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -290,7 +290,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "IO PSI 'full' above 15% for 2 minutes on vps_oracle (processes stalled on IO, load average will follow)"
+          summary: "IO PSI 'full' above 15% for 2 minutes on {{ $labels.instance }} (processes stalled on IO, load average will follow)"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -320,7 +320,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Memory PSI 'full' above 5% for 2 minutes on vps_oracle (kernel hard-reclaiming page cache)"
+          summary: "Memory PSI 'full' above 5% for 2 minutes on {{ $labels.instance }} (kernel hard-reclaiming page cache)"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -350,7 +350,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "More than 3 processes in uninterruptible IO wait (D state) for 2 minutes on vps_oracle"
+          summary: "More than 3 processes in uninterruptible IO wait (D state) for 2 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -385,7 +385,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Swap usage above 50% while available memory below 15% for 15 minutes on vps_oracle"
+          summary: "Swap usage above 50% while available memory below 15% for 15 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -430,7 +430,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Swap usage above 80% for 10 minutes on vps_oracle"
+          summary: "Swap usage above 80% for 10 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -460,7 +460,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "No swap configured on vps_oracle (SwapTotal is 0) - memory pressure will convert straight into an IO storm"
+          summary: "No swap configured on {{ $labels.instance }} (SwapTotal is 0) - memory pressure will convert straight into an IO storm"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -490,7 +490,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Available memory on vps_oracle projected to hit zero within 6 hours based on the last 6 hours' trend"
+          summary: "Available memory on {{ $labels.instance }} projected to hit zero within 6 hours based on the last 6 hours' trend"
         data:
           - refId: A
             datasourceUid: prometheus

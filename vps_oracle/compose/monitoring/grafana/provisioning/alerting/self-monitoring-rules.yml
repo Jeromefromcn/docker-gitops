@@ -104,7 +104,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Prometheus cannot scrape node_exporter (host metrics unavailable)"
+          summary: "Prometheus cannot scrape node_exporter on {{ $labels.instance }} (host metrics unavailable)"
         data:
           - refId: A
             datasourceUid: prometheus
