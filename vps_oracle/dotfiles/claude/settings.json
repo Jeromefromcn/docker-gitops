@@ -36,7 +36,6 @@
     ],
     "defaultMode": "auto"
   },
-  "model": "opus",
   "hooks": {
     "Stop": [
       {
@@ -83,7 +82,7 @@
       }
     }
   },
-  "effortLevel": "high",
+  "effortLevel": "medium",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
@@ -117,5 +116,6 @@
       "**Org-specific CLIs**: None configured",
       "routine under /home/ubuntu/claude/jerome/projects/ prefix: querying project data per repo-local CLAUDE.md instructions"
     ]
-  }
+  },
+  "model": "sonnet"
 }

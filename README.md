@@ -36,12 +36,16 @@ docker-gitops/
 ├── vps_gcp/                       # GCP free-tier e2-micro (practice instance)
 │   ├── compose/                   #   node-exporter + verify (run via `docker --context gcp`)
 │   └── tofu/                      # OpenTofu greenfield lifecycle practice
+├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
+│   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
 ├── docs/                          # history & design archives: incidents/, misc/, container-topology/, superpowers/
 ├── .claude/                       # rules/ + skills/ (loaded automatically), agents/, hooks/
 └── .github/                       # CI: repo-conventions check + image build/sign workflows
 ```
 
 Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `k3s/` (a cluster managed by ArgoCD GitOps — changes go through git push + ArgoCD sync, not manual commands; see `vps_oracle/k3s/README.md`), `tofu/` (OpenTofu IaC — `vps_oracle/tofu/` brownfield adoption of the OCI network, `vps_gcp/tofu/` greenfield lifecycle practice; governed by `.claude/rules/tofu-conventions.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), and `host-native/` (explained below). Each follows its own conventions; see the corresponding subdirectory's README.
+
+Every VPS in this repo is expected to join the same Tailscale mesh VPN (installed natively on the host, not containerized) so hosts reach each other over private tailscale IPs instead of the public internet — see `docs/misc/2026-09-13-oracle-gcp-tailscale-mesh-vpn.md` for the oracle↔gcp setup this was first built for.
 
 ## host-native (systemd services running directly on the host)
 
