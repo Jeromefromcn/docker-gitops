@@ -1,0 +1,25 @@
+services:
+  portainer-agent:
+    # amd64 digest, must match the portainer server version (vps_oracle/compose/portainer, 2.43.0).
+    # Get it with: docker manifest inspect portainer/agent:2.43.0
+    image: portainer/agent@sha256:6f03658532f412d0824f170fdb979d8cbe3e280c00443cc6250bf131dbfae318  # 2.43.0
+    container_name: portainer-agent
+    hostname: portainer-agent
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # required: controls the host docker, equivalent to root, a known and unavoidable risk
+      - /var/lib/docker/volumes:/var/lib/docker/volumes   # required for Portainer's volume browsing
+    # Bound to this host's tailscale IP only (not 0.0.0.0): the Portainer server on
+    # vps_oracle connects over the tailscale mesh (Environment address <ip>:9001).
+    # Update this IP if the node ever re-registers.
+    ports:
+      - "100.96.184.44:9001:9001"
