@@ -48,6 +48,25 @@ Besides `compose/`, a `<host>/` may also contain other subdirectories that are n
 
 Every VPS in this repo is expected to join the same Tailscale mesh VPN (installed natively on the host, not containerized) so hosts reach each other over private tailscale IPs instead of the public internet — see `docs/misc/2026-09-13-oracle-gcp-tailscale-mesh-vpn.md` for the oracle↔gcp setup this was first built for.
 
+The tailnet ACL lives in the Tailscale admin console (not in this repo) — this is its current state, update it here when it changes. Every node is tagged; `tag:oracle-hub` is the only source and reaches each spoke one-directionally, nothing else can reach the tagged nodes, and a spoke must never be given `tag:oracle-hub` (it would inherit the hub's access to the other spokes):
+
+```jsonc
+{
+	"tagOwners": {
+		"tag:oracle-hub": ["autogroup:admin"],
+		"tag:gcp-lab":    ["autogroup:admin"],
+		"tag:oracle2":    ["autogroup:admin"],
+	},
+	"grants": [
+		{"src": ["tag:oracle-hub"], "dst": ["tag:gcp-lab"], "ip": ["*"]},
+		{"src": ["tag:oracle-hub"], "dst": ["tag:oracle2"], "ip": ["*"]},
+	],
+	"ssh": [
+		{"action": "check", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["autogroup:nonroot", "root"]},
+	],
+}
+```
+
 ## host-native (systemd services running directly on the host)
 
 Each subdirectory under `vps_oracle/host-native/` corresponds to a service that doesn't fit in docker compose — it needs to touch the host namespace, a user home such as `~/.claude`, iptables, or similar — so it runs as a persistent systemd unit, and the unit file plus the source code (or a third-party package's deploy config) are checked into this repo:
