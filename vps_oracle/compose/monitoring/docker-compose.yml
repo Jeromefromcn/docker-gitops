@@ -47,7 +47,7 @@ services:
   node-exporter:
     image: prom/node-exporter@sha256:c9ef89f9464f09e7234decaae68a80ab856ff0014435677a99fd48b03dd410ea  # v1.12.1
     container_name: node-exporter
-    hostname: node-exporter
+    hostname: vps-oracle
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
