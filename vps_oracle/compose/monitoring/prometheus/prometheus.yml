@@ -5,6 +5,11 @@ scrape_configs:
   - job_name: node_oracle
     static_configs:
       - targets: ['node-exporter:9100']
+      # vps_oracle2's node-exporter over the tailscale mesh (tag:oracle-hub -> tag:oracle2),
+      # see vps_oracle2/compose/node-exporter/docker-compose.yml. Shares this job so the
+      # node-exporter-full-oracle dashboard (job is a constant) lists it in its Nodename
+      # dropdown. Default 60s interval is fine: OCI egress isn't metered like GCP's 1GB.
+      - targets: ['100.100.140.33:9100']
 
   # vps_gcp's node-exporter, reached over the oracle<->gcp tailscale mesh (confirmed
   # reachable directly from this container, no extra routing needed). See
