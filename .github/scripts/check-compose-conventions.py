@@ -27,6 +27,9 @@ PORT_EXCEPTIONS = {
     ("node-exporter", "node-exporter"): "bound to gcp's/oracle2's tailscale IP only; oracle's "
         "prometheus scrapes it over the tailscale mesh (cross-host, no shared docker "
         "`proxy` network is possible)",
+    ("portainer-agent", "portainer-agent"): "bound to gcp's/oracle2's tailscale IP only; oracle's "
+        "portainer server connects to it over the tailscale mesh (cross-host, no shared "
+        "docker `proxy` network is possible)",
 }
 
 # Environment values that look like credentials but aren't. Each entry needs
