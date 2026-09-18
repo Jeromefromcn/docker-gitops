@@ -3,13 +3,19 @@ global:
 
 scrape_configs:
   - job_name: node_oracle
+    # Fixed `instance` labels (host names instead of the raw scrape address) so the
+    # dashboards' Instance dropdown reads the same for all three hosts.
     static_configs:
       - targets: ['node-exporter:9100']
+        labels:
+          instance: vps-oracle
       # vps_oracle2's node-exporter over the tailscale mesh (tag:oracle-hub -> tag:oracle2),
       # see vps_oracle2/compose/node-exporter/docker-compose.yml. Shares this job so the
       # node-exporter-full-oracle dashboard (job is a constant) lists it in its Nodename
       # dropdown. Default 60s interval is fine: OCI egress isn't metered like GCP's 1GB.
       - targets: ['100.100.140.33:9100']
+        labels:
+          instance: vps-oracle2
 
   # vps_gcp's node-exporter, reached over the oracle<->gcp tailscale mesh (confirmed
   # reachable directly from this container, no extra routing needed). See
@@ -21,6 +27,8 @@ scrape_configs:
     scrape_interval: 15m
     static_configs:
       - targets: ['100.96.184.44:9100']
+        labels:
+          instance: vps-gcp
 
   - job_name: prometheus
     static_configs:
