@@ -20,7 +20,6 @@ docker-gitops/
 │   │   ├── trilium/               #   notes
 │   │   ├── vikunja/               #   to-do (vikunja + notify-relay)
 │   │   ├── apprise/               #   notification routing
-│   │   ├── evidence-os-website/   #   static website
 │   │   ├── plans/                 #   web app, image built locally from ~/jerome/plans
 │   │   ├── minio/                 #   shared object storage
 │   │   ├── postgres/              #   shared postgres
@@ -30,7 +29,6 @@ docker-gitops/
 │   │   ├── inspector/             #   read-only host checks, systemd timer
 │   │   ├── host-firewall/         #   hand-written iptables rules
 │   │   ├── npm-nodeport-relay/    #   TCP relay so NPM reaches the k3s NodePort
-│   │   └── cc-window/             #   Claude Code multi-session console
 │   ├── dotfiles/                  # host-local config, symlinked into the repo
 │   └── tofu/                      # OpenTofu brownfield adoption of the OCI network
 ├── vps_gcp/                       # GCP free-tier e2-micro (practice instance)
@@ -76,13 +74,12 @@ Each subdirectory under `vps_oracle/host-native/` corresponds to a service that 
 | [`inspector/`](vps_oracle/host-native/inspector/README.md) | host-native bash inspection scripts, triggered by a systemd timer daily at 09:00/21:00, that detect and clean up stray VS Code/Claude session process trees and accumulated `.vscode-server` version directories, and send one English Telegram report per run. See the [design doc](docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md) for the background (self-protection rules, auto/alert tiers) |
 | [`host-firewall/`](vps_oracle/host-native/host-firewall/README.md) | the single source of truth for the hand-written iptables rules, applied as a systemd oneshot at boot |
 | [`npm-nodeport-relay/`](vps_oracle/host-native/npm-nodeport-relay/README.md) | a TCP relay in the host netns that lets NPM (a docker container) reach the k3s NodePort that only the host can reach |
-| [`cc-window/`](vps_oracle/host-native/cc-window/README.md) | a third-party Claude Code multi-session management console (`npm install -g cc-window`), a local web dashboard |
 
 ## k3s (cloud-native experiment platform, in progress)
 
 `vps_oracle/k3s/` is a multi-phase project that replicates a cloud-native dev/ops experiment platform on the same machine using K3s — the goal is to migrate compose stacks to k8s **service by service**, keeping the public domain/port unchanged and deciding per-service whether the compose deployment stays or goes, not to replace the whole existing architecture. See the [K3s cloud-native platform roadmap](docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md) for the full background and the phase breakdown (A cluster foundation → B GitOps bootstrap → C migration template → D remaining services migration → E supply chain security → F multi-environment lanes → G service mesh → H compose decommission assessment), the [service-mesh capability roadmap](docs/superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md) for the follow-on phases (I traffic resilience → J authorization → K observability → L rate limiting), and [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md) for each phase's install/ops details.
 
-As of now (phases A–E and F+G complete, H not started; the follow-on service-mesh phases I–L complete): the cluster foundation (K3s + Cilium + local-path storage) and the ArgoCD app-of-apps GitOps loop remain on k3s; `homepage`/`trilium`/`dify`/`vikunja`/`apprise`/`llm` (llama-cpp/open-webui) — i.e. every service migrated in phase C+D — were assessed on 2026-08-18 and migrated back to compose (see [migration plan one](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md) and [migration plan two](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration-part2.md)); `evidence-os-website` (originally k3s-native, with no compose predecessor) moved into compose the same day. Four k3s-native namespaces stay on k3s: `lab-environment` and `headlamp` (see their sections below), `pr-lanes` (added in phase F+G and driven by the Istio Ambient service mesh — `hello-frontend`/`hello-backend`, a PR-preview-lane practice environment that replaces the retired `placeholder-hello`; see the "Istio Ambient / PR Lanes" section of [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md) for the mechanism), and `mesh-observability` (added in phase K — Loki + Jaeger + Promtail for PR-lane metrics/logs/tracing, queried through compose's own Grafana/Jaeger). Every other service still runs under `<host>/compose/`; see "Services that will not migrate to k3s" below.
+As of now (phases A–E and F+G complete, H not started; the follow-on service-mesh phases I–L complete): the cluster foundation (K3s + Cilium + local-path storage) and the ArgoCD app-of-apps GitOps loop remain on k3s; `homepage`/`trilium`/`dify`/`vikunja`/`apprise`/`llm` (llama-cpp/open-webui) — i.e. every service migrated in phase C+D — were assessed on 2026-08-18 and migrated back to compose (see [migration plan one](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md) and [migration plan two](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration-part2.md)). Four k3s-native namespaces stay on k3s: `lab-environment` and `headlamp` (see their sections below), `pr-lanes` (added in phase F+G and driven by the Istio Ambient service mesh — `hello-frontend`/`hello-backend`, a PR-preview-lane practice environment that replaces the retired `placeholder-hello`; see the "Istio Ambient / PR Lanes" section of [`vps_oracle/k3s/README.md`](vps_oracle/k3s/README.md) for the mechanism), and `mesh-observability` (added in phase K — Loki + Jaeger + Promtail for PR-lane metrics/logs/tracing, queried through compose's own Grafana/Jaeger). Every other service still runs under `<host>/compose/`; see "Services that will not migrate to k3s" below.
 
 ### Services that will not migrate to k3s
 

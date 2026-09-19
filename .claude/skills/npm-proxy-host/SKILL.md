@@ -22,7 +22,7 @@ For the common case — **no Custom Locations, and not reverse-proxying to a k3s
 | Cache Assets | Off |
 | Block Common Exploits | On |
 | Websockets Support | On |
-| Access List | Always select `self-only` (exception: **admin panels with no built-in auth** use `self-only-and-auth`, e.g. `cc-window`, see `vps_oracle/host-native/cc-window/README.md`) |
+| Access List | Always select `self-only` (exception: **admin panels with no built-in auth** use `self-only-and-auth`) |
 | Custom Locations | Avoid where possible — rationale under the convention below |
 
 **SSL tab**

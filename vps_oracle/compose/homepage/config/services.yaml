@@ -29,11 +29,6 @@
         href: https://ccr.jerome.cloudns.asia
         description: Claude Code Router gateway & admin panel
 
-    - cc-window:
-        icon: si-anthropic
-        href: https://cc-window.jerome.cloudns.asia
-        description: Claude Code multi-session dashboard
-
     - Argo CD:
         icon: argo-cd.png
         href: https://argocd.jerome.cloudns.asia
@@ -84,11 +79,6 @@
         icon: si-dify
         href: https://dify.jerome.cloudns.asia
         description: LLM app builder (chat / workflow / agent)
-
-    - Evidence OS:
-        icon: si-html5
-        href: https://evidence.jerome.cloudns.asia
-        description: Evidence OS marketing site
 
     - Plans:
         icon: si-googlemaps
