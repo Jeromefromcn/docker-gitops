@@ -29,6 +29,36 @@
           metric: fs:/rootfs
           chart: false
 
+    - gcp CPU:
+        icon: glances.png
+        description: vps-gcp via Glances (tailscale)
+        widget:
+          type: glances
+          url: http://100.96.184.44:61208
+          version: 4
+          metric: cpu
+          chart: false
+
+    - gcp Memory:
+        icon: glances.png
+        description: vps-gcp via Glances (tailscale)
+        widget:
+          type: glances
+          url: http://100.96.184.44:61208
+          version: 4
+          metric: memory
+          chart: false
+
+    - gcp Disk:
+        icon: glances.png
+        description: vps-gcp via Glances (tailscale)
+        widget:
+          type: glances
+          url: http://100.96.184.44:61208
+          version: 4
+          metric: fs:/rootfs
+          chart: false
+
 - Infra Services:
     - Nginx Proxy Manager:
         icon: nginx-proxy-manager.png
