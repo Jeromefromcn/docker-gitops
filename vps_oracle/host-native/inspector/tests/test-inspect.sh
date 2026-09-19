@@ -30,6 +30,11 @@ source "$SCRIPT_DIR/../lib/common.sh"
 emit_result "alert" "flagged" "fake-target-2" "fake detail 2"
 exit 1
 EOF
+# A fake remote-host check, to assert the per-instance summary lists it.
+mkdir -p "$work_dir/repo/vps_fake2/inspector-checks/checks"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$work_dir/repo/vps_fake2/inspector-checks/checks/quiet.sh"
+chmod +x "$work_dir/repo/vps_fake2/inspector-checks/checks/quiet.sh"
+export INSPECTOR_REPO_ROOT="$work_dir/repo"
 chmod +x "$work_dir/checks/"*.sh "$work_dir/inspect.sh"
 
 # Stub curl (send_apprise's only external dependency) so this test
@@ -62,9 +67,14 @@ assert_true "payload title is the English inspection title" \
   "$(grep -q "Inspection report vps_oracle" "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "payload body uses English section headers" \
   "$(grep -q "Auto-handled" "$work_dir/captured_payload.json" && grep -q "Needs manual review" "$work_dir/captured_payload.json" && echo true || echo false)"
+assert_true "summary lists the local instance with its result lines" \
+  "$(grep -q 'vps_oracle — 2 checks, 3 result lines' "$work_dir/captured_payload.json" && echo true || echo false)"
+assert_true "summary lists the remote instance even though it flagged nothing" \
+  "$(grep -q 'vps_fake2 — 1 checks, nothing flagged' "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "payload contains no CJK characters" \
   "$(grep -qP '[\x{3400}-\x{4dbf}\x{4e00}-\x{9fff}\x{f900}-\x{faff}]' "$work_dir/captured_payload.json" && echo false || echo true)"
 
+unset INSPECTOR_REPO_ROOT
 rm -rf "$work_dir"
 
 echo "== real end-to-end dry run against actual checks/, real apprise (inspector-tg) =="

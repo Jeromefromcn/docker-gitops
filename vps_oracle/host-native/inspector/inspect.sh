@@ -26,10 +26,25 @@ start_epoch="$(date +%s.%N)"
 
 # Local checks, plus per-host remote checks that live under
 # <repo>/<host>/inspector-checks/checks/ (they run here but inspect <host>).
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="${INSPECTOR_REPO_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+#
+# Per-instance bookkeeping for the report: which instance a check inspects
+# (local checks -> vps_oracle, <host>/inspector-checks/ -> <host>), how many
+# checks ran, and how many result lines they produced. Without this a fully
+# healthy report is identical whether or not a remote host was inspected.
+declare -A inst_checks=() inst_lines=()
+inst_order=()
 for check in "$CHECKS_DIR"/*.sh "$REPO_ROOT"/*/inspector-checks/checks/*.sh; do
   [ -e "$check" ] || continue
   check_name="$(basename "$check")"
+  case "$check" in
+    "$CHECKS_DIR"/*) instance="vps_oracle" ;;
+    *) instance="$(basename "$(dirname "$(dirname "$(dirname "$check")")")")" ;;
+  esac
+  if [ -z "${inst_checks[$instance]:-}" ]; then
+    inst_order+=("$instance"); inst_checks[$instance]=0; inst_lines[$instance]=0
+  fi
+  inst_checks[$instance]=$((inst_checks[$instance] + 1))
   # Capture output unconditionally, THEN check the exit status -- a check
   # that emits a few valid result lines and then crashes partway through
   # must not have those already-emitted lines thrown away, on top of the
@@ -38,11 +53,15 @@ for check in "$CHECKS_DIR"/*.sh "$REPO_ROOT"/*/inspector-checks/checks/*.sh; do
   # rather than a temp file, so there's nothing here to leak/clean up.
   output="$("$check")"
   check_status=$?
-  [ -n "$output" ] && printf '%s\n' "$output" >> "$results_file"
+  if [ -n "$output" ]; then
+    printf '%s\n' "$output" >> "$results_file"
+    inst_lines[$instance]=$((inst_lines[$instance] + $(grep -c . <<<"$output")))
+  fi
   if [ "$check_status" -ne 0 ]; then
     emit_result "alert" "flagged" "check:$check_name" \
       "check script exited non-zero (status $check_status) -- see journalctl -u docker-gitops-inspector.service" \
       >> "$results_file"
+    inst_lines[$instance]=$((inst_lines[$instance] + 1))
   fi
 done
 
@@ -70,15 +89,27 @@ build_report() {
     fi
   done < "$results_file"
 
+  # Always list every inspected instance, so "all clear" visibly covers
+  # remote hosts too instead of looking like a vps_oracle-only run.
+  local inst n l summary="Inspected"$'\n'
+  for inst in "${inst_order[@]}"; do
+    n="${inst_checks[$inst]}"; l="${inst_lines[$inst]}"
+    if [ "$l" -eq 0 ]; then
+      summary+="✅ ${inst} — ${n} checks, nothing flagged"$'\n'
+    else
+      summary+="⚠️ ${inst} — ${n} checks, ${l} result lines"$'\n'
+    fi
+  done
+
   if [ -z "$auto_lines" ] && [ -z "$alert_lines" ]; then
-    printf '✅ All clear — nothing needed attention\n\nRun took %ss' "$elapsed"
+    printf '✅ All clear — nothing needed attention\n\n%s\nRun took %ss' "$summary" "$elapsed"
     return
   fi
 
   local report=""
   [ -n "$auto_lines" ] && report+="Auto-handled"$'\n'"${auto_lines}"$'\n'
   [ -n "$alert_lines" ] && report+="Needs manual review"$'\n'"${alert_lines}"$'\n'
-  report+="Run took ${elapsed}s"
+  report+="${summary}"$'\n'"Run took ${elapsed}s"
   printf '%s' "$report"
 }
 

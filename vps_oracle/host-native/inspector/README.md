@@ -5,6 +5,8 @@ Host-level inspection script, not managed by docker compose (like `vps_oracle/ho
 
 **Notification language**: the Telegram report title and body are English only (2026-08-16 user request; the repo docs remain Chinese). `tests/test-inspect.sh` has a corresponding assertion (title, section headers, no CJK characters).
 
+**Instances inspected**: every report ends with an `Inspected` section listing each instance and how many checks ran on it (`vps_oracle` for `checks/`, `<host>` for `<host>/inspector-checks/`), with `✅ … nothing flagged` or `⚠️ … N result lines`. It is there so a healthy report visibly covers remote hosts too — otherwise "All clear" looks the same whether or not vps_oracle2 was checked. The test-only override `INSPECTOR_REPO_ROOT` points the remote-check glob at a fake tree.
+
 ## Status (phase 2)
 
 Implemented (phase 1):
