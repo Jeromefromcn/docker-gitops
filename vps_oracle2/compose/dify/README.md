@@ -1,6 +1,6 @@
 # dify
 
-Runs on **vps_oracle2** (moved from vps_oracle on 2026-09-19). Deploy with the docker context, since the repo only lives on vps_oracle: `docker --context oracle2 compose up -d`. Bind mounts resolve on oracle2's daemon, so two things must exist there: `/etc/dify/*` (data) and a copy of `./ssrf_proxy/` at the same absolute path under `~/jerome/docker-gitops/vps_oracle2/compose/dify/` (`scp -rp` it after editing). `.env` is read locally and needs no sync.
+Runs on **vps_oracle2** (moved from vps_oracle on 2026-09-19). Deploy with the docker context, since the repo only lives on vps_oracle: `docker --context oracle2 compose up -d`. Nothing but data lives on oracle2: the only bind mounts are the `/etc/dify/*` data directories. Squid's config and entrypoint are inlined in the compose file as `configs: content:` (copied into the container at create time; a `file:` config or a relative bind mount would resolve on oracle2's filesystem instead, since compose implements those as bind mounts), and edits go through this compose file only. Any `$` in inlined content must be written `$$`. `.env` is read locally and needs no sync.
 
 ## Hosting model (cross-host)
 
