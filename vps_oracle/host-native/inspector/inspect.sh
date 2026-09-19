@@ -24,7 +24,10 @@ trap 'rm -f "$results_file"' EXIT
 
 start_epoch="$(date +%s.%N)"
 
-for check in "$CHECKS_DIR"/*.sh; do
+# Local checks, plus per-host remote checks that live under
+# <repo>/<host>/inspector-checks/checks/ (they run here but inspect <host>).
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+for check in "$CHECKS_DIR"/*.sh "$REPO_ROOT"/*/inspector-checks/checks/*.sh; do
   [ -e "$check" ] || continue
   check_name="$(basename "$check")"
   # Capture output unconditionally, THEN check the exit status -- a check

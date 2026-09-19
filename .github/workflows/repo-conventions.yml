@@ -6,6 +6,7 @@ on:
     paths:
       - '*/compose/**/docker-compose.yml'
       - 'vps_oracle/host-native/inspector/**'
+      - '*/inspector-checks/**'
       - '*/tofu/**'
       - '.github/scripts/**'
       - '.github/workflows/repo-conventions.yml'
@@ -13,6 +14,7 @@ on:
     paths:
       - '*/compose/**/docker-compose.yml'
       - 'vps_oracle/host-native/inspector/**'
+      - '*/inspector-checks/**'
       - '*/tofu/**'
       - '.github/scripts/**'
   workflow_dispatch: {}
@@ -53,31 +55,31 @@ jobs:
 
       # Every checks/<name>.sh must have a tests/test-<name>.sh. The pairing is
       # the convention; without this, a new check can land untested (two did).
+      # Covers the local inspector and every <host>/inspector-checks/.
       - name: Every check has a paired test
-        working-directory: vps_oracle/host-native/inspector
         run: |
           missing=0
-          for c in checks/*.sh; do
+          for c in vps_oracle/host-native/inspector/checks/*.sh */inspector-checks/checks/*.sh; do
             b="$(basename "$c" .sh)"
-            if [ ! -f "tests/test-$b.sh" ]; then
-              echo "::error::checks/$b.sh has no tests/test-$b.sh"
+            t="$(dirname "$(dirname "$c")")/tests/test-$b.sh"
+            if [ ! -f "$t" ]; then
+              echo "::error::$c has no $t"
               missing=1
             fi
           done
           exit $missing
 
       - name: Run inspector test suite
-        working-directory: vps_oracle/host-native/inspector/tests
         run: |
           failed=0
-          for t in test-*.sh; do
+          for t in vps_oracle/host-native/inspector/tests/test-*.sh */inspector-checks/tests/test-*.sh; do
             # test-common.sh is a helper, not a test.
             # test-inspect.sh is deliberately NOT hermetic: it runs the real
             # inspect.sh end to end and posts to the real apprise instance,
             # which lives behind NPM's self-only access list on the VPS. It
             # can only pass when run on that host:
             #   cd vps_oracle/host-native/inspector/tests && ./test-inspect.sh
-            case "$t" in test-common.sh|test-inspect.sh) continue ;; esac
+            case "$(basename "$t")" in test-common.sh|test-inspect.sh) continue ;; esac
             echo "--- $t"
             ./"$t" || { echo "::error::$t failed"; failed=1; }
           done

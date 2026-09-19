@@ -28,7 +28,7 @@ Path-scoped rules in `.claude/rules/` load automatically when files in their sco
 | Add a new service end to end (stack → shared-resource pools → NPM → homepage card → commit) | `add-service` |
 | Create or change an NPM reverse proxy record | `npm-proxy-host` |
 | Write up a troubleshooting session into `docs/incidents/` | `write-incident` |
-| Add or change an inspector check under `vps_oracle/host-native/inspector/` | `inspector-check` |
+| Add or change an inspector check under `vps_oracle/host-native/inspector/` (or a remote-host one under `<host>/inspector-checks/`) | `inspector-check` |
 
 ## Subagent
 

@@ -7,9 +7,11 @@ description: Add or modify an inspection check under vps_oracle/host-native/insp
 
 The inspection scripts run via a systemd timer at 09:00/21:00 daily, and each run always sends a Telegram report. For background and the tiering design, see the [design doc](../../../docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md).
 
+**Where it goes:** a check about vps_oracle itself → `vps_oracle/host-native/inspector/checks/`. A check about another host (run remotely from vps_oracle) → `<host>/inspector-checks/checks/` as a thin wrapper that sets `DOCKER_HOST` + `INSPECTOR_INSTANCE=<host>` and `exec`s the shared local check; its test goes in the sibling `tests/`. See `vps_oracle2/inspector-checks/README.md`. Every alert from a remote check must name the instance.
+
 ## Hard rule: one check, one test
 
-Every `checks/<name>.sh` **must** have a matching `tests/test-<name>.sh`. CI (`.github/workflows/repo-conventions.yml`) checks this pairing and fails outright if it's missing. Write the test before the implementation.
+Every `checks/<name>.sh` (in either location) **must** have a matching `tests/test-<name>.sh` beside it. CI (`.github/workflows/repo-conventions.yml`) checks this pairing and fails outright if it's missing. Write the test before the implementation.
 
 ## 1. Decide the tier: auto or alert
 
