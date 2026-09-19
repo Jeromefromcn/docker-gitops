@@ -17,6 +17,7 @@ Implemented (phase 2, docker layer):
 - `checks/docker-build-cache.sh` (auto) — build cache older than 7 days
 - `checks/docker-unused-networks.sh` (auto) — custom networks with no containers attached
 - `checks/docker-restart-storms.sh` (alert) — abnormally high RestartCount / stuck in Restarting
+- `checks/oracle2-docker-restart-storms.sh` (alert) — the same check run against vps-oracle2's docker daemon over SSH (`DOCKER_HOST=ssh://ubuntu@vps-oracle2`, override with `INSPECTOR_ORACLE2_DOCKER_HOST`). Alert targets are prefixed `[vps-oracle2]` (the report title only says vps_oracle), and an unreachable host raises `[vps-oracle2] check:docker-restart-storms.sh … docker daemon unreachable`, which doubles as a liveness check. Remote checks reuse a local script by setting `INSPECTOR_INSTANCE` + `DOCKER_HOST` and `exec`ing it
 - `checks/docker-unused-volumes.sh` (alert) — volumes with no containers attached (anonymous aggregated into one line, named listed one per line)
 - `checks/docker-compose-logging-drift.sh` (alert) — compose services missing `logging.options.max-size`
 - `checks/docker-oversized-logs.sh` (alert) — `*-json.log` files over 50MiB each
@@ -59,6 +60,7 @@ cd vps_oracle/host-native/inspector
 ./tests/test-docker-unused-networks.sh
 ./tests/test-docker-restart-storms.sh
 ./tests/test-docker-unused-volumes.sh
+./tests/test-oracle2-docker-restart-storms.sh
 ./tests/test-docker-compose-logging-drift.sh
 ./tests/test-docker-oversized-logs.sh
 ./tests/test-k3s-evicted-pods.sh

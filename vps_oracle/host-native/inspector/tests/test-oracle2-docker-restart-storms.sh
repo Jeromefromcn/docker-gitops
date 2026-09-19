@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# tests/test-oracle2-docker-restart-storms.sh — hermetic docker stub.
+set -uo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+
+work_dir="$(mktemp -d)"
+bin_dir="$work_dir/bin"
+mkdir -p "$bin_dir"
+
+# Stub records the DOCKER_HOST it was called with; STUB_DOWN=1 makes info fail.
+cat > "$bin_dir/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "$DOCKER_HOST" >> "$STUB_DIR/hosts.log"
+case " $* " in
+  *" info "*) [ -n "${STUB_DOWN:-}" ] && exit 1; exit 0 ;;
+  *" ps -aq "*) printf 'id1\nid2\n' ;;
+  *" inspect "*)
+    case "$*" in
+      *id1*) echo "/stormy 12 running" ;;
+      *id2*) echo "/calm 1 running" ;;
+      *) exit 1 ;;
+    esac ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$bin_dir/docker"
+
+check="$SCRIPT_DIR/../checks/oracle2-docker-restart-storms.sh"
+export STUB_DIR="$work_dir"
+
+echo "== alerts are tagged with the instance and target the oracle2 daemon =="
+out="$(PATH="$bin_dir:$PATH" "$check")"
+assert_true "stormy flagged with [vps-oracle2] prefix" \
+  "$(grep -q '\[vps-oracle2\] docker container stormy' <<<"$out" && echo true || echo false)"
+assert_true "calm not flagged" \
+  "$(grep -q 'calm' <<<"$out" && echo false || echo true)"
+assert_true "docker called with the oracle2 DOCKER_HOST" \
+  "$(grep -qx 'ssh://ubuntu@vps-oracle2' "$work_dir/hosts.log" && echo true || echo false)"
+assert_true "never emits deleted/would-delete" \
+  "$(grep -qE 'deleted|would-delete' <<<"$out" && echo false || echo true)"
+
+echo "== unreachable daemon alerts with the instance tag =="
+out="$(STUB_DOWN=1 PATH="$bin_dir:$PATH" "$check")"
+assert_true "unreachable alert names vps-oracle2" \
+  "$(grep -q '"tier":"alert"' <<<"$out" && grep -q '\[vps-oracle2\] check:' <<<"$out" && grep -q unreachable <<<"$out" && echo true || echo false)"
+
+rm -rf "$work_dir"
+finish_tests
