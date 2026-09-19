@@ -41,7 +41,7 @@ docker-gitops/
 └── .github/                       # CI: repo-conventions check + image build/sign workflows
 ```
 
-Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `k3s/` (a cluster managed by ArgoCD GitOps — changes go through git push + ArgoCD sync, not manual commands; see `vps_oracle/k3s/README.md`), `tofu/` (OpenTofu IaC — `vps_oracle/tofu/` brownfield adoption of the OCI network, `vps_gcp/tofu/` greenfield lifecycle practice; governed by `.claude/rules/tofu-conventions.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), `host-native/` (explained below), and `inspector-checks/` (checks about that host that the vps_oracle inspector runs remotely over SSH, kept under the host they inspect so alerts are attributable; see `vps_oracle2/inspector-checks/README.md`). Each follows its own conventions; see the corresponding subdirectory's README.
+Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `k3s/` (a cluster managed by ArgoCD GitOps — changes go through git push + ArgoCD sync, not manual commands; see `vps_oracle/k3s/README.md`), `tofu/` (OpenTofu IaC — `vps_oracle/tofu/` brownfield adoption of the OCI network, `vps_gcp/tofu/` greenfield lifecycle practice; governed by `.claude/rules/tofu-conventions.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), `host-native/` (explained below), and `inspector-checks/` (checks about that host that the vps_oracle inspector runs remotely over SSH, kept under the host they inspect so alerts are attributable; see `vps_oracle2/inspector-checks/README.md`, `vps_gcp/inspector-checks/README.md`). Each follows its own conventions; see the corresponding subdirectory's README.
 
 Every VPS in this repo is expected to join the same Tailscale mesh VPN (installed natively on the host, not containerized) so hosts reach each other over private tailscale IPs instead of the public internet — see `docs/misc/2026-09-13-oracle-gcp-tailscale-mesh-vpn.md` for the oracle↔gcp setup this was first built for.
 
@@ -133,7 +133,7 @@ Three other rule files: k3s/ArgoCD change discipline is in [`.claude/rules/k3s-g
 | Host | Description | Details |
 |---|---|---|
 | vps_oracle | Oracle Cloud VPS | [vps_oracle/README.md](vps_oracle/README.md) |
-| vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + a two-stack `compose/` — a node-exporter scrape target and a `verify/` smoke test, both reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
+| vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + `compose/` (node-exporter, glances, a `verify/` smoke test) + `inspector-checks/`, reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
 | vps_oracle2 | second OCI tenancy, Always Free A1.Flex (managed: `tofu/`, `compose/` incl. dify, `inspector-checks/`; reachable over tailscale only) | [vps_oracle2/README.md](vps_oracle2/README.md) |
 
 Other background/history material (incident records, design archives, etc., not required daily reading) is in [`docs/README.md`](docs/README.md).
