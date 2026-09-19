@@ -31,7 +31,7 @@ Implemented (phase 2, docker layer):
 - `checks/docker-build-cache.sh` (auto) — build cache older than 7 days
 - `checks/docker-unused-networks.sh` (auto) — custom networks with no containers attached
 - `checks/docker-restart-storms.sh` (alert) — abnormally high RestartCount / stuck in Restarting
-- vps-oracle2 checks (run here, inspect vps-oracle2): live in [`vps_oracle2/inspector-checks/`](../../../vps_oracle2/inspector-checks/README.md), not in this directory. `inspect.sh` also runs `<repo>/*/inspector-checks/checks/*.sh`. This directory only triggers them and provides `lib/common.sh`; the logic lives under `vps_oracle2/`. Their results appear under the `vps_oracle2` block of the report
+- vps-oracle2 checks (run here, inspect vps-oracle2): live in [`vps_oracle2/inspector-checks/`](../../../vps_oracle2/inspector-checks/README.md), not in this directory. `inspect.sh` also runs `<repo>/*/inspector-checks/checks/*.sh`. This directory only triggers them and provides `lib/common.sh`; the logic lives under `vps_oracle2/` (mirrors of the docker auto/alert checks, including real cleanup). Their results appear under the `vps_oracle2` block of the report
 - `checks/docker-unused-volumes.sh` (alert) — volumes with no containers attached (anonymous aggregated into one line, named listed one per line)
 - `checks/docker-compose-logging-drift.sh` (alert) — compose services missing `logging.options.max-size`
 - `checks/docker-oversized-logs.sh` (alert) — `*-json.log` files over 50MiB each

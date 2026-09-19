@@ -16,8 +16,9 @@ flowchart LR
 
 ## Layout
 
-- `checks/<name>.sh` — the full detection logic for that check. It only borrows `lib/common.sh` (`emit_result` etc.) from the vps_oracle inspector; the docker calls go to oracle2 via `DOCKER_HOST=ssh://…`. Nothing about oracle2 is implemented under `vps_oracle/`.
-- `tests/test-<name>.sh` — one test per check (hermetic docker stub), same pairing rule as the local inspector. CI enforces it.
+- `checks/oracle2-<name>.sh` — the full detection (and, for auto-tier, cleanup) logic for that check. Nothing about oracle2 is implemented under `vps_oracle/`.
+- `lib/remote.sh` — sourced by every check: exports `DOCKER_HOST=ssh://ubuntu@vps-oracle2`, wraps `docker` in a `timeout`, provides `require_daemon` (alert + exit when oracle2 is unreachable), and borrows `emit_result` from the vps_oracle inspector's `lib/common.sh`. Because `docker` is overridden, a check body reads exactly like its local counterpart.
+- `tests/test-oracle2-<name>.sh` — one hermetic test per check (docker stub), same pairing rule as the local inspector. CI enforces it.
 
 ## How alerts are told apart
 
@@ -25,7 +26,17 @@ The report is one logical inspection grouped by instance: `inspect.sh` attribute
 
 ## Current checks
 
-- `oracle2-docker-restart-storms.sh` (alert) — containers with a high RestartCount or stuck restarting. Override the target with `INSPECTOR_ORACLE2_DOCKER_HOST`.
+Each mirrors the local check of the same name in `vps_oracle/host-native/inspector/checks/`, same tier and thresholds (env vars are shared, e.g. `INSPECTOR_STOPPED_CONTAINER_MAX_AGE_SECONDS`).
+
+| Check | Tier | What it does on oracle2 |
+|---|---|---|
+| `oracle2-docker-stopped-containers.sh` | auto | removes containers exited > 7 days |
+| `oracle2-docker-dangling-images.sh` | auto | removes dangling images older than 7 days |
+| `oracle2-docker-build-cache.sh` | auto | prunes build cache older than 7 days |
+| `oracle2-docker-unused-networks.sh` | auto | removes custom networks with no containers |
+| `oracle2-docker-restart-storms.sh` | alert | high RestartCount / stuck restarting |
+
+The auto-tier ones **really delete on oracle2** over SSH (`INSPECTOR_DRY_RUN=1` makes them only report `would-delete`, like the local ones). Not mirrored, deliberately: `docker-unused-volumes` (alert-only locally too; oracle2 has no volumes), and `docker-oversized-logs` (reads `/var/lib/docker/containers` on the host's filesystem, which `DOCKER_HOST` cannot reach; all oracle2 containers set `max-size`). Override the target with `INSPECTOR_ORACLE2_DOCKER_HOST`.
 
 ## Requirements and gotchas
 
@@ -35,4 +46,4 @@ The report is one logical inspection grouped by instance: `inspect.sh` attribute
 
 ## Adding a check
 
-Follow the `inspector-check` skill, but put the wrapper and its test here. Write the check here as a standalone script: `export DOCKER_HOST`, wrap docker calls in `timeout`, and alert when the host is unreachable. Name it `oracle2-…` so its name stays unique in `inspect.sh`'s crash reports.
+Follow the `inspector-check` skill, but put the wrapper and its test here. Write the check here as a standalone script that sources `lib/remote.sh` and calls `require_daemon`. Name it `oracle2-…` so its name stays unique in `inspect.sh`'s crash reports.

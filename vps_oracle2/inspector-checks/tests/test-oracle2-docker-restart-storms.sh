@@ -43,7 +43,7 @@ assert_true "never emits deleted/would-delete" \
 echo "== unreachable daemon alerts =="
 out="$(STUB_DOWN=1 PATH="$bin_dir:$PATH" "$check")"
 assert_true "unreachable daemon alerts" \
-  "$(grep -q '"tier":"alert"' <<<"$out" && grep -q 'check:docker-restart-storms.sh' <<<"$out" && grep -q unreachable <<<"$out" && echo true || echo false)"
+  "$(grep -q '"tier":"alert"' <<<"$out" && grep -q 'check:oracle2-docker-restart-storms.sh' <<<"$out" && grep -q unreachable <<<"$out" && echo true || echo false)"
 
 rm -rf "$work_dir"
 finish_tests
