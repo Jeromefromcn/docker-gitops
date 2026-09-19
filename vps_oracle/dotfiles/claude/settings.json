@@ -24,12 +24,10 @@
       "Bash(curl -s 'http://localhost:9090/api/v1/query?query=claude_config_mirror_drift')",
       "Bash(sudo tailscale status)",
       "Bash(ip addr *)",
-      "Bash(curl -sS -m 5 -o /dev/null -w \"http_code=%{http_code}\\\\n\" http://100.96.184.44:8080/)",
       "Bash(curl -sS -m 5 http://localhost:9091/api/v1/targets)",
       "Bash(python3 -c ' *)",
       "Bash(docker run *)",
       "Bash(python3 -m json.tool)",
-      "Bash(curl -sS -m 5 -u \"admin:claudecode\" \"http://172.20.0.3:3000/api/dashboards/uid/rYdddlPWk\")",
       "Bash(docker stop *)",
       "Bash(docker cp *)",
       "Bash(wait)"
