@@ -5,7 +5,19 @@ Host-level inspection script, not managed by docker compose (like `vps_oracle/ho
 
 **Notification language**: the Telegram report title and body are English only (2026-08-16 user request; the repo docs remain Chinese). `tests/test-inspect.sh` has a corresponding assertion (title, section headers, no CJK characters). The title carries no host name: a report is one logical inspection, and the `Inspected` section names the instances covered.
 
-**Instances inspected**: every report ends with an `Inspected` section listing each instance and how many checks ran on it (`vps_oracle` for `checks/`, `<host>` for `<host>/inspector-checks/`), with `✅ … nothing flagged` or `⚠️ … N result lines`. It is there so a healthy report visibly covers remote hosts too — otherwise "All clear" looks the same whether or not vps_oracle2 was checked. The test-only override `INSPECTOR_REPO_ROOT` points the remote-check glob at a fake tree.
+**Report layout**: one logical inspection, grouped by instance (`vps_oracle` for `checks/`, `<host>` for `<host>/inspector-checks/`); it never says which machine ran the scripts. Every instance always gets a header — `✅ … all clear`, `✅ … N auto-handled` or `⚠️ … N need review` — so a healthy run visibly covers remote hosts too, and any auto/alert lines sit under their instance's header. The test-only override `INSPECTOR_REPO_ROOT` points the remote-check glob at a fake tree.
+
+```
+🔍 Inspection report · 2026-09-19 21:00
+
+⚠️ vps_oracle — 18 checks, 1 need review
+   Needs manual review
+   ⚠️ docker container foo
+      restart count 12, state running …
+✅ vps_oracle2 — 1 check, all clear
+
+Run took 6.7s
+```
 
 ## Status (phase 2)
 
@@ -19,7 +31,7 @@ Implemented (phase 2, docker layer):
 - `checks/docker-build-cache.sh` (auto) — build cache older than 7 days
 - `checks/docker-unused-networks.sh` (auto) — custom networks with no containers attached
 - `checks/docker-restart-storms.sh` (alert) — abnormally high RestartCount / stuck in Restarting
-- vps-oracle2 checks (run here, inspect vps-oracle2): live in [`vps_oracle2/inspector-checks/`](../../../vps_oracle2/inspector-checks/README.md), not in this directory. `inspect.sh` also runs `<repo>/*/inspector-checks/checks/*.sh`. This directory only triggers them and provides `lib/common.sh`; the logic lives under `vps_oracle2/`. Their alerts are prefixed `[vps-oracle2]`
+- vps-oracle2 checks (run here, inspect vps-oracle2): live in [`vps_oracle2/inspector-checks/`](../../../vps_oracle2/inspector-checks/README.md), not in this directory. `inspect.sh` also runs `<repo>/*/inspector-checks/checks/*.sh`. This directory only triggers them and provides `lib/common.sh`; the logic lives under `vps_oracle2/`. Their results appear under the `vps_oracle2` block of the report
 - `checks/docker-unused-volumes.sh` (alert) — volumes with no containers attached (anonymous aggregated into one line, named listed one per line)
 - `checks/docker-compose-logging-drift.sh` (alert) — compose services missing `logging.options.max-size`
 - `checks/docker-oversized-logs.sh` (alert) — `*-json.log` files over 50MiB each

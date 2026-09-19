@@ -21,7 +21,7 @@ flowchart LR
 
 ## How alerts are told apart
 
-The report title only says `vps_oracle`, so every line from a remote check carries the instance in its target: `[vps-oracle2] docker container <name>`. An unreachable host raises `[vps-oracle2] check:… docker daemon unreachable`, which doubles as a liveness check. Local alerts have no prefix.
+The report is one logical inspection grouped by instance: `inspect.sh` attributes each check to the host directory it lives under, so a result from this directory always appears under the `vps_oracle2` block. No prefix in the alert text is needed. An unreachable host raises `check:… docker daemon unreachable` under that block, which doubles as a liveness check.
 
 ## Current checks
 
@@ -35,4 +35,4 @@ The report title only says `vps_oracle`, so every line from a remote check carri
 
 ## Adding a check
 
-Follow the `inspector-check` skill, but put the wrapper and its test here. Write the check here as a standalone script: `export DOCKER_HOST`, wrap docker calls in `timeout`, prefix every target with `[vps-oracle2] `, and alert when the host is unreachable. Name it `oracle2-…` so its name stays unique in `inspect.sh`'s crash reports.
+Follow the `inspector-check` skill, but put the wrapper and its test here. Write the check here as a standalone script: `export DOCKER_HOST`, wrap docker calls in `timeout`, and alert when the host is unreachable. Name it `oracle2-…` so its name stays unique in `inspect.sh`'s crash reports.

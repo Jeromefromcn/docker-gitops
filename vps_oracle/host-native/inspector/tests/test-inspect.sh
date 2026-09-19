@@ -67,10 +67,10 @@ assert_true "payload title is the English inspection title" \
   "$(grep -q "Inspection report ·" "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "payload body uses English section headers" \
   "$(grep -q "Auto-handled" "$work_dir/captured_payload.json" && grep -q "Needs manual review" "$work_dir/captured_payload.json" && echo true || echo false)"
-assert_true "summary lists the local instance with its result lines" \
-  "$(grep -q 'vps_oracle — 2 checks, 3 result lines' "$work_dir/captured_payload.json" && echo true || echo false)"
-assert_true "summary lists the remote instance even though it flagged nothing" \
-  "$(grep -q 'vps_fake2 — 1 check, nothing flagged' "$work_dir/captured_payload.json" && echo true || echo false)"
+assert_true "report header shows the local instance's counts" \
+  "$(grep -q 'vps_oracle — 2 checks, 2 need review, 1 auto-handled' "$work_dir/captured_payload.json" && echo true || echo false)"
+assert_true "report lists the remote instance even though it flagged nothing" \
+  "$(grep -q 'vps_fake2 — 1 check, all clear' "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "payload contains no CJK characters" \
   "$(grep -qP '[\x{3400}-\x{4dbf}\x{4e00}-\x{9fff}\x{f900}-\x{faff}]' "$work_dir/captured_payload.json" && echo false || echo true)"
 

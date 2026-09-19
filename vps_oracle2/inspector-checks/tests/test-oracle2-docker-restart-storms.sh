@@ -29,10 +29,10 @@ chmod +x "$bin_dir/docker"
 check="$SCRIPT_DIR/../checks/oracle2-docker-restart-storms.sh"
 export STUB_DIR="$work_dir"
 
-echo "== alerts are tagged with the instance and target the oracle2 daemon =="
+echo "== alerts target the oracle2 daemon =="
 out="$(PATH="$bin_dir:$PATH" "$check")"
-assert_true "stormy flagged with [vps-oracle2] prefix" \
-  "$(grep -q '\[vps-oracle2\] docker container stormy' <<<"$out" && echo true || echo false)"
+assert_true "stormy flagged" \
+  "$(grep -q 'docker container stormy' <<<"$out" && echo true || echo false)"
 assert_true "calm not flagged" \
   "$(grep -q 'calm' <<<"$out" && echo false || echo true)"
 assert_true "docker called with the oracle2 DOCKER_HOST" \
@@ -40,10 +40,10 @@ assert_true "docker called with the oracle2 DOCKER_HOST" \
 assert_true "never emits deleted/would-delete" \
   "$(grep -qE 'deleted|would-delete' <<<"$out" && echo false || echo true)"
 
-echo "== unreachable daemon alerts with the instance tag =="
+echo "== unreachable daemon alerts =="
 out="$(STUB_DOWN=1 PATH="$bin_dir:$PATH" "$check")"
-assert_true "unreachable alert names vps-oracle2" \
-  "$(grep -q '"tier":"alert"' <<<"$out" && grep -q '\[vps-oracle2\] check:' <<<"$out" && grep -q unreachable <<<"$out" && echo true || echo false)"
+assert_true "unreachable daemon alerts" \
+  "$(grep -q '"tier":"alert"' <<<"$out" && grep -q 'check:docker-restart-storms.sh' <<<"$out" && grep -q unreachable <<<"$out" && echo true || echo false)"
 
 rm -rf "$work_dir"
 finish_tests
