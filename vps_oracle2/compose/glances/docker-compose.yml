@@ -1,0 +1,26 @@
+services:
+  glances:
+    # arm64 digest (oracle2 is Ampere A1, aarch64). Get it with:
+    # docker buildx imagetools inspect nicolargo/glances:4.3.1
+    image: nicolargo/glances@sha256:6c6c3be44090c6a93ab63c3f5898670edf2a07b08ab057cfb85e66bf84431bb1  # 4.3.1
+    container_name: glances
+    hostname: vps-oracle2
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      # Web/REST server mode; homepage's glances widget polls its API on every refresh,
+      # so CPU/memory are sampled on demand (as live as the local `resources` widget).
+      GLANCES_OPT: "-w"
+    # CPU/memory come from /proc, which is host-wide even inside a container, so neither
+    # `pid: host` nor the docker socket is needed for the homepage widget.
+    # Bound to this host's tailscale IP only (not 0.0.0.0): homepage on vps_oracle polls it
+    # over the tailscale mesh. Update this IP if the node ever re-registers.
+    ports:
+      - "100.100.140.33:61208:61208"
