@@ -41,6 +41,13 @@ The auto-tier ones **really delete on gcp** over SSH (`INSPECTOR_DRY_RUN=1` make
 ## Requirements and gotchas
 
 - The timer runs as `ubuntu`, so `~/.ssh/config` must resolve `vps-gcp` (HostName, `~/.ssh/id_gcp`) and the host key must be in `known_hosts`.
+- **SSH connection reuse is required for acceptable runtime.** Every `docker …` call over `DOCKER_HOST=ssh://` opens its own SSH connection, and vps-gcp (us-central1) is a cross-ocean hop from vps_oracle: measured ~5s per call, so the five checks took ~100s. Add this to the `vps-gcp` block in `~/.ssh/config` (host-local, not tracked in this repo) and they take ~23s:
+
+  ```
+  ControlMaster auto
+  ControlPath /home/ubuntu/.ssh/cm-%C
+  ControlPersist 60
+  ```
 - vps-gcp's public IP is ephemeral. If it changes, the next run alerts `unreachable` until `HostName` is updated (see `vps_gcp/tofu/README.md`).
 - Remote calls are wrapped in `timeout` (`INSPECTOR_DOCKER_TIMEOUT`, default 30s) so a hung SSH session can't stall the whole run.
 
