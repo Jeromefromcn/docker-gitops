@@ -36,7 +36,7 @@
           type: glances
           url: http://100.96.184.44:61208
           version: 4
-          refreshInterval: 10000
+          refreshInterval: 30000
           metric: cpu
           chart: false
 
@@ -47,7 +47,7 @@
           type: glances
           url: http://100.96.184.44:61208
           version: 4
-          refreshInterval: 10000
+          refreshInterval: 30000
           metric: memory
           chart: false
 
@@ -58,7 +58,7 @@
           type: glances
           url: http://100.96.184.44:61208
           version: 4
-          refreshInterval: 10000
+          refreshInterval: 30000
           metric: fs:/rootfs
           chart: false
 
