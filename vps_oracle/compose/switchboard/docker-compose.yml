@@ -12,7 +12,7 @@ services:
         max-size: "10m"
         max-file: "5"
     user: "1001:1001"   # the jerome-ccr/bridget-ccr toggles need to write files under the host user ubuntu's ~/.claude-provider/, so it can't run as nobody
-    # Attached to the proxy network (same as grafana / vikunja / dify / ccr and every
+    # Attached to the proxy network (same as grafana / vikunja / ccr and every
     # other NPM reverse-proxied service); NPM reverse-proxies straight to the container
     # name switchboard:8091. No longer uses network_mode: host: that path required
     # opening iptables rules on the host's INPUT chain specifically for NPM (host-network

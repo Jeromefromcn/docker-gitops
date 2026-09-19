@@ -15,7 +15,6 @@ docker-gitops/
 │   │   ├── 3x-ui/                 #   VLESS+Reality node (raw TCP 39876)
 │   │   ├── ccr/                   #   Claude Code Router
 │   │   ├── switchboard/           #   config-driven provider/account switch framework
-│   │   ├── dify/                  #   LLM app platform
 │   │   ├── llm/                   #   llama-cpp + open-webui
 │   │   ├── trilium/               #   notes
 │   │   ├── vikunja/               #   to-do (vikunja + notify-relay)
@@ -35,7 +34,7 @@ docker-gitops/
 │   ├── compose/                   #   node-exporter + verify (run via `docker --context gcp`)
 │   └── tofu/                      # OpenTofu greenfield lifecycle practice
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
-│   ├── compose/                   #   node-exporter (run via `docker --context oracle2`)
+│   ├── compose/                   #   node-exporter, glances, portainer-agent, dify (run via `docker --context oracle2`)
 │   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
 ├── docs/                          # history & design archives: incidents/, misc/, container-topology/, superpowers/
 ├── .claude/                       # rules/ + skills/ (loaded automatically), agents/, hooks/
@@ -103,7 +102,7 @@ cd ~/jerome/docker-gitops/<host>/compose/<compose> && docker compose up -d
 
 Mounted volumes in the compose files uniformly use absolute paths (e.g. `/etc/x-ui/...`), so moving the working directory into the repo doesn't affect where the container data lives.
 
-Some compose stacks have their own README (recording stack-specific steps/gotchas) — check for one before entering a directory: [`ccr/README.md`](vps_oracle/compose/ccr/README.md), [`dify/README.md`](vps_oracle/compose/dify/README.md), [`npm/README.md`](vps_oracle/compose/npm/README.md), [`postgres/README.md`](vps_oracle/compose/postgres/README.md), [`redis/README.md`](vps_oracle/compose/redis/README.md), [`switchboard/README.md`](vps_oracle/compose/switchboard/README.md).
+Some compose stacks have their own README (recording stack-specific steps/gotchas) — check for one before entering a directory: [`ccr/README.md`](vps_oracle/compose/ccr/README.md), [`dify/README.md`](vps_oracle2/compose/dify/README.md) (runs on vps_oracle2), [`npm/README.md`](vps_oracle/compose/npm/README.md), [`postgres/README.md`](vps_oracle/compose/postgres/README.md), [`redis/README.md`](vps_oracle/compose/redis/README.md), [`switchboard/README.md`](vps_oracle/compose/switchboard/README.md).
 
 ## Adding a service
 

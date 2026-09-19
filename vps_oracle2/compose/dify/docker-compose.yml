@@ -30,8 +30,6 @@ networks:
   ssrf_proxy_network:
     driver: bridge
     internal: true
-  proxy:
-    external: true
 
 services:
   db_postgres:
@@ -137,6 +135,9 @@ services:
     image: langgenius/dify-plugin-daemon:0.6.1-local@sha256:fa7ad45e1b2a777cd243b902609abecb4fd924adcd13d21ef4258b5090a09be5
     container_name: dify-plugin-daemon
     hostname: dify-plugin-daemon
+    # Bound to this host's tailscale IP only: NPM on vps_oracle forwards /e/ here over the mesh.
+    ports:
+      - "100.100.140.33:5002:5002"
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -182,12 +183,14 @@ services:
     networks:
       - ssrf_proxy_network
       - default
-      - proxy # NPM forwards /e/ (plugin webhook callbacks) here directly
 
   api:
     image: langgenius/dify-api:1.14.2@sha256:062815df8ed6fcf82285e55f3cb5586241b2828e6695a3fb8114bfb99b5e8517
     container_name: dify-api
     hostname: dify-api
+    # Bound to this host's tailscale IP only: NPM on vps_oracle forwards /console/api, /api, /v1, /files, /mcp, /triggers, /openapi here over the mesh.
+    ports:
+      - "100.100.140.33:5001:5001"
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -259,7 +262,6 @@ services:
     networks:
       - ssrf_proxy_network
       - default
-      - proxy # NPM forwards /console/api, /api, /v1, /files, /mcp, /triggers, /openapi here
 
   worker:
     image: langgenius/dify-api:1.14.2@sha256:062815df8ed6fcf82285e55f3cb5586241b2828e6695a3fb8114bfb99b5e8517
@@ -364,6 +366,9 @@ services:
     image: langgenius/dify-web:1.14.2@sha256:db73434e185ac778f31f4cc1adcce0dbe84b41a95ea5af58216acf095eed5f67
     container_name: dify-web
     hostname: dify-web
+    # Bound to this host's tailscale IP only: NPM on vps_oracle forwards everything else here over the mesh.
+    ports:
+      - "100.100.140.33:3000:3000"
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -393,4 +398,3 @@ services:
       - api
     networks:
       - default
-      - proxy # NPM forwards everything else here (default location)

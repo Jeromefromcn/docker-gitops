@@ -32,6 +32,10 @@ PORT_EXCEPTIONS = {
         "docker `proxy` network is possible)",
     ("glances", "glances"): "bound to oracle2's tailscale IP only; homepage on oracle polls it "
         "over the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
+    ("dify", "web"): "bound to oracle2's tailscale IP only; NPM on oracle forwards to it over "
+        "the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
+    ("dify", "api"): "same as dify/web",
+    ("dify", "plugin_daemon"): "same as dify/web",
 }
 
 # Environment values that look like credentials but aren't. Each entry needs
