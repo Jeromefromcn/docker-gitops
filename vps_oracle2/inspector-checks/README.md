@@ -16,7 +16,7 @@ flowchart LR
 
 ## Layout
 
-- `checks/<name>.sh` — thin wrapper: sets `DOCKER_HOST` and `INSPECTOR_INSTANCE=vps-oracle2`, then `exec`s the shared implementation under `vps_oracle/host-native/inspector/checks/`. No detection logic is duplicated here.
+- `checks/<name>.sh` — the full detection logic for that check. It only borrows `lib/common.sh` (`emit_result` etc.) from the vps_oracle inspector; the docker calls go to oracle2 via `DOCKER_HOST=ssh://…`. Nothing about oracle2 is implemented under `vps_oracle/`.
 - `tests/test-<name>.sh` — one test per check (hermetic docker stub), same pairing rule as the local inspector. CI enforces it.
 
 ## How alerts are told apart
@@ -35,4 +35,4 @@ The report title only says `vps_oracle`, so every line from a remote check carri
 
 ## Adding a check
 
-Follow the `inspector-check` skill, but put the wrapper and its test here. Prefer wrapping an existing local check via `INSPECTOR_INSTANCE` + `DOCKER_HOST` over copying logic.
+Follow the `inspector-check` skill, but put the wrapper and its test here. Write the check here as a standalone script: `export DOCKER_HOST`, wrap docker calls in `timeout`, prefix every target with `[vps-oracle2] `, and alert when the host is unreachable. Name it `oracle2-…` so its name stays unique in `inspect.sh`'s crash reports.
