@@ -14,6 +14,16 @@
         href: https://grafana.jerome.cloudns.asia/d/rYdddlPWk/node-exporter-full?orgId=1&from=now-24h&to=now&timezone=browser&var-job=node&var-nodename=vps-oracle&var-node=vps-oracle&refresh=1m
         description: Monitoring dashboard
 
+    - vps-oracle2:
+        icon: glances.png
+        description: Remote host CPU / memory (Glances over tailscale)
+        widget:
+          type: glances
+          url: http://100.100.140.33:61208
+          version: 4
+          metric: info
+          chart: false
+
     - Jaeger:
         icon: jaeger.png
         href: https://jaeger.jerome.cloudns.asia
