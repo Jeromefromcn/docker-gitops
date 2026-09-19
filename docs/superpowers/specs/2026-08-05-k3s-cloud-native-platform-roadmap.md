@@ -4,7 +4,7 @@ Date: 2026-08-05
 
 ## Background
 
-`vps_oracle` currently manages roughly ten independent stacks with docker compose (see [container-topology.md](../../container-topology/v1.md)). The goal is to replicate, on the same machine (4C/24G, Oracle Cloud VPS), a complete cloud-native software development & operations lab platform using K3s, covering the industry-standard component stack — CNI, service mesh, GitOps CI/CD, supply chain security, multi-environment PR lanes — for technical parity with SRE roles and learning.
+`vps_oracle` currently manages roughly ten independent stacks with docker compose (see [deployment-topology.md](../../deployment-topology/v1.md)). The goal is to replicate, on the same machine (4C/24G, Oracle Cloud VPS), a complete cloud-native software development & operations lab platform using K3s, covering the industry-standard component stack — CNI, service mesh, GitOps CI/CD, supply chain security, multi-environment PR lanes — for technical parity with SRE roles and learning.
 
 This is a multi-month project spanning several independent subsystems, split into multiple phases, each going through the full spec → plan → implement → validate cycle on its own. This document is the cross-phase overview roadmap, not the detailed design for any single phase — the detailed design docs for each phase will link back here.
 
@@ -17,7 +17,7 @@ This is a multi-month project spanning several independent subsystems, split int
 
 ## Current-State Constraints
 
-From [container-topology.md](../../container-topology/v1.md) and a live `free -h` measurement (2026-08-05):
+From [deployment-topology.md](../../deployment-topology/v1.md) and a live `free -h` measurement (2026-08-05):
 
 - Memory: 23Gi total, 11Gi used, ~6.4Gi available; CPU 4 cores. Existing load (llm, dify, etc.) already consumes a fair share of headroom
 - `npm` (Nginx Proxy Manager) is the only container publishing host 80/443; the rest are reverse-proxied via the `proxy` network + Docker DNS and do not publish ports directly
@@ -94,4 +94,4 @@ The cost: the merged F+G raises the resource threshold substantially (istiod + z
 - **The precondition for phase H (compose decommission evaluation) has disappeared**: since the services are all back in compose, "compose decommission" is no longer a topic; the entire "Design Trade-offs Deferred to Phase H" section (NPM yielding 80/443, translating proxy hosts item by item into ingress) becomes indefinitely shelved, not an open to-do.
 - **k3s's remaining live load is only three things, none migrated from compose**: `lab-environment` (independent project, still in k3s), `headlamp`, `pr-lanes` (phase F+G's `hello-frontend`/`hello-backend`), plus the infrastructure itself (Cilium, ArgoCD, Istio Ambient, Kyverno, Trivy Operator, Sealed Secrets).
 - **The outcomes of A, B, E, F+G are all kept and still running**; only the "move existing compose services into k8s" line was reversed. k3s's positioning now is the cloud-native lab platform itself, not compose's successor.
-- The current state is governed by the "k3s" section of the root [README.md](../../../README.md) and [`vps_oracle/k3s/README.md`](../../../vps_oracle/k3s/README.md); for the current topology snapshot see [container-topology/v3.md](../../container-topology/v3.md).
+- The current state is governed by the "k3s" section of the root [README.md](../../../README.md) and [`vps_oracle/k3s/README.md`](../../../vps_oracle/k3s/README.md); for the current topology snapshot see [deployment-topology/v3.md](../../deployment-topology/v3.md).

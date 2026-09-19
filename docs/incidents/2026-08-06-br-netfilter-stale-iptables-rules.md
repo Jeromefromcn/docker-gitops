@@ -6,7 +6,7 @@ This file is deliberately not committed to git, kept purely as a faithful record
 
 ## Background: the start of the full causal chain
 
-The starting point of this problem is that the user, to free up memory for k3s, manually `docker compose down`'d `programming-learning-platform`, a project not managed by this repo (see the "projects not managed by this repo" section in [container-topology.md](../container-topology/v1.md)). During the k3s installation it turned out this compose was actually still needed, so the user `docker compose up`'d it again — **this down/up cycle is the true starting point of the chain of problems that followed**, intertwined with this k3s installation work itself, and both are necessary to explain what happened.
+The starting point of this problem is that the user, to free up memory for k3s, manually `docker compose down`'d `programming-learning-platform`, a project not managed by this repo (see the "projects not managed by this repo" section in [deployment-topology.md](../deployment-topology/v1.md)). During the k3s installation it turned out this compose was actually still needed, so the user `docker compose up`'d it again — **this down/up cycle is the true starting point of the chain of problems that followed**, intertwined with this k3s installation work itself, and both are necessary to explain what happened.
 
 ## Full timeline (key background from the user + technical investigation woven together)
 

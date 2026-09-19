@@ -6,7 +6,7 @@ Date: 2026-08-19
 
 The [F+G phase](2026-08-18-k3s-phase-fg-mesh-pr-lanes-design.md) installed Istio Ambient (istiod + ztunnel + istio-cni + waypoint) + Gateway API in the `pr-lanes` namespace, with the deliverable deliberately narrowed to a single "PR preview lane" scenario: only header-based two-version routing was done, without touching the rest of the service mesh's standard capabilities — canary weights, timeout/retry, fine-grained authorization, observability integration, circuit breaking, and rate limiting.
 
-After [container-topology v3](../../container-topology/v3.md) was finalized, the current state was inventoried item-by-item against the industry's four service-mesh capability classes (traffic management, security, observability, resilience), landing in three categories:
+After [deployment-topology v3](../../deployment-topology/v3.md) was finalized, the current state was inventoried item-by-item against the industry's four service-mesh capability classes (traffic management, security, observability, resilience), landing in three categories:
 
 - **Already present**: mTLS mutual auth, health checks, header-split gray release, canary weight routing (90/10), timeout/retry, circuit breaking (outlier detection), fault injection — ztunnel/waypoint/HTTPRoute are already running, and phase I (2026-08-22) further completed weights/timeout/retry/circuit-breaking/fault-injection (see the I implementation result below)
 - **Not configured**: fine-grained access control (AuthorizationPolicy), metrics integration, log collection — the components already run in the cluster, it's purely that the corresponding YAML was never written

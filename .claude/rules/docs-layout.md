@@ -14,7 +14,7 @@ Inside `docs/`:
 - `incidents/` — troubleshooting records. Filename `YYYY-MM-DD-<service>-<short-description>.md`; after adding one, add a row to the table in [`docs/incidents/README.md`](../../docs/incidents/README.md), newest first.
 - `misc/` — upstream reports and other material unrelated to daily ops.
 - `superpowers/specs/`, `superpowers/plans/` — design docs and implementation plans. **Point-in-time snapshots; they do not describe the current state.**
-- `container-topology/` — container topology snapshots; the highest version number is the newest.
+- `deployment-topology/` — deployment topology snapshots; the highest version number is the newest.
 
 Rules:
 

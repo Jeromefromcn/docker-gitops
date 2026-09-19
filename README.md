@@ -36,7 +36,7 @@ docker-gitops/
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
 │   ├── compose/                   #   node-exporter, glances, portainer-agent, dify (run via `docker --context oracle2`)
 │   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
-├── docs/                          # history & design archives: incidents/, misc/, container-topology/, superpowers/
+├── docs/                          # history & design archives: incidents/, misc/, deployment-topology/, superpowers/
 ├── .claude/                       # rules/ + skills/ (loaded automatically), agents/, hooks/
 └── .github/                       # CI: repo-conventions check + image build/sign workflows
 ```
@@ -134,5 +134,6 @@ Three other rule files: k3s/ArgoCD change discipline is in [`.claude/rules/k3s-g
 |---|---|---|
 | vps_oracle | Oracle Cloud VPS | [vps_oracle/README.md](vps_oracle/README.md) |
 | vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + a two-stack `compose/` — a node-exporter scrape target and a `verify/` smoke test, both reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
+| vps_oracle2 | second OCI tenancy, Always Free A1.Flex (managed: `tofu/`, `compose/` incl. dify, `inspector-checks/`; reachable over tailscale only) | [vps_oracle2/README.md](vps_oracle2/README.md) |
 
 Other background/history material (incident records, design archives, etc., not required daily reading) is in [`docs/README.md`](docs/README.md).
