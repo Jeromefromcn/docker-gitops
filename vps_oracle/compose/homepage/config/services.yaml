@@ -7,7 +7,7 @@
           url: http://100.100.140.33:61208
           version: 4
           metric: cpu
-          chart: true
+          chart: false
 
     - oracle2 Memory:
         icon: glances.png
@@ -17,7 +17,7 @@
           url: http://100.100.140.33:61208
           version: 4
           metric: memory
-          chart: true
+          chart: false
 
     - oracle2 Disk:
         icon: glances.png
@@ -27,7 +27,7 @@
           url: http://100.100.140.33:61208
           version: 4
           metric: fs:/rootfs
-          chart: true
+          chart: false
 
 - Infra Services:
     - Nginx Proxy Manager:
