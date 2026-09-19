@@ -12,6 +12,9 @@ quicklaunch:
   hideInternetSearch: false
 
 layout:
+  Monitor:
+    style: row
+    columns: 3
   Infra Services:
     style: row
     columns: 3

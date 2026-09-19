@@ -1,18 +1,33 @@
 - Monitor:
-    - vps-oracle2:
+    - oracle2 CPU:
         icon: glances.png
-        description: Remote host resources (Glances over tailscale)
-        widgets:
-          - type: glances
-            url: http://100.100.140.33:61208
-            version: 4
-            metric: info
-            chart: false
-          - type: glances
-            url: http://100.100.140.33:61208
-            version: 4
-            metric: fs:/rootfs
-            chart: false
+        description: vps-oracle2 via Glances (tailscale)
+        widget:
+          type: glances
+          url: http://100.100.140.33:61208
+          version: 4
+          metric: cpu
+          chart: true
+
+    - oracle2 Memory:
+        icon: glances.png
+        description: vps-oracle2 via Glances (tailscale)
+        widget:
+          type: glances
+          url: http://100.100.140.33:61208
+          version: 4
+          metric: memory
+          chart: true
+
+    - oracle2 Disk:
+        icon: glances.png
+        description: vps-oracle2 via Glances (tailscale)
+        widget:
+          type: glances
+          url: http://100.100.140.33:61208
+          version: 4
+          metric: fs:/rootfs
+          chart: true
 
 - Infra Services:
     - Nginx Proxy Manager:
