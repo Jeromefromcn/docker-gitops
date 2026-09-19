@@ -1,0 +1,28 @@
+services:
+  glances:
+    # amd64 digest — gcp's e2-micro is amd64, so do NOT copy vps_oracle2's arm64 digest for
+    # the same 4.3.1 tag. Get it with: docker buildx imagetools inspect nicolargo/glances:4.3.1 --raw
+    image: nicolargo/glances@sha256:e31fafa1c18da2279fdedcc360c0a397e76c1414bb933342aa42df57068e7e56  # 4.3.1
+    container_name: glances
+    hostname: vps-gcp
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      # Web/REST server mode; homepage's glances widget polls its API on every refresh,
+      # so CPU/memory are sampled on demand.
+      GLANCES_OPT: "-w"
+    # CPU/memory come from /proc (host-wide even in a container), so no `pid: host` or
+    # docker socket. Disk usage needs the host root mounted read-only: it shows up as `/rootfs`.
+    volumes:
+      - /:/rootfs:ro
+    # Bound to this host's tailscale IP only (not 0.0.0.0): homepage on vps_oracle polls it
+    # over the tailscale mesh. Update this IP if the gcp node ever re-registers.
+    ports:
+      - "100.96.184.44:61208:61208"

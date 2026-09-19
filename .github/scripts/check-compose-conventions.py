@@ -24,13 +24,15 @@ PORT_EXCEPTIONS = {
     ("apprise", "apprise"): "bound to 127.0.0.1 only",
     ("verify", "verify"): "bound to gcp's tailscale IP only; NPM on oracle reaches it over "
         "the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
+    ("plans", "plans"): "bound to gcp's tailscale IP only; NPM on oracle reaches it over the "
+        "tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
     ("node-exporter", "node-exporter"): "bound to gcp's/oracle2's tailscale IP only; oracle's "
         "prometheus scrapes it over the tailscale mesh (cross-host, no shared docker "
         "`proxy` network is possible)",
     ("portainer-agent", "portainer-agent"): "bound to gcp's/oracle2's tailscale IP only; oracle's "
         "portainer server connects to it over the tailscale mesh (cross-host, no shared "
         "docker `proxy` network is possible)",
-    ("glances", "glances"): "bound to oracle2's tailscale IP only; homepage on oracle polls it "
+    ("glances", "glances"): "bound to gcp's/oracle2's tailscale IP only; homepage on oracle polls it "
         "over the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
     ("dify", "web"): "bound to oracle2's tailscale IP only; NPM on oracle forwards to it over "
         "the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
