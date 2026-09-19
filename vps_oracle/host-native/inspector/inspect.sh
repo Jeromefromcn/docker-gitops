@@ -94,10 +94,13 @@ build_report() {
   local inst n l summary="Inspected"$'\n'
   for inst in "${inst_order[@]}"; do
     n="${inst_checks[$inst]}"; l="${inst_lines[$inst]}"
+    local nw="checks" lw="result lines"
+    [ "$n" -eq 1 ] && nw="check"
+    [ "$l" -eq 1 ] && lw="result line"
     if [ "$l" -eq 0 ]; then
-      summary+="✅ ${inst} — ${n} checks, nothing flagged"$'\n'
+      summary+="✅ ${inst} — ${n} ${nw}, nothing flagged"$'\n'
     else
-      summary+="⚠️ ${inst} — ${n} checks, ${l} result lines"$'\n'
+      summary+="⚠️ ${inst} — ${n} ${nw}, ${l} ${lw}"$'\n'
     fi
   done
 
