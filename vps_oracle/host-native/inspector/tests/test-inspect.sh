@@ -64,7 +64,7 @@ assert_true "captured apprise payload mentions the failed check by name" \
   "$(grep -q "bbb-emits-alert-and-fails.sh" "$work_dir/captured_payload.json" && echo true || echo false)"
 
 assert_true "payload title is the English inspection title" \
-  "$(grep -q "Inspection report vps_oracle" "$work_dir/captured_payload.json" && echo true || echo false)"
+  "$(grep -q "Inspection report ·" "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "payload body uses English section headers" \
   "$(grep -q "Auto-handled" "$work_dir/captured_payload.json" && grep -q "Needs manual review" "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "summary lists the local instance with its result lines" \

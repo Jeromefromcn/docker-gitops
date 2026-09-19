@@ -117,7 +117,7 @@ build_report() {
 }
 
 report_body="$(build_report)"
-title="🔍 Inspection report vps_oracle · $(date '+%Y-%m-%d %H:%M')"
+title="🔍 Inspection report · $(date '+%Y-%m-%d %H:%M')"
 status="$(send_apprise "$title" "$report_body")"
 
 if [ "$status" != "200" ]; then
