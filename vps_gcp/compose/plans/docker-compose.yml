@@ -1,0 +1,19 @@
+services:
+  plans:
+    # Tag = commit of /home/ubuntu/jerome/plans; built on the gcp daemon by deploy.sh.
+    image: plans:1478db4
+    container_name: plans
+    environment:
+      TZ: "Asia/Hong_Kong"
+    # Bound to this host's tailscale IP only (not 0.0.0.0) — NPM on vps_oracle reaches it over the mesh.
+    # Update this IP if the gcp node ever re-registers with tailscale.
+    ports:
+      - "100.96.184.44:8081:80"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

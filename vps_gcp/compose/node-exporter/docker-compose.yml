@@ -22,7 +22,7 @@ services:
     command:
       - '--path.rootfs=/host'
     # Bound to this host's tailscale IP only (not 0.0.0.0) — same pattern as
-    # vps_gcp/compose/verify/: reachable from oracle's prometheus container over the
+    # vps_gcp/compose/plans/: reachable from oracle's prometheus container over the
     # oracle<->gcp tailscale mesh (confirmed reachable directly, no extra routing needed),
     # nothing on the public interface. Update this IP if the gcp node ever re-registers
     # with tailscale.

@@ -1,5 +1,5 @@
 # Only SSH ingress from the public internet. Services on this instance are reached
-# over the oracle<->gcp Tailscale mesh instead (see vps_gcp/compose/verify/), which
+# over the oracle<->gcp Tailscale mesh instead (see vps_gcp/compose/plans/), which
 # needs no inbound firewall rule of its own — it connects out (direct, or via DERP
 # relay when direct fails) rather than listening for inbound connections. The
 # previous allow-http/allow-https rules were removed 2026-09-13 once the verify

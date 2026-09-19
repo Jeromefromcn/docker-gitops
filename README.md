@@ -19,7 +19,6 @@ docker-gitops/
 │   │   ├── trilium/               #   notes
 │   │   ├── vikunja/               #   to-do (vikunja + notify-relay)
 │   │   ├── apprise/               #   notification routing
-│   │   ├── plans/                 #   web app, image built locally from ~/jerome/plans
 │   │   ├── minio/                 #   shared object storage
 │   │   ├── postgres/              #   shared postgres
 │   │   └── redis/                 #   shared redis (ACL users)
@@ -31,7 +30,7 @@ docker-gitops/
 │   ├── dotfiles/                  # host-local config, symlinked into the repo
 │   └── tofu/                      # OpenTofu brownfield adoption of the OCI network
 ├── vps_gcp/                       # GCP free-tier e2-micro (practice instance)
-│   ├── compose/                   #   node-exporter + verify (run via `docker --context gcp`)
+│   ├── compose/                   #   node-exporter + glances + plans (run via `docker --context gcp`)
 │   └── tofu/                      # OpenTofu greenfield lifecycle practice
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
 │   ├── compose/                   #   node-exporter, glances, portainer-agent, dify (run via `docker --context oracle2`)
@@ -133,7 +132,7 @@ Three other rule files: k3s/ArgoCD change discipline is in [`.claude/rules/k3s-g
 | Host | Description | Details |
 |---|---|---|
 | vps_oracle | Oracle Cloud VPS | [vps_oracle/README.md](vps_oracle/README.md) |
-| vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + `compose/` (node-exporter, glances, a `verify/` smoke test) + `inspector-checks/`, reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
+| vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + `compose/` (node-exporter, glances, the private `plans` web app) + `inspector-checks/`, reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
 | vps_oracle2 | second OCI tenancy, Always Free A1.Flex (managed: `tofu/`, `compose/` incl. dify, `inspector-checks/`; reachable over tailscale only) | [vps_oracle2/README.md](vps_oracle2/README.md) |
 
 Other background/history material (incident records, design archives, etc., not required daily reading) is in [`docs/README.md`](docs/README.md).
