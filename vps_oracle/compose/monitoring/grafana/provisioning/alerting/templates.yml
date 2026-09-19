@@ -11,7 +11,8 @@ templates:
       ✅🟢 RESOLVED
       {{ end }}
       {{ range .Alerts }}
-      {{ .Annotations.summary }}
+      {{ if match "^vps-" .Labels.instance }}🖥 <b>{{ .Labels.instance }}</b>
+      {{ end }}{{ .Annotations.summary }}
       <a href="{{ .GeneratorURL }}">Source</a>{{ if .SilenceURL }} · <a href="{{ .SilenceURL }}">Silence</a>{{ end }}
       {{ end }}
       {{ end }}
