@@ -194,7 +194,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Load average (5m) above 1.0 per core for 15 minutes on {{ $labels.instance }}"
+          summary: "Load average (5m) above 1.5 per core for 15 minutes on {{ $labels.instance }}"
         data:
           - refId: A
             datasourceUid: prometheus
@@ -214,7 +214,7 @@ groups:
               conditions:
                 - evaluator:
                     type: gt
-                    params: [1]
+                    params: [1.5]
 
       - uid: load_critical
         title: Load Average Critical
