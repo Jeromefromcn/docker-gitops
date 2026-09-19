@@ -30,6 +30,8 @@ PORT_EXCEPTIONS = {
     ("portainer-agent", "portainer-agent"): "bound to gcp's/oracle2's tailscale IP only; oracle's "
         "portainer server connects to it over the tailscale mesh (cross-host, no shared "
         "docker `proxy` network is possible)",
+    ("glances", "glances"): "bound to oracle2's tailscale IP only; homepage on oracle polls it "
+        "over the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
 }
 
 # Environment values that look like credentials but aren't. Each entry needs
