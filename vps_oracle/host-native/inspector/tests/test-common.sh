@@ -91,6 +91,34 @@ echo "== verify_pid_identity: must fail once the pid is gone =="
 assert_true "identity check fails for a terminated pid" \
   "$(verify_pid_identity "$gen1" "$identity" && echo false || echo true)"
 
+echo "== human_bytes =="
+assert_true "bytes under 1 KiB stay in B" \
+  "$([ "$(human_bytes 512)" = "512 B" ] && echo true || echo false)"
+assert_true "kibibytes get one decimal" \
+  "$([ "$(human_bytes 2048)" = "2.0 KiB" ] && echo true || echo false)"
+assert_true "60000000 reads as MiB" \
+  "$([ "$(human_bytes 60000000)" = "57.2 MiB" ] && echo true || echo false)"
+assert_true "gibibyte-scale sizes read as GiB" \
+  "$([ "$(human_bytes 3221225472)" = "3.0 GiB" ] && echo true || echo false)"
+assert_true "zero is 0 B, not empty" \
+  "$([ "$(human_bytes 0)" = "0 B" ] && echo true || echo false)"
+
+echo "== human_duration =="
+assert_true "sub-minute stays in seconds" \
+  "$([ "$(human_duration 45)" = "45s" ] && echo true || echo false)"
+assert_true "minutes carry the remaining seconds" \
+  "$([ "$(human_duration 905)" = "15m 5s" ] && echo true || echo false)"
+assert_true "whole minutes drop the seconds part" \
+  "$([ "$(human_duration 900)" = "15m" ] && echo true || echo false)"
+assert_true "hours carry the remaining minutes" \
+  "$([ "$(human_duration 7800)" = "2h 10m" ] && echo true || echo false)"
+assert_true "days carry the remaining hours" \
+  "$([ "$(human_duration 604800)" = "7d" ] && echo true || echo false)"
+assert_true "days with a remainder show hours too" \
+  "$([ "$(human_duration 610000)" = "7d 1h" ] && echo true || echo false)"
+assert_true "zero is 0s, not empty" \
+  "$([ "$(human_duration 0)" = "0s" ] && echo true || echo false)"
+
 rm -f "$chain_file"
 kill -KILL "$victim" 2>/dev/null || true
 wait 2>/dev/null || true

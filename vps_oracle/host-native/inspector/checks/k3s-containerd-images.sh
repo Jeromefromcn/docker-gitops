@@ -57,7 +57,7 @@ done < <(jq -c '.images[]' <<<"$images_json")
 
 [ "$count" -gt 0 ] || exit 0
 
-detail="${count} images not referenced by any container (incl. exited), total ${total_size} bytes — no age filter: CRI exposes no image creation time; kubelet image GC is the age-aware mechanism"
+detail="${count} images not referenced by any container (incl. exited), total $(human_bytes "$total_size") — no age filter: CRI exposes no image creation time; kubelet image GC is the age-aware mechanism"
 
 if [ "${INSPECTOR_DRY_RUN:-0}" = "1" ]; then
   emit_result "auto" "would-delete" "containerd unused images x${count}" "$detail"

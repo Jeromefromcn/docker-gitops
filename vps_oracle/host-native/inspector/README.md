@@ -7,6 +7,8 @@ Host-level inspection script, not managed by docker compose (like `vps_oracle/ho
 
 **Report layout**: one logical inspection, grouped by instance (`vps_oracle` for `checks/`, `<host>` for `<host>/inspector-checks/`); it never says which machine ran the scripts. Every instance always gets a header — `✅ … all clear`, `✅ … N auto-handled` or `⚠️ … N need review` — so a healthy run visibly covers remote hosts too, and any auto/alert lines sit under their instance's header. The test-only override `INSPECTOR_REPO_ROOT` points the remote-check glob at a fake tree.
 
+**Sizes and ages in detail lines**: a check never prints a raw byte count or a raw second count — `human_bytes` / `human_duration` in `lib/common.sh` turn them into `57.2 MiB` and `7d 1h` (two units at most). Both are covered by `tests/test-common.sh`; use them for any new size/age a check reports.
+
 ```
 🔍 Inspection report · 2026-09-19 21:00
 

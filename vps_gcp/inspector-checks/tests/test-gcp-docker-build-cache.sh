@@ -34,6 +34,8 @@ assert_true "would-delete line mentions current total 1.2GB" \
   "$(grep -q 'would-delete' <<<"$out" && grep -q '1.2GB' <<<"$out" && echo true || echo false)"
 assert_true "would-run line contains the until filter" \
   "$(grep -q "until=604800s" <<<"$out" && echo true || echo false)"
+assert_true "would-run line states the age in human form" \
+  "$(grep -q "older than 7d" <<<"$out" && echo true || echo false)"
 assert_true "would-run line carries --all" \
   "$(grep -q -- '--all' <<<"$out" && echo true || echo false)"
 assert_true "dry run issued no docker builder prune" \

@@ -36,12 +36,12 @@ for row in "${rows[@]}"; do
 
   if [ "${INSPECTOR_DRY_RUN:-0}" = "1" ]; then
     emit_result "auto" "would-delete" "docker container ${name:-$id}" \
-      "exited ${age}s ago (threshold ${MAX_AGE_SECONDS}s)"
+      "exited $(human_duration "$age") ago (threshold $(human_duration "$MAX_AGE_SECONDS"))"
   elif docker rm "$id" >/dev/null 2>&1; then
     emit_result "auto" "deleted" "docker container ${name:-$id}" \
-      "exited ${age}s ago (threshold ${MAX_AGE_SECONDS}s)"
+      "exited $(human_duration "$age") ago (threshold $(human_duration "$MAX_AGE_SECONDS"))"
   else
     emit_result "alert" "flagged" "docker container ${name:-$id}" \
-      "docker rm failed (exited ${age}s ago) — manual investigation needed"
+      "docker rm failed (exited $(human_duration "$age") ago) — manual investigation needed"
   fi
 done

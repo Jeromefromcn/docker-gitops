@@ -35,5 +35,5 @@ while read -r line; do
   age=$((now_epoch - dt_epoch))
   [ "$age" -ge "$THRESHOLD_SECONDS" ] || continue
   emit_result "alert" "flagged" "pod $ns/$name" \
-    "Terminating for ${age}s (threshold ${THRESHOLD_SECONDS}s) — likely stuck finalizer, manual review needed"
+    "Terminating for $(human_duration "$age") (threshold $(human_duration "$THRESHOLD_SECONDS")) — likely stuck finalizer, manual review needed"
 done < <(jq -c '.items[] | select(.metadata.deletionTimestamp != null) | {ns: .metadata.namespace, name: .metadata.name, dt: .metadata.deletionTimestamp}' <<<"$pods_json")

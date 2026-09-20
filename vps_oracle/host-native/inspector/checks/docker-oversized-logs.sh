@@ -38,5 +38,5 @@ while read -r size path; do
   [ "$size" -gt "$THRESHOLD_BYTES" ] || continue
   cid="$(basename "$(dirname "$path")")"   # .../containers/<id>/<id>-json.log
   emit_result "alert" "flagged" "docker container ${id_to_name[$cid]:-$cid}" \
-    "json log file is ${size} bytes, over ${THRESHOLD_BYTES} threshold — logging limits possibly not effective: $path"
+    "json log file is $(human_bytes "$size"), over the $(human_bytes "$THRESHOLD_BYTES") threshold — logging limits possibly not effective: $path"
 done < <(sudo -n find /var/lib/docker/containers -name '*-json.log' -printf '%s %p\n' 2>/dev/null)

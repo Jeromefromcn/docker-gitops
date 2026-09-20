@@ -161,6 +161,37 @@ kill_tree() {
   return 0
 }
 
+# ---- human-readable formatting ----
+# Report text is read by a human on Telegram, so every size and age in a
+# detail string goes through one of these two. Raw byte counts and raw
+# second counts never reach the report.
+
+# human_bytes <bytes> -> "512 B" / "57.2 MiB" / "3.0 GiB" (base 1024).
+human_bytes() {
+  awk -v b="$1" 'BEGIN {
+    split("B KiB MiB GiB TiB PiB", unit, " ")
+    i = 1
+    while (b >= 1024 && i < 6) { b /= 1024; i++ }
+    if (i == 1) printf "%d %s", b, unit[i]
+    else printf "%.1f %s", b, unit[i]
+  }'
+}
+
+# human_duration <seconds> -> "45s" / "15m 5s" / "2h 10m" / "7d 1h".
+# Two units at most: the report wants a sense of scale, not precision.
+human_duration() {
+  awk -v s="$1" 'BEGIN {
+    s = int(s); if (s < 0) s = 0
+    d = int(s / 86400); s -= d * 86400
+    h = int(s / 3600);  s -= h * 3600
+    m = int(s / 60);    s -= m * 60
+    if (d > 0)      printf "%dd%s", d, (h ? sprintf(" %dh", h) : "")
+    else if (h > 0) printf "%dh%s", h, (m ? sprintf(" %dm", m) : "")
+    else if (m > 0) printf "%dm%s", m, (s ? sprintf(" %ds", s) : "")
+    else            printf "%ds", s
+  }'
+}
+
 # ---- output + notification ----
 
 # Prints one structured result line to stdout. inspect.sh collects

@@ -90,7 +90,7 @@ check_claude_sessions() {
       case "$kill_status" in
         0)
           emit_result "auto" "$(kill_verb)" "claude PID $pid" \
-            "session $session_id (cwd=$cwd) finished ${age}s ago, still alive past ${STRAY_SESSION_IDLE_SECONDS}s threshold"
+            "session $session_id (cwd=$cwd) finished $(human_duration "$age") ago, still alive past the $(human_duration "$STRAY_SESSION_IDLE_SECONDS") threshold"
           ;;
         2)
           # Self-chain overlap: kill_tree aborted the whole batch per the
@@ -115,11 +115,11 @@ check_claude_sessions() {
       if [ "$pending" = "true" ] && [ "$proc_state" = "S" ]; then
         if [ "$age" -ge "$STUCK_SESSION_PENDING_SECONDS" ]; then
           emit_result "alert" "flagged" "claude PID $pid" \
-            "session $session_id (cwd=$cwd) has an unanswered tool_use/permission prompt and has been idle ${age}s -- likely a dangling question, not just a long task"
+            "session $session_id (cwd=$cwd) has an unanswered tool_use/permission prompt and has been idle $(human_duration "$age") -- likely a dangling question, not just a long task"
         fi
       elif [ "$age" -ge "$STUCK_SESSION_ALERT_SECONDS" ]; then
         emit_result "alert" "flagged" "claude PID $pid" \
-          "session $session_id (cwd=$cwd) alive ${age}s with no transcript result yet -- may be a long task or stuck"
+          "session $session_id (cwd=$cwd) alive $(human_duration "$age") with no transcript result yet -- may be a long task or stuck"
       fi
     fi
   done
@@ -183,7 +183,7 @@ check_orphaned_server_trees() {
     case "$kill_status" in
       0)
         emit_result "auto" "$(kill_verb)" "server-main PID $root_pid" \
-          "orphaned (ppid=1), no CPU activity across ${descendant_count} processes for ${idle_seconds}s"
+          "orphaned (ppid=1), no CPU activity across ${descendant_count} processes for $(human_duration "$idle_seconds")"
         # killed (or would-kill in dry-run) -- drop from state; a real kill
         # needs it gone, a dry-run just re-derives the same idle_seconds
         # next run since nothing was actually touched.

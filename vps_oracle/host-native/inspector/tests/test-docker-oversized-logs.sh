@@ -41,7 +41,7 @@ out="$(PATH="$bin_dir:$PATH" "$check")"
 assert_true "alert names chatty-app, not the hash" \
   "$(grep -q '"target":"docker container chatty-app"' <<<"$out" && echo true || echo false)"
 assert_true "alert carries the actual size" \
-  "$(grep -q '60000000 bytes' <<<"$out" && echo true || echo false)"
+  "$(grep -q '57.2 MiB' <<<"$out" && echo true || echo false)"
 assert_true "quiet-app (2MB) is not flagged" \
   "$(grep -q 'quiet-app' <<<"$out" && echo false || echo true)"
 assert_true "exactly one alert line" \

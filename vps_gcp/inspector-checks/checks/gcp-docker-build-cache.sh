@@ -30,7 +30,7 @@ total="$(docker builder du 2>/dev/null | awk '/^Total:/ {print $2}')"
 
 if [ "${INSPECTOR_DRY_RUN:-0}" = "1" ]; then
   emit_result "auto" "would-delete" "docker build cache" \
-    "would run: docker builder prune -f --all --filter until=${MAX_AGE_SECONDS}s (current total ${total})"
+    "would prune cache records older than $(human_duration "$MAX_AGE_SECONDS") (current total ${total}) — runs: docker builder prune -f --all --filter until=${MAX_AGE_SECONDS}s"
 elif output="$(docker builder prune -f --all --filter "until=${MAX_AGE_SECONDS}s" 2>/dev/null)"; then
   # Older docker CLIs print a "Total reclaimed space: <size>" summary
   # line; newer ones (confirmed on 29.6.0) print a du-style table
@@ -47,7 +47,7 @@ elif output="$(docker builder prune -f --all --filter "until=${MAX_AGE_SECONDS}s
   # action for a no-op run.
   [ -n "$reclaimed" ] && [ "$reclaimed" != "0B" ] || exit 0
   emit_result "auto" "deleted" "docker build cache" \
-    "pruned cache records older than ${MAX_AGE_SECONDS}s, reclaimed ${reclaimed} of ${total}"
+    "pruned cache records older than $(human_duration "$MAX_AGE_SECONDS"), reclaimed ${reclaimed} of ${total}"
 else
   emit_result "alert" "flagged" "docker build cache" \
     "docker builder prune failed — manual investigation needed (total was ${total})"

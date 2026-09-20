@@ -32,12 +32,12 @@ for id in "${ids[@]}"; do
 
   if [ "${INSPECTOR_DRY_RUN:-0}" = "1" ]; then
     emit_result "auto" "would-delete" "docker image $id" \
-      "dangling, created ${age}s ago (threshold ${MAX_AGE_SECONDS}s)"
+      "dangling, created $(human_duration "$age") ago (threshold $(human_duration "$MAX_AGE_SECONDS"))"
   elif docker rmi "$id" >/dev/null 2>&1; then
     emit_result "auto" "deleted" "docker image $id" \
-      "dangling, created ${age}s ago (threshold ${MAX_AGE_SECONDS}s)"
+      "dangling, created $(human_duration "$age") ago (threshold $(human_duration "$MAX_AGE_SECONDS"))"
   else
     emit_result "alert" "flagged" "docker image $id" \
-      "docker rmi failed (dangling, created ${age}s ago) — manual investigation needed"
+      "docker rmi failed (dangling, created $(human_duration "$age") ago) — manual investigation needed"
   fi
 done

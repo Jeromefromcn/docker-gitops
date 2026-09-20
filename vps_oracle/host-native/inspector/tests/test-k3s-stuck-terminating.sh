@@ -41,7 +41,7 @@ out="$(env "${env_common[@]}" "$check" 2>/dev/null)"
 assert_true "flags pr-lanes/stuck-pod" \
   "$(grep -q '"target":"pod pr-lanes/stuck-pod"' <<<"$out" && echo true || echo false)"
 assert_true "detail names the threshold it crossed" \
-  "$(grep -q 'threshold 900s' <<<"$out" && echo true || echo false)"
+  "$(grep -q 'threshold 15m' <<<"$out" && echo true || echo false)"
 assert_true "pod terminating for only 60s not flagged" \
   "$(grep -q 'just-deleted' <<<"$out" && echo false || echo true)"
 assert_true "pod without deletionTimestamp not flagged" \

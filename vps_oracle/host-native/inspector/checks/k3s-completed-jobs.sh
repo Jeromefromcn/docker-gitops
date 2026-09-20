@@ -41,12 +41,12 @@ while read -r line; do
 
   if [ "${INSPECTOR_DRY_RUN:-0}" = "1" ]; then
     emit_result "auto" "would-delete" "job $ns/$name" \
-      "completed ${age}s ago (threshold ${MAX_AGE_SECONDS}s)"
+      "completed $(human_duration "$age") ago (threshold $(human_duration "$MAX_AGE_SECONDS"))"
   elif kc delete job -n "$ns" "$name" >/dev/null 2>&1; then
     emit_result "auto" "deleted" "job $ns/$name" \
-      "completed ${age}s ago (threshold ${MAX_AGE_SECONDS}s)"
+      "completed $(human_duration "$age") ago (threshold $(human_duration "$MAX_AGE_SECONDS"))"
   else
     emit_result "alert" "flagged" "job $ns/$name" \
-      "kubectl delete failed (completed ${age}s ago) — manual investigation needed"
+      "kubectl delete failed (completed $(human_duration "$age") ago) — manual investigation needed"
   fi
 done < <(jq -c '.items[] | select(.status.completionTime != null) | {ns: .metadata.namespace, name: .metadata.name, ct: .status.completionTime}' <<<"$jobs_json")

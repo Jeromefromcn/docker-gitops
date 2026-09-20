@@ -45,7 +45,7 @@ while read -r line; do
   [ "$age" -ge 0 ] && [ "$age" -le "$LOOKBACK_SECONDS" ] || continue
 
   emit_result "alert" "flagged" "pod $ns/$pod container $container" \
-    "OOMKilled ${age}s ago (restartCount=${restart_count}) — container's memory limit was hit, review resources.limits.memory or the workload"
+    "OOMKilled $(human_duration "$age") ago (restartCount=${restart_count}) — container's memory limit was hit, review resources.limits.memory or the workload"
 done < <(jq -c '
   .items[] | .metadata.namespace as $ns | .metadata.name as $pod |
   (.status.containerStatuses // [])[] |

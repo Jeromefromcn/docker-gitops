@@ -40,7 +40,7 @@ out="$(PATH="$bin_dir:$PATH" INSPECTOR_DRY_RUN=1 "$check")"
 assert_true "would-delete summary says x1" \
   "$(grep -q '"target":"containerd unused images x1"' <<<"$out" && echo true || echo false)"
 assert_true "detail carries the summed size of only the unreferenced image" \
-  "$(grep -q 'total 200 bytes' <<<"$out" && echo true || echo false)"
+  "$(grep -q "total 200 B" <<<"$out" && echo true || echo false)"
 assert_true "dry run issued no crictl rmi" \
   "$([ ! -f "$bin_dir/calls.log" ] && echo true || echo false)"
 

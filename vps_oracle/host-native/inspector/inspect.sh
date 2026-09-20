@@ -61,7 +61,14 @@ for check in "$CHECKS_DIR"/*.sh "$REPO_ROOT"/*/inspector-checks/checks/*.sh; do
   fi
 done
 
-elapsed="$(awk -v s="$start_epoch" -v n="$(date +%s.%N)" 'BEGIN{printf "%.1f", n-s}')"
+elapsed_seconds="$(awk -v s="$start_epoch" -v n="$(date +%s.%N)" 'BEGIN{printf "%.1f", n-s}')"
+# Sub-minute runs (the normal case) read better with the decimal kept;
+# anything longer goes through the same formatter as the check details.
+if awk -v e="$elapsed_seconds" 'BEGIN{exit !(e < 60)}'; then
+  elapsed="${elapsed_seconds}s"
+else
+  elapsed="$(human_duration "$elapsed_seconds")"
+fi
 
 # Builds the HTML report body: one block per inspected instance. Each block
 # has a status header (all clear / N auto-handled / N need review) and, only
@@ -103,7 +110,7 @@ build_report() {
     [ -n "$alert_lines" ] && body+="   Needs manual review"$'\n'"${alert_lines}"
   done
 
-  printf '%s\nRun took %ss' "$body" "$elapsed"
+  printf '%s\nRun took %s' "$body" "$elapsed"
 }
 
 report_body="$(build_report)"
