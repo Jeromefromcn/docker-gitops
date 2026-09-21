@@ -32,7 +32,7 @@ Continuing the roadmap's explicit requirement for Phase J: misconfiguring the au
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
     fe["hello-frontend\n(SA: hello-frontend-sa)"] -->|"mTLS identity:\nhello-frontend-sa"| waypoint["waypoint\n(SA: waypoint, existing)"]
     deny1["Other callers"]
     deny2["Direct-connect sources\n(e.g. a stray debug pod)"]

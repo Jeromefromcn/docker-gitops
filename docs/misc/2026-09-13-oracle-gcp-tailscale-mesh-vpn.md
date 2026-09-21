@@ -99,7 +99,7 @@ Right after creation, `https://gcp-verify.dev.jerome.cloudns.asia/` returned `HT
 ## 6. Final verified state
 
 ```mermaid
-flowchart LR
+flowchart TD
     Browser["Browser / curl<br/>https://gcp-verify.dev.jerome.cloudns.asia"]
 
     subgraph oracle["vps_oracle (arm64, OCI)"]

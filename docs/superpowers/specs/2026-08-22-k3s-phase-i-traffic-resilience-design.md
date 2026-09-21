@@ -31,7 +31,7 @@ Continuing the three items listed in the roadmap itself:
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph client["Client requests"]
         normal["Normal requests"]
         faulty["Requests carrying x-fault-test"]

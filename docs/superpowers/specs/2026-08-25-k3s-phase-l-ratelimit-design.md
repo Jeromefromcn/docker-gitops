@@ -42,7 +42,7 @@ One important verification by-product: the EnvoyFilter path is actually **not co
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
     fe["hello-frontend"] -->|"via waypoint's hello-backend Service"| waypoint["waypoint\n(Envoy, 200m/256Mi)"]
     waypoint --> filters{"TrafficExtension Lua (STATS)\nJ: AuthorizationPolicy (AUTHZ)\nK: Telemetry tracing\n— verified: RBAC before Lua (see note below)"}
     filters -->|"Lua not over limit"| route["per Phase I routing\n→ backend / canary / pr-N"]

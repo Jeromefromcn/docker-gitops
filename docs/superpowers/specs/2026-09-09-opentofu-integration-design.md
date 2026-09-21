@@ -43,7 +43,7 @@ A necessary clarification, because it directly determines the security model.
 OpenTofu itself does not understand any cloud at all. It is only an engine: reads `.tf` → compares desired state against the state file → computes the diff → hands it to a provider to execute. What actually speaks OCI is the **provider**, a separate binary plugin that tofu talks to over gRPC.
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[".tf files<br/>desired state"] --> B["OpenTofu core<br/>computes diff"]
     S[("state file<br/>known current state")] --> B
     B -->|gRPC| C["oracle/oci provider<br/>(maintained by Oracle officially)"]
