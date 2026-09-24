@@ -36,13 +36,11 @@ services:
     # registered in the README "network isolation" section, and it acts as this container's
     # only egress (default route, see the networks.default note at the end of this file).
     # No NPM and no proxy host record: other containers on the proxy network can reach it
-    # directly but the public internet cannot. headlamp inside k3s reaches this IP through
-    # the k3s apiserver's built-in service proxy (the apiserver is a host process, so it
-    # can already reach the docker bridge directly, see
-    # vps_oracle/k3s/apps/headlamp/k8s/external-prometheus.yaml) — over there a hostNetwork
-    # socat relay pod forwards 9090 to this IP, and the IP is hardcoded into the socat
-    # args, so it must be pinned here; if the container rebuilds and the IP drifts, that
-    # k3s manifest has to be updated to match
+    # directly but the public internet cannot. The fixed IP originally existed for
+    # headlamp's hostNetwork socat relay in k3s, removed 2026-09-24 (PSS baseline would
+    # refuse to recreate it, and this Prometheus has no container_*/kube_* metrics for
+    # headlamp's charts anyway). Nothing depends on the IP now; it is kept only as a
+    # stable host-side address for ad-hoc `curl http://172.19.0.4:9090/...` debugging.
 
   node-exporter:
     image: prom/node-exporter@sha256:c9ef89f9464f09e7234decaae68a80ab856ff0014435677a99fd48b03dd410ea  # v1.12.1
