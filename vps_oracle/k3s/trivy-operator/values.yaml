@@ -1,8 +1,11 @@
 # lab-environment is not scanned (2026-09-24): five of its images are
-# local-only ops-lab/* builds with no registry, so their scan Jobs always fail
-# after downloading the DB anyway, and the namespace is outside every Kyverno
-# policy that consumes VulnerabilityReports.
-excludeNamespaces: "lab-environment"
+# local-only ops-lab/* builds with no registry, so their scan Jobs always fail,
+# and the namespace is outside every Kyverno policy that consumes
+# VulnerabilityReports. Done with the `trivy-operator.skip` label on each lab
+# Deployment's pod template (which the ReplicaSet — the object actually
+# scanned — inherits), NOT `excludeNamespaces`: tried first, the operator logs
+# the exclusion but in 0.33.0 still rescans the namespace's ReplicaSets
+# (verified: deleted a lab report, it was regenerated within 60s).
 
 operator:
   # scanJobsConcurrentLimit must live under operator: -- it was previously set
