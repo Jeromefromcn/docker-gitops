@@ -23,4 +23,4 @@ An OAuth client created under admin console **Settings → Trust credentials**, 
 | `tag:oracle2` | vps-oracle2 |
 | `tag:gcp-lab` | vps-gcp |
 
-`oracle-hub` may reach the other two on any port; neither may initiate anything back. Never add another host to `tag:oracle-hub` — it would inherit that reach.
+`oracle-hub` may reach the other two on any port. `gcp-lab` may initiate nothing. `oracle2` may initiate only the k3s node ports toward `oracle-hub` (tcp 6443, udp 8472, tcp 4240, icmp) because it is an agent node of the k3s cluster whose server runs on vps_oracle — nothing else, and nothing toward `gcp-lab`. The `tests` block in the policy asserts exactly this, so CI fails if an edit widens it. Never add another host to `tag:oracle-hub` — it would inherit full reach.
