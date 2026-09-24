@@ -22,6 +22,15 @@ operator:
   # findings it can actually see, so an expired report never blocks a
   # deploy (fail-open).
   scannerReportTTL: "72h"
+  # Off (2026-09-24). The node-collector it runs has never produced a check on
+  # this cluster: it reads the kubeadm layout (/etc/kubernetes, /var/lib/etcd,
+  # /var/lib/kube-scheduler...), while k3s keeps everything under
+  # /var/lib/rancher/k3s — the only report it ever wrote (2026-08-15) has 0
+  # checks. Since that evening it can't even start: trivy-system enforces PSS
+  # baseline, which rejects its hostPID + hostPath pod, so every node just
+  # accumulates a forever-failing Job. For a CIS baseline on k3s, run
+  # kube-bench with its k3s profile by hand instead.
+  infraAssessmentScannerEnabled: false
 
 trivyOperator:
   # Lets a workload opt out of scanning by carrying this label key.
