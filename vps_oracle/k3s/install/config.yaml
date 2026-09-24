@@ -5,3 +5,12 @@ flannel-backend: none
 disable-network-policy: true
 disable-kube-proxy: true
 write-kubeconfig-mode: "0600"
+# Multi-node: vps-oracle2 (separate OCI tenancy, cannot reach this host's VCN
+# address 10.0.0.95) joins as an agent over tailscale, so the node address the
+# cluster advertises — kubelet InternalIP, apiserver endpoint, Cilium VXLAN
+# tunnel endpoint — must be the tailscale IP. 10.0.0.95 stays valid for NodePorts
+# (Cilium KPR still binds enp0s6), so NPM/prometheus targets are unchanged.
+node-ip: 100.84.203.73
+advertise-address: 100.84.203.73
+tls-san:
+  - 100.84.203.73
