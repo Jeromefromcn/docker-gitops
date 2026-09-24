@@ -1,0 +1,59 @@
+# Static local PersistentVolumes on vps-oracle2 for lab-environment's two
+# stateful claims (postgres.yaml, consul.yaml bind to these by volumeName).
+#
+# Not local-path (dynamic): its provisioner creates each PV directory through
+# a helper pod that carries no tolerations, so it can never schedule onto the
+# tainted vps-oracle2 node and a claim there would stay Pending forever. A
+# static `local` PV needs no helper pod — the directory is created (and was
+# seeded, 2026-09-24, from the old local-path PVs on vps_oracle) over SSH:
+#   ssh vps-oracle2 'sudo mkdir -p /var/lib/lab-environment/<name>'
+# Retain, not Delete: removing the claim or this file never deletes the data.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: lab-environment-postgres
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: lab-environment
+    name: postgres
+  local:
+    path: /var/lib/lab-environment/postgres
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - vps-oracle2
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: lab-environment-consul-data
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: lab-environment
+    name: consul-data
+  local:
+    path: /var/lib/lab-environment/consul-data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - vps-oracle2

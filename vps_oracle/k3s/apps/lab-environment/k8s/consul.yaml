@@ -79,6 +79,9 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  # Static PV on vps-oracle2, see pv.yaml.
+  storageClassName: ""
+  volumeName: lab-environment-consul-data
   resources:
     requests:
       storage: 1Gi

@@ -6,7 +6,9 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: local-path
+  # Static PV on vps-oracle2, see pv.yaml.
+  storageClassName: ""
+  volumeName: lab-environment-postgres
   resources:
     requests:
       storage: 2Gi
