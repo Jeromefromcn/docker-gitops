@@ -37,6 +37,18 @@ operator:
   # accumulates a forever-failing Job. For a CIS baseline on k3s, run
   # kube-bench with its k3s profile by hand instead.
   infraAssessmentScannerEnabled: false
+  # ClientServer via the chart's built-in trivy-server (2026-09-24). In
+  # Standalone mode every scan Job downloads and unpacks the whole
+  # vulnerability DB into its own emptyDir and throws it away: measured
+  # 1.65 GB written in 39 s for one small image (headlamp), ~42 MB/s. A burst
+  # of new workloads (lab-environment's 14 on 2026-09-24) or the 72h TTL
+  # wave turns that into ~50 MB/s for 10+ minutes, which is what tripped
+  # io_pressure_critical. The server keeps one DB on a PVC and updates it in
+  # place; scan Jobs only send package lists to it. Costs a resident pod
+  # (trivy.server.resources below) — a deliberate trade of ~0.5 GB RAM on
+  # vps_oracle for not rewriting 1.7 GB per scan. Implies trivy.mode:
+  # ClientServer and serverURL http://trivy-service.trivy-system:4954.
+  builtInTrivyServer: true
 
 trivyOperator:
   # Lets a workload opt out of scanning by carrying this label key.
@@ -69,10 +81,14 @@ resources:
     memory: 512Mi
 
 trivy:
-  # Standalone (Job-only) is the chart default -- no persistent trivy-server
-  # cache pod. Left explicit here so the choice is visible in git, not just
-  # implied by omission.
-  mode: Standalone
+  # ClientServer, forced by operator.builtInTrivyServer above (the chart
+  # overrides this anyway; kept explicit so git matches what runs).
+  mode: ClientServer
+  # The server's DB lives on a local-path PVC on vps_oracle (the server pod
+  # has no toleration for vps-oracle2's taint, so it and its volume stay on
+  # the management node).
+  storageClassName: local-path
+  storageSize: "5Gi"
   # This node is arm64-only (Oracle Ampere), but Trivy's own CLI defaults
   # to assuming linux/amd64 and refuses to scan anything else ("By
   # default, only Linux amd64 images are supported for scanning") --
