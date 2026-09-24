@@ -26,12 +26,14 @@ flowchart LR
   end
   subgraph o2[vps-oracle2 · 100.100.140.33]
     DIFY[dify web/api/plugin-daemon]
+    ST[sillytavern :8000]
     NE[node-exporter :9100]
     GL[glances :61208]
     PA[portainer-agent :9001]
     AG[k3s-agent + lab-environment]
   end
   NPM -- tailscale --> DIFY
+  NPM -- tailscale --> ST
   AG -- "tailscale: 6443, 8472/udp, 4240 (only exception)" --> oracle
   PROM -- tailscale --> NE
   HP -- tailscale --> GL
@@ -60,6 +62,7 @@ Bind-mount paths and relative `file:` configs resolve on **oracle2's** filesyste
 | `glances` | feeds the three "oracle2" cards (CPU/Memory/Disk) on vps_oracle's homepage | 61208 |
 | `portainer-agent` | agent endpoint for the portainer on vps_oracle | 9001 |
 | `dify` | self-hosted Dify, moved from vps_oracle on 2026-09-19 | 3000 / 5001 / 5002 |
+| `sillytavern` | SillyTavern LLM roleplay frontend — no LLM backend: the model API is configured from its UI | 8000 |
 
 ## Monitoring
 

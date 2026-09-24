@@ -1,0 +1,72 @@
+# SillyTavern 1.19.0 — LLM roleplay frontend, running on vps_oracle2.
+#
+# Deliberately has **no LLM backend**: the API it talks to (OpenRouter,
+# Featherless, ...) is configured entirely from the UI, and the keys live in
+# /etc/sillytavern/data on oracle2, not in this repo. See README.md.
+#
+# Exposure follows the dify model (see ../dify/README.md): there is no shared
+# docker `proxy` network between the two hosts, so the port is published bound
+# to oracle2's tailscale IP only, and NPM on vps_oracle forwards to it over the
+# tailscale mesh.
+#
+# Configuration is injected as environment variables instead of a committed
+# config.yaml: `getConfigValue()` in src/util.js checks `SILLYTAVERN_<KEY>`
+# (upper-cased, dots -> underscores) before config.yaml, and basicAuthUser.* is
+# read through it (src/users.js, src/middleware/basicAuth.js). That keeps the
+# credentials in .env (gitignored).
+#
+# `whitelistMode` is switched off on purpose. ST's default is
+# `whitelistMode: true` + `enableForwardedWhitelist: true`, and the middleware
+# denies the request when *either* the socket IP *or* the X-Forwarded-For IP is
+# outside the whitelist (src/middleware/whitelist.js). Behind NPM the forwarded
+# IP is the browser's public address, which can never be in ST's static
+# whitelist — every request would get a 403. With whitelistMode off, access
+# control rests on basicAuthMode below (which also disables ST's no-auth
+# auto-login, src/users.js) plus NPM's access list.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  sillytavern:
+    image: ghcr.io/sillytavern/sillytavern:1.19.0@sha256:eef27ff0c7961f1a2f488400f581f48ff38f8b910c5d3b8d389138d71791bb14
+    container_name: sillytavern
+    hostname: sillytavern
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    # Bound to this host's tailscale IP only: NPM on vps_oracle forwards to it
+    # over the mesh. 8000 is ST's default port (EXPOSE 8000 in its Dockerfile).
+    ports:
+      - "100.100.140.33:8000:8000"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      NODE_ENV: production
+      # The entrypoint starts as root only to chown the mounted directories,
+      # then runs the server as this uid/gid via su-exec (see the "Mode
+      # Selection" block in docker/docker-entrypoint.sh). 1001 is this host's
+      # `ubuntu` user — uid 1000 here is `opc`, the OCI cloud account.
+      PUID: "1001"
+      PGID: "1001"
+      SILLYTAVERN_BASICAUTHMODE: "true"
+      SILLYTAVERN_WHITELISTMODE: "false"
+      SILLYTAVERN_BASICAUTHUSER_USERNAME: "${SILLYTAVERN_USERNAME}"
+      SILLYTAVERN_BASICAUTHUSER_PASSWORD: "${SILLYTAVERN_PASSWORD}"
+      SILLYTAVERN_HEARTBEATINTERVAL: "30"
+    volumes:
+      # Absolute paths on oracle2's filesystem, not relative ones: this stack is
+      # deployed from vps_oracle via `docker --context oracle2`, and a relative
+      # bind mount would resolve on the remote host instead.
+      - /etc/sillytavern/config:/home/node/app/config
+      - /etc/sillytavern/data:/home/node/app/data
+      - /etc/sillytavern/plugins:/home/node/app/plugins
+      - /etc/sillytavern/extensions:/home/node/app/public/scripts/extensions/third-party
+    healthcheck:
+      test: ["CMD", "node", "src/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3

@@ -31,7 +31,7 @@ docker-gitops/
 │   ├── compose/                   #   node-exporter + glances + plans (run via `docker --context gcp`)
 │   └── tofu/                      # OpenTofu greenfield lifecycle practice
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
-│   ├── compose/                   #   node-exporter, glances, portainer-agent, dify (run via `docker --context oracle2`)
+│   ├── compose/                   #   node-exporter, glances, portainer-agent, dify, sillytavern (run via `docker --context oracle2`)
 │   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
 ├── k3s/                           # the k3s cluster spanning hosts (always via ArgoCD GitOps): server on vps_oracle, vps-oracle2 as agent
 ├── tailscale/                     # tailnet ACL policy, applied by GitOps (see tailscale/README.md)
@@ -86,7 +86,7 @@ cd ~/jerome/docker-gitops/<host>/compose/<compose> && docker compose up -d
 
 Mounted volumes in the compose files uniformly use absolute paths (e.g. `/etc/x-ui/...`), so moving the working directory into the repo doesn't affect where the container data lives.
 
-Some compose stacks have their own README (recording stack-specific steps/gotchas) — check for one before entering a directory: [`ccr/README.md`](vps_oracle/compose/ccr/README.md), [`dify/README.md`](vps_oracle2/compose/dify/README.md) (runs on vps_oracle2), [`npm/README.md`](vps_oracle/compose/npm/README.md), [`postgres/README.md`](vps_oracle/compose/postgres/README.md), [`redis/README.md`](vps_oracle/compose/redis/README.md), [`switchboard/README.md`](vps_oracle/compose/switchboard/README.md).
+Some compose stacks have their own README (recording stack-specific steps/gotchas) — check for one before entering a directory: [`ccr/README.md`](vps_oracle/compose/ccr/README.md), [`dify/README.md`](vps_oracle2/compose/dify/README.md) and [`sillytavern/README.md`](vps_oracle2/compose/sillytavern/README.md) (both run on vps_oracle2), [`npm/README.md`](vps_oracle/compose/npm/README.md), [`postgres/README.md`](vps_oracle/compose/postgres/README.md), [`redis/README.md`](vps_oracle/compose/redis/README.md), [`switchboard/README.md`](vps_oracle/compose/switchboard/README.md).
 
 ## Adding a service
 
@@ -118,6 +118,6 @@ Three other rule files: k3s/ArgoCD change discipline is in [`.claude/rules/k3s-g
 |---|---|---|
 | vps_oracle | Oracle Cloud VPS | [vps_oracle/README.md](vps_oracle/README.md) |
 | vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + `compose/` (node-exporter, glances, the private `plans` web app) + `inspector-checks/`, reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
-| vps_oracle2 | second OCI tenancy, Always Free A1.Flex (managed: `tofu/`, `compose/` incl. dify, `inspector-checks/`; reachable over tailscale only) | [vps_oracle2/README.md](vps_oracle2/README.md) |
+| vps_oracle2 | second OCI tenancy, Always Free A1.Flex (managed: `tofu/`, `compose/` incl. dify + sillytavern, `inspector-checks/`; reachable over tailscale only) | [vps_oracle2/README.md](vps_oracle2/README.md) |
 
 Other background/history material (incident records, design archives, etc., not required daily reading) is in [`docs/README.md`](docs/README.md).

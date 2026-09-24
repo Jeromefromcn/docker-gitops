@@ -36,6 +36,8 @@ PORT_EXCEPTIONS = {
         "the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
     ("dify", "api"): "same as dify/web",
     ("dify", "plugin_daemon"): "same as dify/web",
+    ("sillytavern", "sillytavern"): "bound to oracle2's tailscale IP only; NPM on oracle forwards "
+        "to it over the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
 }
 
 # Environment values that look like credentials but aren't. Each entry needs
