@@ -103,7 +103,7 @@ Originally applied 2026-08-05 scoped to `10.0.0.0/24`; updated 2026-08-06 to `10
 
 ## ArgoCD
 
-Installed via Helm (`argo/argo-cd` chart) into the `argocd` namespace. Dex and the notifications controller are disabled (`argocd/values.yaml`) — no SSO; no alert-routing integration yet. Single replica everywhere, no HA — this is a single-node cluster.
+Installed via Helm (`argo/argo-cd` chart) into the `argocd` namespace. Dex and the notifications controller are disabled (`argocd/values.yaml`) — no SSO; no alert-routing integration yet. Single replica everywhere, no HA — the cluster has one server node (vps_oracle); the vps-oracle2 agent adds capacity, not control-plane redundancy.
 
 The Helm release is bootstrapped once by hand (Install section below), then handed over to ArgoCD itself to self-manage via `argocd/apps/argocd.yaml` — see the "App of apps" section for the full layout.
 
@@ -182,7 +182,7 @@ kubectl get secret <name> -n <namespace> -o json \
 
 Commit the output (safe — it's ciphertext), push, then delete the old bare Secret (`kubectl delete secret <name> -n <namespace>`) so the controller can take ownership without a naming conflict. The `sealed-secrets` Application (`prune: true`/`selfHeal: true`) picks up new files under `k3s/sealed-secrets/secrets/` automatically — inventory of what's currently sealed: [`sealed-secrets/secrets/README.md`](sealed-secrets/secrets/README.md).
 
-**Key backup is the single point of failure.** The controller's signing key (`sealed-secrets-key*` Secret in the `sealed-secrets` namespace) is the only way to decrypt every `SealedSecret` in the repo — this is a single-node cluster with no etcd HA to fall back on. A GPG-encrypted export lives at `/home/ubuntu/secrets-backup/` on the host (outside git, outside the cluster), with a copy meant to live somewhere physically separate from this VPS too. If the key is ever rotated or the controller reinstalled from scratch, redo that backup — don't assume the old one still applies.
+**Key backup is the single point of failure.** The controller's signing key (`sealed-secrets-key*` Secret in the `sealed-secrets` namespace) is the only way to decrypt every `SealedSecret` in the repo — the cluster has a single server node with no etcd HA to fall back on. A GPG-encrypted export lives at `/home/ubuntu/secrets-backup/` on the host (outside git, outside the cluster), with a copy meant to live somewhere physically separate from this VPS too. If the key is ever rotated or the controller reinstalled from scratch, redo that backup — don't assume the old one still applies.
 
 **Gitignore note:** the repo-wide `secrets/` ignore pattern (for compose `.env`-adjacent secrets) would silently swallow `SealedSecret` manifests too, since they also live under a directory named `secrets/`. `.gitignore` has an explicit negation (`!k3s/sealed-secrets/secrets/**`) carving this path back out — don't remove it, and don't assume `git status` showing nothing here means "nothing to commit" without checking `git check-ignore` first if a new sealed-secrets file goes missing from `git add`.
 
@@ -278,7 +278,7 @@ The root README's convention (`TZ: "Asia/Hong_Kong"`) applies here too, but **wh
 
 ## Kyverno / Trivy Operator / PSA baseline
 
-Phase E's admission-control stack: Trivy Operator (`trivy-operator/trivy-operator` chart `0.35.0`, `trivy-system` ns, `Standalone`/Job-only scan mode) generates `VulnerabilityReport` CRDs cluster-wide; Kyverno (`kyverno/kyverno` chart `3.8.2`, `kyverno` ns, **admission-controller only** — `backgroundController`/`reportsController`/`cleanupController` all disabled) enforces three `ClusterPolicy` resources against them (all three started in `Audit` mode; current enforcement status is summarized in "Net effect" below):
+Phase E's admission-control stack: Trivy Operator (`trivy-operator/trivy-operator` chart `0.35.0`, `trivy-system` ns, `ClientServer` scan mode against the built-in `trivy-server` — see "Nodes" above for why it left `Standalone`) generates `VulnerabilityReport` CRDs cluster-wide; Kyverno (`kyverno/kyverno` chart `3.8.2`, `kyverno` ns, **admission-controller only** — `backgroundController`/`reportsController`/`cleanupController` all disabled) enforces three `ClusterPolicy` resources against them (all three started in `Audit` mode; current enforcement status is summarized in "Net effect" below):
 
 - `restrict-image-registry` — Cosign keyless signature verification, scoped to `ghcr.io/jeromefromcn/*` only (`imageReferences`, not `skipImageReferences` — everything else is untouched by default)
 - `require-vuln-scan-clean` — denies Pods with a `VulnerabilityReport` showing a `CRITICAL` vulnerability that **has a fix available** (`fixedVersion != ''`). Originally cluster-wide; narrowed on 2026-08-18 to self-built images only (`app in (hello-frontend, hello-backend)`, same selector pattern as `restricted-self-built`) — see the 2026-08-18 finding below for why. Deliberately does NOT deny on unfixable CRITICALs — blocking those has no resolution path and would just deadlock the workload forever

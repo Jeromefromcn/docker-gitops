@@ -47,24 +47,7 @@ Components that span hosts live at the repo root instead of under a `<host>/`: `
 
 Every VPS in this repo is expected to join the same Tailscale mesh VPN (installed natively on the host, not containerized) so hosts reach each other over private tailscale IPs instead of the public internet — see `docs/misc/2026-09-13-oracle-gcp-tailscale-mesh-vpn.md` for the oracle↔gcp setup this was first built for.
 
-The tailnet ACL lives in the Tailscale admin console (not in this repo) — this is its current state, update it here when it changes. Every node is tagged; `tag:oracle-hub` is the only source and reaches each spoke one-directionally, nothing else can reach the tagged nodes, and a spoke must never be given `tag:oracle-hub` (it would inherit the hub's access to the other spokes):
-
-```jsonc
-{
-	"tagOwners": {
-		"tag:oracle-hub": ["autogroup:admin"],
-		"tag:gcp-lab":    ["autogroup:admin"],
-		"tag:oracle2":    ["autogroup:admin"],
-	},
-	"grants": [
-		{"src": ["tag:oracle-hub"], "dst": ["tag:gcp-lab"], "ip": ["*"]},
-		{"src": ["tag:oracle-hub"], "dst": ["tag:oracle2"], "ip": ["*"]},
-	],
-	"ssh": [
-		{"action": "check", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["autogroup:nonroot", "root"]},
-	],
-}
-```
+The tailnet ACL is GitOps-managed: [`tailscale/policy.hujson`](tailscale/policy.hujson) is applied by CI on push to `main` (see [`tailscale/README.md`](tailscale/README.md)), so edit the file, never the admin console. Every node is tagged. `tag:oracle-hub` (vps_oracle) reaches both spokes (`tag:oracle2`, `tag:gcp-lab`) on all ports; the only traffic a spoke may initiate is vps-oracle2's k3s agent traffic toward the hub (tcp 6443, udp 8472, tcp 4240, icmp). The file's `tests` pin these boundaries, and a spoke must never be given `tag:oracle-hub` (it would inherit the hub's access to the other spokes).
 
 ## host-native (systemd services running directly on the host)
 
@@ -80,7 +63,7 @@ Each subdirectory under `vps_oracle/host-native/` corresponds to a service that 
 
 `k3s/` is a multi-phase project that replicates a cloud-native dev/ops experiment platform on the same machine using K3s — the goal is to migrate compose stacks to k8s **service by service**, keeping the public domain/port unchanged and deciding per-service whether the compose deployment stays or goes, not to replace the whole existing architecture. See the [K3s cloud-native platform roadmap](docs/superpowers/specs/2026-08-05-k3s-cloud-native-platform-roadmap.md) for the full background and the phase breakdown (A cluster foundation → B GitOps bootstrap → C migration template → D remaining services migration → E supply chain security → F multi-environment lanes → G service mesh → H compose decommission assessment), the [service-mesh capability roadmap](docs/superpowers/specs/2026-08-19-k3s-mesh-capabilities-roadmap.md) for the follow-on phases (I traffic resilience → J authorization → K observability → L rate limiting), and [`k3s/README.md`](k3s/README.md) for each phase's install/ops details.
 
-As of now (phases A–E and F+G complete, H not started; the follow-on service-mesh phases I–L complete): the cluster foundation (K3s + Cilium + local-path storage) and the ArgoCD app-of-apps GitOps loop remain on k3s; `homepage`/`trilium`/`dify`/`vikunja`/`apprise`/`llm` (llama-cpp/open-webui) — i.e. every service migrated in phase C+D — were assessed on 2026-08-18 and migrated back to compose (see [migration plan one](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md) and [migration plan two](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration-part2.md)). Four k3s-native namespaces stay on k3s: `lab-environment` and `headlamp` (see their sections below), `pr-lanes` (added in phase F+G and driven by the Istio Ambient service mesh — `hello-frontend`/`hello-backend`, a PR-preview-lane practice environment that replaces the retired `placeholder-hello`; see the "Istio Ambient / PR Lanes" section of [`k3s/README.md`](k3s/README.md) for the mechanism), and `mesh-observability` (added in phase K — Loki + Jaeger + Promtail for PR-lane metrics/logs/tracing, queried through compose's own Grafana/Jaeger). Every other service still runs under `<host>/compose/`; see "Services that will not migrate to k3s" below.
+As of now (phases A–E and F+G complete, H not started; the follow-on service-mesh phases I–L complete): the cluster foundation (K3s + Cilium + local-path storage) and the ArgoCD app-of-apps GitOps loop remain on k3s; `homepage`/`trilium`/`dify`/`vikunja`/`apprise`/`llm` (llama-cpp/open-webui) — i.e. every service migrated in phase C+D — were assessed on 2026-08-18 and migrated back to compose (see [migration plan one](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration.md) and [migration plan two](docs/superpowers/plans/2026-08-18-k3s-to-compose-migration-part2.md)). Four k3s-native namespaces stay on k3s: `lab-environment` (scheduled onto the vps-oracle2 agent node since 2026-09-24) and `headlamp` (see their sections below), `pr-lanes` (added in phase F+G and driven by the Istio Ambient service mesh — `hello-frontend`/`hello-backend`, a PR-preview-lane practice environment that replaces the retired `placeholder-hello`; see the "Istio Ambient / PR Lanes" section of [`k3s/README.md`](k3s/README.md) for the mechanism), and `mesh-observability` (added in phase K — Loki + Jaeger + Promtail for PR-lane metrics/logs/tracing, queried through compose's own Grafana/Jaeger). Every other service still runs under `<host>/compose/`; see "Services that will not migrate to k3s" below.
 
 ### Services that will not migrate to k3s
 

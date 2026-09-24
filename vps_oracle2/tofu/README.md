@@ -68,7 +68,8 @@ at the full 2/12 allotment.
 - **Tailscale mesh**: installed natively, joined with `--advertise-tags=tag:oracle2`
   (tagged nodes have key expiry disabled). Tailnet ACL: `tag:oracle-hub` →
   `tag:oracle2`, one-directional — oracle2 cannot initiate anything toward oracle or
-  gcp. Do **not** put oracle2 in `tag:oracle-hub`: it would inherit oracle-hub's
+  gcp, except the k3s agent ports toward oracle-hub added 2026-09-24 (see
+  `tailscale/policy.hujson`). Do **not** put oracle2 in `tag:oracle-hub`: it would inherit oracle-hub's
   access to gcp-lab.
 - **Firewall**: OCI security list allows only 22/TCP + ICMP (unchanged), the host's
   iptables rejects everything else, and `rpcbind` (111) is disabled. Services are
