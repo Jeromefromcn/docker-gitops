@@ -25,6 +25,12 @@
 // notify is not an error: switchboard's own page-load self-heal is still the
 // backstop, so a save while switchboard is briefly unreachable just means
 // that one save waits for the backstop instead of applying instantly.
+//
+// Write + notify happen only when the exported content actually changed. An
+// earlier version rewrote and notified unconditionally on every poll, and with
+// one poller per node process (plus fs.watch echoes) that hit switchboard's
+// /refresh ~6 times every 30s — each one spawning a status.sh per switch —
+// for a file whose content never changed.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -74,6 +80,14 @@ function writeRoutingFile() {
     );
     return;
   }
+  const body = `${JSON.stringify(data, null, 2)}\n`;
+  let current = null;
+  try {
+    current = fs.readFileSync(OUT_FILE, "utf8");
+  } catch {
+    // missing/unreadable: fall through and (re)write it
+  }
+  if (current === body) return;
   try {
     fs.mkdirSync(OUT_DIR, { recursive: true, mode: 0o755 });
     // Every node process ccr starts runs this same script (loaded via
@@ -82,7 +96,7 @@ function writeRoutingFile() {
     // occasionally renaming a sibling process's half-written tmp file out
     // from under it.
     const tmp = `${OUT_FILE}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, {
+    fs.writeFileSync(tmp, body, {
       mode: 0o644,
     });
     fs.renameSync(tmp, OUT_FILE);
