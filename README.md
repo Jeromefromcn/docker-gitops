@@ -35,9 +35,10 @@ docker-gitops/
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
 │   ├── compose/                   #   node-exporter, glances, portainer-agent, dify (run via `docker --context oracle2`)
 │   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
+├── tailscale/                     # tailnet ACL policy, applied by GitOps (see tailscale/README.md)
 ├── docs/                          # history & design archives: incidents/, misc/, deployment-topology/, superpowers/
 ├── .claude/                       # rules/ + skills/ (loaded automatically), agents/, hooks/
-└── .github/                       # CI: repo-conventions check + image build/sign workflows
+└── .github/                       # CI: repo-conventions check, image build/sign, tailscale ACL apply
 ```
 
 Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `k3s/` (a cluster managed by ArgoCD GitOps — changes go through git push + ArgoCD sync, not manual commands; see `vps_oracle/k3s/README.md`), `tofu/` (OpenTofu IaC — `vps_oracle/tofu/` brownfield adoption of the OCI network, `vps_gcp/tofu/` greenfield lifecycle practice; governed by `.claude/rules/tofu-conventions.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), `host-native/` (explained below), and `inspector-checks/` (checks about that host that the vps_oracle inspector runs remotely over SSH, kept under the host they inspect so alerts are attributable; see `vps_oracle2/inspector-checks/README.md`, `vps_gcp/inspector-checks/README.md`). Each follows its own conventions; see the corresponding subdirectory's README.

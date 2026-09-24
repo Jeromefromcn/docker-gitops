@@ -1,0 +1,48 @@
+name: tailscale-acl
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tailscale/policy.hujson'
+      - '.github/workflows/tailscale-acl.yml'
+  pull_request:
+    paths:
+      - 'tailscale/policy.hujson'
+      - '.github/workflows/tailscale-acl.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# tailscale/policy.hujson is the single source of truth for the tailnet policy.
+# PRs only run the policy's own `tests` against the control server (no change
+# applied); a push to main applies the whole file, overwriting any edit made in
+# the admin console. Auth is an OAuth client scoped to policy_file:write only,
+# stored as repo secrets — fork PRs never receive them.
+jobs:
+  acl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test policy
+        if: github.event_name == 'pull_request'
+        uses: tailscale/gitops-acl-action@5a4a17f5708e9bf96f4ee915a95e9f83c2eebe1a # v1.5.2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tailnet: '-'
+          policy-file: tailscale/policy.hujson
+          action: test
+
+      - name: Apply policy
+        if: github.event_name != 'pull_request'
+        uses: tailscale/gitops-acl-action@5a4a17f5708e9bf96f4ee915a95e9f83c2eebe1a # v1.5.2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tailnet: '-'
+          policy-file: tailscale/policy.hujson
+          action: apply
