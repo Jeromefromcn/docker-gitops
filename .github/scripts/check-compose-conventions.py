@@ -40,10 +40,7 @@ PORT_EXCEPTIONS = {
 
 # Environment values that look like credentials but aren't. Each entry needs
 # a reason; the default is "a secret-shaped key must not hold a literal".
-SECRET_EXCEPTIONS = {
-    ("llm", "open-webui", "OPENAI_API_KEYS"):
-        "placeholder — open-webui requires the var, the local llama-cpp backend ignores it",
-}
+SECRET_EXCEPTIONS = {}
 
 # Real violations that are known and accepted for now. These print as warnings
 # instead of failing the build, so the debt stays visible and greppable rather

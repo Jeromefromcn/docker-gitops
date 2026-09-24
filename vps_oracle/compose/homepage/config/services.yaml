@@ -134,11 +134,6 @@
         href: https://apprise.jerome.cloudns.asia
         description: Notification forwarding
 
-    - Open WebUI:
-        icon: open-webui.png
-        href: https://ollama.jerome.cloudns.asia
-        description: LLM chat (llama.cpp)
-
     - Dify:
         icon: si-dify
         href: https://dify.jerome.cloudns.asia
