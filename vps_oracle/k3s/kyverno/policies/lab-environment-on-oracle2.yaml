@@ -1,0 +1,53 @@
+# Pins every lab-environment pod to vps-oracle2, the tainted agent node
+# (vps_oracle2/k3s-agent/). One namespace-wide policy instead of editing
+# each of lab-environment's 14 Deployments, so a Deployment added later lands
+# there too.
+#
+# Mutates Pods, not Deployments, on purpose: ArgoCD tracks Deployments and
+# would see an injected nodeSelector as drift and selfHeal it away; it never
+# tracks the Pods a ReplicaSet creates.
+#
+# Two rules because one Kyverno rule can't mix patch types:
+# - nodeSelector is a map, so a strategic merge adds the key without touching
+#   anything else.
+# - tolerations is a list with no merge key, where a strategic merge would
+#   REPLACE it — silently dropping the not-ready/unreachable tolerations the
+#   DefaultTolerationSeconds admission plugin already added (it runs before
+#   webhooks, so the list always exists by now). A JSON-patch append keeps
+#   them.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: lab-environment-on-oracle2
+spec:
+  rules:
+    - name: node-selector
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - lab-environment
+      mutate:
+        patchStrategicMerge:
+          spec:
+            nodeSelector:
+              dedicated: lab
+    - name: toleration
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - lab-environment
+      mutate:
+        patchesJson6902: |-
+          - op: add
+            path: /spec/tolerations/-
+            value:
+              key: dedicated
+              operator: Equal
+              value: lab
+              effect: NoSchedule

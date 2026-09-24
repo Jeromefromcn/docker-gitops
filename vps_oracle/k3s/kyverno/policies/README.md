@@ -12,6 +12,11 @@
   (`vikunja-notify-relay` dropped 2026-08-18 — migrated back to compose,
   no longer runs on k3s).
 
-All three are `validationFailureAction: Enforce` (flipped from `Audit` on
+- `lab-environment-on-oracle2.yaml` — **mutate**, not validate: injects
+  `nodeSelector: dedicated=lab` plus the matching toleration into every
+  `lab-environment` Pod, pinning the lab to the tainted vps-oracle2 agent
+  node. Mutates Pods rather than Deployments so ArgoCD never sees drift.
+
+The three validate policies are `validationFailureAction: Enforce` (flipped from `Audit` on
 2026-08-18 — see `vps_oracle/k3s/README.md`'s Kyverno section for the
 cutover details).
