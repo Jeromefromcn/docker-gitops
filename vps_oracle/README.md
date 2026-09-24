@@ -6,6 +6,7 @@ Services running on the Oracle Cloud VPS.
 
 - Domain: `jerome.cloudns.asia` (DDNS, resolves to this machine)
 - Current IP: `161.118.254.107` (the IP changes; go by the DNS result — this just records the last known value)
+- Root filesystem is mounted **without** `discard` (removed from the cloud-image default in `/etc/fstab`); freed blocks are trimmed by the weekly `fstrim.timer` instead. Online discard made bulk deletes saturate the boot volume — see [incident](../docs/incidents/2026-09-24-vps_oracle-online-discard-io-pressure.md). Re-apply on a rebuilt instance.
 
 ## Directory structure
 
