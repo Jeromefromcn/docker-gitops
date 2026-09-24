@@ -1,3 +1,9 @@
+# lab-environment is not scanned (2026-09-24): five of its images are
+# local-only ops-lab/* builds with no registry, so their scan Jobs always fail
+# after downloading the DB anyway, and the namespace is outside every Kyverno
+# policy that consumes VulnerabilityReports.
+excludeNamespaces: "lab-environment"
+
 operator:
   # scanJobsConcurrentLimit must live under operator: -- it was previously set
   # at the top level, which the chart schema doesn't recognize, so it was
