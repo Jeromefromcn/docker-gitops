@@ -15,6 +15,7 @@ spec:
   template:
     metadata:
       labels:
+        trivy-operator.skip: "true"
         app: visits-service
     spec:
       enableServiceLinks: false

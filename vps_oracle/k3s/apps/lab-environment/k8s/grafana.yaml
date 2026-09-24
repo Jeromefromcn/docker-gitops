@@ -15,6 +15,7 @@ spec:
   template:
     metadata:
       labels:
+        trivy-operator.skip: "true"
         app: grafana
     spec:
       enableServiceLinks: false
