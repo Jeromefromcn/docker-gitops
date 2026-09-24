@@ -16,6 +16,14 @@ DOCKER_TIMEOUT="${INSPECTOR_DOCKER_TIMEOUT:-30}"
 # `type -P`: timeout can only exec a real binary, not this function.
 docker() { timeout "$DOCKER_TIMEOUT" "$(type -P docker)" "$@"; }
 
+# oracle2_ssh <cmd...>: run a command on oracle2 over SSH, for the k3s-agent
+# checks that need the node's own tools (`sudo k3s crictl`), which no
+# DOCKER_HOST-style redirection can reach. Same timeout rationale as docker().
+ORACLE2_SSH_HOST="${INSPECTOR_ORACLE2_SSH_HOST:-vps-oracle2}"
+oracle2_ssh() {
+  timeout "$DOCKER_TIMEOUT" ssh -o BatchMode=yes -o ConnectTimeout=10 "$ORACLE2_SSH_HOST" "$@"
+}
+
 # require_daemon <check-script-name>: alert and exit 0 if oracle2's daemon is
 # unreachable. inspect.sh groups the report by host directory, so the alert
 # shows up under the vps_oracle2 block; this doubles as a liveness check.

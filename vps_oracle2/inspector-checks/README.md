@@ -35,6 +35,7 @@ Each mirrors the local check of the same name in `vps_oracle/host-native/inspect
 | `oracle2-docker-build-cache.sh` | auto | prunes build cache older than 7 days |
 | `oracle2-docker-unused-networks.sh` | auto | removes custom networks with no containers |
 | `oracle2-docker-restart-storms.sh` | alert | high RestartCount / stuck restarting |
+| `oracle2-k3s-containerd-images.sh` | auto | removes k3s-agent containerd images no container references, **except `ops-lab/*`** (local-only lab builds with no registry). Runs `sudo k3s crictl` over SSH via `oracle2_ssh`, not `DOCKER_HOST`, and removes by ID instead of `crictl rmi --prune` so the exclusion is possible |
 
 The auto-tier ones **really delete on oracle2** over SSH (`INSPECTOR_DRY_RUN=1` makes them only report `would-delete`, like the local ones). Not mirrored, deliberately: `docker-unused-volumes` (alert-only locally too; oracle2 has no volumes), and `docker-oversized-logs` (reads `/var/lib/docker/containers` on the host's filesystem, which `DOCKER_HOST` cannot reach; all oracle2 containers set `max-size`). Override the target with `INSPECTOR_ORACLE2_DOCKER_HOST`.
 
