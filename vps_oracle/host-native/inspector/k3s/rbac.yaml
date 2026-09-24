@@ -1,7 +1,7 @@
 # Cluster-side RBAC for the vps_oracle host inspector (phase 2 k3s
 # checks). Applied once — idempotently — by setup-kubeconfig.sh, NOT by
-# ArgoCD: deliberately outside vps_oracle/k3s/manifests/ so selfHeal
-# never fights it (see vps_oracle/k3s/README.md). Least privilege per
+# ArgoCD: deliberately outside k3s/manifests/ so selfHeal
+# never fights it (see k3s/README.md). Least privilege per
 # the spec's check table: delete rights only for the two auto-tier
 # cleanup actions (Failed pods, completed Jobs); everything else
 # read-only, and no access at all to secrets/configmaps/workloads.
@@ -9,7 +9,7 @@
 # The ServiceAccount lives in the dedicated `inspector` namespace (moved
 # here from `workloads` on 2026-08-21 so a monitoring identity no longer
 # borrows the workload namespace's quota). The namespace itself is
-# created by ArgoCD (vps_oracle/k3s/manifests/namespace-inspector.yaml).
+# created by ArgoCD (k3s/manifests/namespace-inspector.yaml).
 apiVersion: v1
 kind: ServiceAccount
 metadata:

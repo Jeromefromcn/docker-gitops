@@ -1,11 +1,11 @@
 ---
 paths:
-  - "*/k3s/**"
+  - "k3s/**"
 ---
 
 # k3s / ArgoCD change discipline
 
-Applies to everything under `vps_oracle/k3s/`. Operational detail lives in [`vps_oracle/k3s/README.md`](../../vps_oracle/k3s/README.md); this file is only the non-negotiable discipline.
+Applies to everything under `k3s/`. Operational detail lives in [`k3s/README.md`](../../k3s/README.md); this file is only the non-negotiable discipline.
 
 ## Git first, always
 
@@ -29,7 +29,7 @@ Scaling it to 0 deadlocks self-heal (the component that computes the fix is the 
 
 ## Namespace PSS constraints
 
-`headlamp` and `pr-lanes` carry `pod-security.kubernetes.io/enforce: baseline`, and the baseline profile **forbids hostPath volumes** — mount files (e.g. tzdata) in those namespaces via ConfigMap + `subPath` instead. See [`vps_oracle/k3s/apps/headlamp/k8s/tzdata-configmap.yaml`](../../vps_oracle/k3s/apps/headlamp/k8s/tzdata-configmap.yaml).
+`headlamp` and `pr-lanes` carry `pod-security.kubernetes.io/enforce: baseline`, and the baseline profile **forbids hostPath volumes** — mount files (e.g. tzdata) in those namespaces via ConfigMap + `subPath` instead. See [`k3s/apps/headlamp/k8s/tzdata-configmap.yaml`](../../k3s/apps/headlamp/k8s/tzdata-configmap.yaml).
 
 ## Node placement
 
@@ -37,4 +37,4 @@ The cluster has two nodes: the server on vps_oracle and a tainted agent, vps-ora
 
 ## Secrets
 
-Plaintext Secrets never go into git. Use SealedSecrets (`vps_oracle/k3s/sealed-secrets/secrets/`, ciphertext is safe to commit); the flow is in the k3s README's sealed-secrets section.
+Plaintext Secrets never go into git. Use SealedSecrets (`k3s/sealed-secrets/secrets/`, ciphertext is safe to commit); the flow is in the k3s README's sealed-secrets section.

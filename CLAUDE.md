@@ -2,7 +2,7 @@
 
 # docker-gitops
 
-Central GitOps repo for this VPS's infrastructure — not limited to docker-compose. Each `<host>/compose/<compose>/` directory here is the actual working directory for a compose stack — no separate deploy path, no symlink. A compose stack may define more than one service. A `<host>/` also holds non-compose subdirectories for infra managed outside docker compose (e.g. `k3s/`, `host-firewall/`, `inspector/`, `dotfiles/`) — each follows its own convention, documented in its own README.
+Central GitOps repo for this VPS's infrastructure — not limited to docker-compose. Each `<host>/compose/<compose>/` directory here is the actual working directory for a compose stack — no separate deploy path, no symlink. A compose stack may define more than one service. A `<host>/` also holds non-compose subdirectories for infra managed outside docker compose (e.g. `host-firewall/`, `inspector/`, `dotfiles/`) — each follows its own convention, documented in its own README. Components spanning hosts sit at the repo root instead: `k3s/` (one cluster, server on vps_oracle, agent on vps-oracle2) and `tailscale/`.
 
 ## Rules
 
@@ -11,7 +11,7 @@ Path-scoped rules in `.claude/rules/` load automatically when files in their sco
 | Scope | Rule file |
 |---|---|
 | `*/compose/**` | `compose-conventions.md` — timezone, logging, port exposure, least privilege, restart policy, network isolation and the static-IP registry |
-| `*/k3s/**` | `k3s-gitops.md` — git-first discipline, selfHeal, PSS baseline constraints, SealedSecrets |
+| `k3s/**` | `k3s-gitops.md` — git-first discipline, selfHeal, PSS baseline constraints, SealedSecrets |
 | always loaded | `docs-layout.md` — which layer a piece of documentation belongs in |
 
 ## Always

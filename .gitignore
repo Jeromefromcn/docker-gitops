@@ -12,8 +12,8 @@ vps_oracle/compose/redis/redis/users.acl
 secrets/
 # SealedSecret manifests are encrypted at rest and safe to commit — exempt
 # this path from the blanket "secrets/" rule above.
-!vps_oracle/k3s/sealed-secrets/secrets/
-!vps_oracle/k3s/sealed-secrets/secrets/**
+!k3s/sealed-secrets/secrets/
+!k3s/sealed-secrets/secrets/**
 *.pem
 *.key
 *credentials*.json

@@ -1,0 +1,25 @@
+# k3s agent config for vps-oracle2, installed to /etc/rancher/k3s/config.yaml
+# by install.sh (run from vps_oracle). The join token is deliberately NOT here:
+# install.sh reads it from the server over SSH and hands it to the installer.
+#
+# The server is vps_oracle's k3s (k3s/install/config.yaml); both
+# nodes talk over tailscale, since the two hosts are in separate OCI tenancies.
+server: https://100.84.203.73:6443
+node-ip: 100.100.140.33
+
+# Run the agent's local apiserver load-balancer on 127.0.0.1:6443 (default
+# 6444). Cilium is installed with k8sServiceHost=127.0.0.1 / port 6443 — true on
+# the server because the apiserver itself listens there — so this makes the same
+# Cilium values valid on this node too, without pointing the server's own Cilium
+# at a tailscale address.
+lb-server-port: 6443
+
+# Only workloads that explicitly tolerate this land here (lab-environment gets
+# the toleration + nodeSelector injected by a Kyverno mutate policy). Every
+# management component — ArgoCD, Kyverno, sealed-secrets, istiod, coredns... —
+# stays on vps_oracle. Per-node DaemonSets (cilium, cilium-envoy, istio-cni,
+# ztunnel) tolerate all taints and run here as they must.
+node-taint:
+  - dedicated=lab:NoSchedule
+node-label:
+  - dedicated=lab

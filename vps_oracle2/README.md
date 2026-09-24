@@ -11,7 +11,8 @@ The repo lives only on vps_oracle; this host has no clone. Everything is driven 
 | `tofu/` | OpenTofu full-control adoption of the tenancy: network imported, instance created by tofu (`destroy` allowed, unlike `vps_oracle/tofu/`) | [tofu/README.md](tofu/README.md) |
 | `compose/` | docker compose stacks, deployed remotely with `docker --context oracle2` | this file + root [README.md](../README.md) |
 | `inspector-checks/` | inspection checks about this host, executed on vps_oracle by its inspector over SSH | [inspector-checks/README.md](inspector-checks/README.md) |
-| `k3s-agent/` | this host as a tainted k3s agent node of vps_oracle's cluster: agent config + idempotent installer run from vps_oracle | [k3s-agent/README.md](k3s-agent/README.md) |
+
+This host's k3s agent config and installer are part of the cluster, so they live with it at [`k3s/install/agent-vps-oracle2/`](../k3s/install/agent-vps-oracle2/README.md).
 
 ## Network model
 
@@ -40,7 +41,7 @@ flowchart LR
 - **Reachable over tailscale only.** The OCI security list allows just 22/TCP + ICMP, host iptables rejects the rest, and `rpcbind` is disabled. Every published port is bound to oracle2's tailscale IP `100.100.140.33`, never `0.0.0.0`.
 - **One-directional ACL:** `tag:oracle-hub` → `tag:oracle2`. oracle2 cannot initiate anything toward oracle or gcp — **except** the k3s node ports toward oracle-hub (tcp 6443, udp 8472, tcp 4240, icmp) that the agent needs. The ACL is GitOps-managed in [`../tailscale/policy.hujson`](../tailscale/policy.hujson), whose `tests` pin exactly this. Never put oracle2 in `tag:oracle-hub`, or it inherits oracle-hub's access to gcp-lab.
 - There is no shared docker `proxy` network with vps_oracle. Cross-host reverse proxying goes through NPM on vps_oracle, forwarding to the tailscale IP.
-- If oracle2 re-registers on tailscale (e.g. after `tofu destroy`/`apply`), its tailscale IP changes: update every compose `ports:` binding here, the Glances/prometheus/blackbox references on vps_oracle, the dify NPM host (see [compose/dify/README.md](compose/dify/README.md)), and `node-ip` in [k3s-agent/config.yaml](k3s-agent/config.yaml) (then rerun its `install.sh`).
+- If oracle2 re-registers on tailscale (e.g. after `tofu destroy`/`apply`), its tailscale IP changes: update every compose `ports:` binding here, the Glances/prometheus/blackbox references on vps_oracle, the dify NPM host (see [compose/dify/README.md](compose/dify/README.md)), and `node-ip` in [`k3s/install/agent-vps-oracle2/config.yaml`](../k3s/install/agent-vps-oracle2/config.yaml) (then rerun its `install.sh`).
 
 ## Compose stacks
 

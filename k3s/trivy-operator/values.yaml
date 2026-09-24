@@ -1,0 +1,136 @@
+# lab-environment is not scanned (2026-09-24): five of its images are
+# local-only ops-lab/* builds with no registry, so their scan Jobs always fail,
+# and the namespace is outside every Kyverno policy that consumes
+# VulnerabilityReports. Done with the `trivy-operator.skip` label on each lab
+# Deployment's pod template (which the ReplicaSet — the object actually
+# scanned — inherits), NOT `excludeNamespaces`: tried first, the operator logs
+# the exclusion but in 0.33.0 still rescans the namespace's ReplicaSets
+# (verified: deleted a lab report, it was regenerated within 60s).
+
+operator:
+  # scanJobsConcurrentLimit must live under operator: -- it was previously set
+  # at the top level, which the chart schema doesn't recognize, so it was
+  # silently ignored and the chart default (10) was in effect. 10 concurrent
+  # jobs all share one trivy filesystem cache dir with no concurrent-access
+  # support, so they fought over its lock file, timed out, retried, and
+  # some gave up (BackoffLimitExceeded) -- burning disk IO on repeated image
+  # pulls and tripping the io_pressure_critical alert. 1 avoids the lock
+  # contention entirely; this node's 4 vCPU couldn't usefully run more in
+  # parallel anyway -- trivy.slow (chart default: true) already runs each
+  # scan single-threaded.
+  scanJobsConcurrentLimit: 1
+  # Chart default is 24h, which expires every report cluster-wide once a day
+  # and -- with scanJobsConcurrentLimit: 1 -- rebuilds them as one serialized
+  # ~40-minute train of scan Jobs. Each Job's Standalone-mode initContainer
+  # downloads and unpacks the whole trivy DB into a fresh disk-backed
+  # emptyDir: measured ~1.7GB of sda writes for a single Job, ~25GB across
+  # a single daily TTL wave -- this is what tripped the "3+ processes in
+  # D state for 2 minutes" node_procs_blocked alert on 2026-08-19. 72h cuts
+  # that recurring cost to a third. Event-driven rescans (image changed)
+  # are unaffected, and Kyverno's require-vuln-scan-clean only denies on
+  # findings it can actually see, so an expired report never blocks a
+  # deploy (fail-open).
+  scannerReportTTL: "72h"
+  # Off (2026-09-24). The node-collector it runs has never produced a check on
+  # this cluster: it reads the kubeadm layout (/etc/kubernetes, /var/lib/etcd,
+  # /var/lib/kube-scheduler...), while k3s keeps everything under
+  # /var/lib/rancher/k3s — the only report it ever wrote (2026-08-15) has 0
+  # checks. Since that evening it can't even start: trivy-system enforces PSS
+  # baseline, which rejects its hostPID + hostPath pod, so every node just
+  # accumulates a forever-failing Job. For a CIS baseline on k3s, run
+  # kube-bench with its k3s profile by hand instead.
+  infraAssessmentScannerEnabled: false
+  # ClientServer via the chart's built-in trivy-server (2026-09-24). In
+  # Standalone mode every scan Job downloads and unpacks the whole
+  # vulnerability DB into its own emptyDir and throws it away: measured
+  # 1.65 GB written in 39 s for one small image (headlamp), ~42 MB/s. A burst
+  # of new workloads (lab-environment's 14 on 2026-09-24) or the 72h TTL
+  # wave turns that into ~50 MB/s for 10+ minutes, which is what tripped
+  # io_pressure_critical. The server keeps one DB on a PVC and updates it in
+  # place; scan Jobs only send package lists to it. Costs a resident pod
+  # (trivy.server.resources below) — a deliberate trade of ~0.5 GB RAM on
+  # vps_oracle for not rewriting 1.7 GB per scan. Implies trivy.mode:
+  # ClientServer and serverURL http://trivy-service.trivy-system:4954.
+  builtInTrivyServer: true
+
+trivyOperator:
+  # Lets a workload opt out of scanning by carrying this label key.
+  # Separate top-level block from operator: above -- the chart splits
+  # operator controller settings (operator:) from scan-job/report
+  # behavior (trivyOperator:); skipResourceByLabels lives in the latter.
+  skipResourceByLabels: "trivy-operator.skip"
+  # NOTE (corrected 2026-08-19): this does NOT stop the operator from
+  # scanning initContainers as their own containers within a Job -- in
+  # trivy-operator 0.33.0, pkg/plugins/trivy/jobspec.go's getContainers()
+  # appends spec.InitContainers unconditionally and never consults this
+  # setting. It only affects whether the operator treats a workload as
+  # needing a rescan when an initContainer's report is missing. cilium's
+  # DaemonSet (6 initContainers sharing cilium's own image, so its scan
+  # Job launched 7 trivy processes racing for one filesystem cache lock)
+  # is excluded via `trivy-operator.skip` label instead -- see
+  # k3s/cilium/values.yaml. The lock-contention problem this
+  # comment originally described is actually fixed by trivy.configFile's
+  # cache.backend: memory below, which removes the shared lock file
+  # entirely. Left enabled because it's still correct for its real
+  # purpose and harmless.
+  skipInitContainers: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+trivy:
+  # ClientServer, forced by operator.builtInTrivyServer above (the chart
+  # overrides this anyway; kept explicit so git matches what runs).
+  mode: ClientServer
+  # The server's DB lives on a local-path PVC on vps_oracle (the server pod
+  # has no toleration for vps-oracle2's taint, so it and its volume stay on
+  # the management node).
+  storageClassName: local-path
+  storageSize: "5Gi"
+  # This node is arm64-only (Oracle Ampere), but Trivy's own CLI defaults
+  # to assuming linux/amd64 and refuses to scan anything else ("By
+  # default, only Linux amd64 images are supported for scanning") --
+  # broke scanning for every image built single-arch arm64 by this repo's
+  # own CI (currently the `pr-lanes` pair: hello-frontend's image and
+  # hello-backend). configFile is rendered verbatim into Trivy's
+  # own --config file (must stay a YAML map here, not a `|` string --
+  # the chart's toYaml/nindent double-wraps a string and corrupts it).
+  # Safe cluster-wide: everything actually Running on this node is
+  # already arm64-compatible by construction, so this only changes which
+  # manifest-list variant gets pulled for scanning, matching what's
+  # actually deployed instead of a mismatched amd64 default.
+  configFile:
+    image:
+      platform: linux/arm64
+    # Every scan Job pod runs one trivy process per container of the scanned
+    # workload -- initContainers included, because trivy-operator 0.33.0's
+    # pkg/plugins/trivy/jobspec.go getContainers() appends spec.InitContainers
+    # unconditionally and never consults skipInitContainers above. All of them
+    # share one --cache-dir on the pod's single /tmp emptyDir, and trivy
+    # 0.73's default `fs` scan cache is a BoltDB behind a flock, so in any
+    # workload with >=2 scannable containers at least one trivy process loses
+    # the lock race, FATALs, and fails the whole Job with
+    # BackoffLimitExceeded -- which the operator then retries forever.
+    # Measured over 30h on 2026-08-19: 18 such failures (hubble-ui `backend`
+    # x14 -- permanently zero VulnerabilityReport coverage until this fix --
+    # argocd-repo-server's `copyutil` initContainer x2, kyverno's
+    # `kyverno-pre` initContainer x2), each retry re-downloading the ~1.5GB
+    # trivy DB to disk. `memory` is Trivy's own documented fix for this exact
+    # lock error and needs no shared file at all. Safe for the DB-download
+    # initContainer: that path (trivy run.go initDB) only uses --cache-dir
+    # and returns SkipScan before any scan cache is constructed, so the DB
+    # download itself is untouched by this setting.
+    cache:
+      backend: memory
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi

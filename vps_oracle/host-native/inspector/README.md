@@ -114,7 +114,7 @@ cd vps_oracle/host-native/inspector
 ./k3s/setup-kubeconfig.sh     # apply RBAC + write state/kubeconfig (gitignored, 600)
 ```
 
-The script is idempotent and safe to rerun. The RBAC manifest is at `k3s/rbac.yaml` — not under `vps_oracle/k3s/manifests/` (that's ArgoCD territory, see k3s/README). The `inspector` namespace where the SA lives is managed by ArgoCD (`manifests/namespace-inspector.yaml`), so on a brand-new machine you must wait for ArgoCD to sync the namespace before running this script.
+The script is idempotent and safe to rerun. The RBAC manifest is at `k3s/rbac.yaml` — not under `k3s/manifests/` (that's ArgoCD territory, see k3s/README). The `inspector` namespace where the SA lives is managed by ArgoCD (`manifests/namespace-inspector.yaml`), so on a brand-new machine you must wait for ArgoCD to sync the namespace before running this script.
 
 **2026-08-21 migration**: the SA used to live in `workloads` (borrowing its quota). It has moved to a dedicated `inspector` namespace; the old `workloads/docker-gitops-inspector` SA will be deleted by hand after ArgoCD syncs. The token already embedded in state/kubeconfig belongs to the pre-migration SA and still works — rerunning the setup script switches to the new SA.
 
