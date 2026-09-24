@@ -19,9 +19,15 @@ injects `nodeSelector: dedicated=lab` and the matching toleration into every
 Pod in this namespace. Monitoring: Grafana `Lab API Down` (end-to-end probe
 through oracle2's NodePort) and `vps-oracle2 k3s Kubelet Down`.
 
-The JVM services have no readiness probe and a 250m CPU limit, so after a
-restart they report Ready long before Spring Boot finishes (~2 min), and they
-exit 1 if Consul isn't up yet — they settle on their own once it is.
+The four Spring Boot services have a 1000m CPU limit (was 250m: startup took
+61-98 s, half of it CFS-throttled; now ~40-55 s with all four starting at
+once on the 2-core node) and startup + readiness probes on the actuator
+`liveness`/`readiness` groups, so Ready means serving. If Consul isn't up yet
+they exit 1 and retry — they settle on their own once it is.
+
+Every workload carries `trivy-operator.skip: "true"` on its pod template: the
+five `ops-lab/*` images can't be pulled for scanning, and nothing consumes the
+namespace's reports.
 
 ## After bringing it up: seed Consul KV (once)
 
