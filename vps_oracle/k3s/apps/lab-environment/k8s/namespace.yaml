@@ -12,5 +12,8 @@ spec:
   hard:
     requests.cpu: "1.5"
     requests.memory: 3.5Gi
-    limits.cpu: "2.5"
+    # 5: the four JVM services got 1000m limits (was 250m) for startup —
+    # sum of all limits is 4.93. Overcommits vps-oracle2's 2 cores on paper;
+    # limits only matter when several JVMs start at once.
+    limits.cpu: "5"
     limits.memory: 4.25Gi
