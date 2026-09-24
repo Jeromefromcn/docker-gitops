@@ -44,6 +44,7 @@ Implemented (phase 2, k3s layer):
 - `checks/k3s-containerd-images.sh` (auto) — containerd images with no container referencing them (`sudo crictl`)
 - `checks/k3s-released-pvs.sh` (alert) — Released PVs
 - `checks/k3s-stuck-terminating.sh` (alert) — Terminating pods stuck for more than 15 minutes
+- `checks/k3s-node-not-ready.sh` (alert) — any Node whose Ready condition isn't True (added with the vps-oracle2 agent node; needs `nodes` get/list in `k3s/rbac.yaml`)
 - `checks/k3s-oom-killed-containers.sh` (alert) — `lastState.terminated.reason=OOMKilled` within the last 24 hours; `k3s-evicted-pods.sh` can't catch this case (the pod stays `Running` the whole time, only the container is killed and restarted), added after the 2026-08-17 io_pressure_critical incident (jaeger/trivy were both OOM-killed because their limits were too tight)
 
 Implemented (NPM reverse proxy layer):

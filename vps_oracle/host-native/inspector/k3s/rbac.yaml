@@ -30,6 +30,10 @@ rules:
 - apiGroups: [""]
   resources: ["persistentvolumes"]
   verbs: ["get", "list"]
+# k3s-node-not-ready.sh (added 2026-09-24 with the vps-oracle2 agent node).
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
