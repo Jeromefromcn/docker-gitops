@@ -1,6 +1,6 @@
 # vps_oracle2
 
-A second Oracle Cloud instance in a **separate OCI tenancy** (`ap-singapore-1`, Always Free A1.Flex, 2 OCPU / 12 GB). Its role is to offload workloads from vps_oracle (currently dify) and to serve as a remotely managed node.
+A second Oracle Cloud instance in a **separate OCI tenancy** (`ap-singapore-1`, Always Free A1.Flex, 2 OCPU / 12 GB). Its role is to offload workloads from vps_oracle — dify (compose) and, since 2026-09-24, lab-environment as a **k3s agent node** of vps_oracle's cluster — and to serve as a remotely managed node.
 
 The repo lives only on vps_oracle; this host has no clone. Everything is driven from vps_oracle over SSH (`ssh vps-oracle2`, dedicated key `~/.ssh/id_oracle2`). The public IP is ephemeral — see [../CLAUDE.local.md](../CLAUDE.local.md) for how to refresh it.
 
@@ -11,6 +11,7 @@ The repo lives only on vps_oracle; this host has no clone. Everything is driven 
 | `tofu/` | OpenTofu full-control adoption of the tenancy: network imported, instance created by tofu (`destroy` allowed, unlike `vps_oracle/tofu/`) | [tofu/README.md](tofu/README.md) |
 | `compose/` | docker compose stacks, deployed remotely with `docker --context oracle2` | this file + root [README.md](../README.md) |
 | `inspector-checks/` | inspection checks about this host, executed on vps_oracle by its inspector over SSH | [inspector-checks/README.md](inspector-checks/README.md) |
+| `k3s-agent/` | this host as a tainted k3s agent node of vps_oracle's cluster: agent config + idempotent installer run from vps_oracle | [k3s-agent/README.md](k3s-agent/README.md) |
 
 ## Network model
 
@@ -27,17 +28,19 @@ flowchart LR
     NE[node-exporter :9100]
     GL[glances :61208]
     PA[portainer-agent :9001]
+    AG[k3s-agent + lab-environment]
   end
   NPM -- tailscale --> DIFY
+  AG -- "tailscale: 6443, 8472/udp, 4240 (only exception)" --> oracle
   PROM -- tailscale --> NE
   HP -- tailscale --> GL
   INS -- "ssh (docker context)" --> o2
 ```
 
 - **Reachable over tailscale only.** The OCI security list allows just 22/TCP + ICMP, host iptables rejects the rest, and `rpcbind` is disabled. Every published port is bound to oracle2's tailscale IP `100.100.140.33`, never `0.0.0.0`.
-- **One-directional ACL:** `tag:oracle-hub` → `tag:oracle2`. oracle2 cannot initiate anything toward oracle or gcp. Never put oracle2 in `tag:oracle-hub`, or it inherits oracle-hub's access to gcp-lab.
+- **One-directional ACL:** `tag:oracle-hub` → `tag:oracle2`. oracle2 cannot initiate anything toward oracle or gcp — **except** the k3s node ports toward oracle-hub (tcp 6443, udp 8472, tcp 4240, icmp) that the agent needs. The ACL is GitOps-managed in [`../tailscale/policy.hujson`](../tailscale/policy.hujson), whose `tests` pin exactly this. Never put oracle2 in `tag:oracle-hub`, or it inherits oracle-hub's access to gcp-lab.
 - There is no shared docker `proxy` network with vps_oracle. Cross-host reverse proxying goes through NPM on vps_oracle, forwarding to the tailscale IP.
-- If oracle2 re-registers on tailscale (e.g. after `tofu destroy`/`apply`), its tailscale IP changes: update every compose `ports:` binding here, the Glances/prometheus references on vps_oracle, and the dify NPM host (see [compose/dify/README.md](compose/dify/README.md)).
+- If oracle2 re-registers on tailscale (e.g. after `tofu destroy`/`apply`), its tailscale IP changes: update every compose `ports:` binding here, the Glances/prometheus/blackbox references on vps_oracle, the dify NPM host (see [compose/dify/README.md](compose/dify/README.md)), and `node-ip` in [k3s-agent/config.yaml](k3s-agent/config.yaml) (then rerun its `install.sh`).
 
 ## Compose stacks
 

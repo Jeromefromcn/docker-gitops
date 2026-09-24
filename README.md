@@ -22,7 +22,7 @@ docker-gitops/
 │   │   ├── minio/                 #   shared object storage
 │   │   ├── postgres/              #   shared postgres
 │   │   └── redis/                 #   shared redis (ACL users)
-│   ├── k3s/                       # cloud-native experiment platform (always via ArgoCD GitOps)
+│   ├── k3s/                       # cloud-native experiment platform (always via ArgoCD GitOps); server node, vps-oracle2 is its agent
 │   ├── host-native/               # systemd services on the host itself (not containers)
 │   │   ├── inspector/             #   read-only host checks, systemd timer
 │   │   ├── host-firewall/         #   hand-written iptables rules
@@ -34,6 +34,7 @@ docker-gitops/
 │   └── tofu/                      # OpenTofu greenfield lifecycle practice
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
 │   ├── compose/                   #   node-exporter, glances, portainer-agent, dify (run via `docker --context oracle2`)
+│   ├── k3s-agent/                 #   k3s agent node of vps_oracle's cluster (runs lab-environment)
 │   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
 ├── tailscale/                     # tailnet ACL policy, applied by GitOps (see tailscale/README.md)
 ├── docs/                          # history & design archives: incidents/, misc/, deployment-topology/, superpowers/

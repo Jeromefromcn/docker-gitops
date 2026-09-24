@@ -4,24 +4,31 @@ Migrated from `~/jerome/lab-environment/docker-compose.yml` (a separate,
 independently-managed project). Fully isolated `lab-environment`
 namespace: no shared Prometheus/Grafana/alerting with `vps_oracle`'s own
 monitoring stack (deliberate — this stack's `toxiproxy`-driven chaos
-testing shouldn't share a pipeline with real incident alerting), no NPM
-domains, no cross-namespace scraping.
+testing shouldn't share a pipeline with real incident alerting), no
+cross-namespace scraping. (NPM does expose a few `*.lab.jerome.cloudns.asia`
+hosts — api/consul/grafana/jaeger — behind an access list.)
 
-All 14 Deployments are held at `replicas: 0` by default, same as the
-compose stack's normal off state. Bring the whole thing up with:
+## Runs always-on, on vps-oracle2
 
-```bash
-kubectl -n lab-environment scale deployment --all --replicas=1
-```
+Since 2026-09-24 all 14 Deployments run at `replicas: 1` on **vps-oracle2**,
+the k3s agent node ([`vps_oracle2/k3s-agent/`](../../../../vps_oracle2/k3s-agent/README.md)),
+instead of sitting at 0 on vps_oracle to save its memory. Placement is not in
+these manifests: the Kyverno mutate policy
+[`lab-environment-on-oracle2`](../../kyverno/policies/lab-environment-on-oracle2.yaml)
+injects `nodeSelector: dedicated=lab` and the matching toleration into every
+Pod in this namespace. Monitoring: Grafana `Lab API Down` (end-to-end probe
+through oracle2's NodePort) and `vps-oracle2 k3s Kubelet Down`.
 
-(or edit `replicas:` in each `k8s/*.yaml` and let ArgoCD sync it, if the
-change should stick — `selfHeal` will otherwise revert a bare `kubectl
-scale` within a couple minutes).
+The JVM services have no readiness probe and a 250m CPU limit, so after a
+restart they report Ready long before Spring Boot finishes (~2 min), and they
+exit 1 if Consul isn't up yet — they settle on their own once it is.
 
 ## After bringing it up: seed Consul KV (once)
 
-`consul` runs as a `-server` with on-disk storage on a local-path PVC
-(`consul-data`), so its KV survives restarts. The old `-dev` in-memory mode
+`consul` runs as a `-server` with on-disk storage on a static local PV
+(`consul-data`, see `k8s/pv.yaml`), so its KV survives restarts.
+`server_rejoin_age_max` is raised (see `consul.yaml`): with the default 168h,
+Consul refuses to start at all after a week offline. The old `-dev` in-memory mode
 wiped `config/<service>/data/db.*` (and the chaos toggles) on every restart,
 crash-looping `customers-service`/`vets-service`/`visits-service` with a
 Hikari/JDBC placeholder error until the keys were re-put. Only seed once, on
@@ -32,8 +39,8 @@ CONSUL_HTTP_ADDR="http://localhost:30092" \
   bash ~/jerome/lab-environment/scripts/init-consul-kv.sh
 ```
 
-Note: local-path is node-local — the KV survives a node reboot but not a node
-rebuild; re-seed after that.
+Note: the PV is node-local on vps-oracle2 — the KV survives a node reboot but
+not a node rebuild; re-seed after that.
 
 ## Host prerequisite: `fs.inotify.max_user_instances`
 
@@ -47,15 +54,19 @@ promtail crashed on startup with `too many open files` even though
 unrelated kernel limit, not a per-container rlimit).
 
 Raised to 1024 host-wide via `/etc/sysctl.d/99-inotify-instances.conf`
-(persists across reboots). This is a node-level setting, not something
-expressible in a Pod spec — if this node is ever rebuilt, reapply:
+(persists across reboots) — on **vps-oracle2** now that the lab runs there
+(vps_oracle keeps its own copy of the setting). This is a node-level setting,
+not something expressible in a Pod spec — if the node is ever rebuilt, reapply:
 
 ```bash
-echo "fs.inotify.max_user_instances = 1024" | sudo tee /etc/sysctl.d/99-inotify-instances.conf
-sudo sysctl --system
+ssh vps-oracle2 'echo "fs.inotify.max_user_instances = 1024" | sudo tee /etc/sysctl.d/99-inotify-instances.conf && sudo sysctl --system'
 ```
 
 ## NodePorts
+
+Every NodePort answers on vps_oracle's `10.0.0.95` (NPM and the host relay
+use this; Cilium forwards to oracle2 over VXLAN) and on vps-oracle2's
+tailscale IP `100.100.140.33` (the blackbox probe uses this).
 
 | Service | NodePort | Was (compose host port) |
 |---|---|---|
@@ -74,69 +85,51 @@ compose state (not published to the host there either).
 
 `mcp-toolkit`, `customers-service`, `vets-service`, `visits-service`, and
 `api-gateway` are local-only builds (`ops-lab/*:dev`, built by the source
-project's own `scripts/build.sh`) with no registry behind them —
-containerd can't pull them. They were loaded once via:
+project's own `scripts/build.sh`, run on vps_oracle) with no registry
+behind them — containerd can't pull them. Build on vps_oracle, then import
+into **vps-oracle2's** k3s containerd (use `k3s ctr`: oracle2's plain `ctr` is
+docker's, a different containerd):
 
 ```bash
-docker save ops-lab/<name>:dev | sudo k3s ctr images import -
+cd ~/jerome/lab-environment && ./scripts/build.sh
+for i in mcp-toolkit api-gateway visits-service vets-service customers-service; do
+  docker save ops-lab/$i:dev | ssh vps-oracle2 'sudo k3s ctr -n k8s.io images import -'
+done
 ```
 
-If the source project rebuilds these images, re-run the same import
-before scaling the affected Deployment back up, or containerd will keep
-serving the stale image it already has cached (no pull happens for an
-image containerd already believes it has).
+If the source project rebuilds these images, re-run the import and restart
+the affected Deployment, or containerd keeps serving the stale image it
+already has (no pull happens for an image it believes it has).
+
+**They are irreplaceable once deleted.** On 2026-09-24 they were found gone:
+vps_oracle's `k3s-containerd-images` inspector check runs `crictl rmi
+--prune`, and with the lab at `replicas: 0` nothing referenced them. The
+oracle2 counterpart (`oracle2-k3s-containerd-images`) removes by ID and
+always keeps `ops-lab/*`.
 
 ## Data
 
-Only `postgres` is stateful (PVC, seeded once from the compose
-`lab-environment_postgres_data` volume). Everything else
+`postgres` and `consul` are stateful, on static `local` PVs on vps-oracle2
+(`k8s/pv.yaml`, `Retain`, `/var/lib/lab-environment/<name>`) — not
+local-path, whose helper pod has no toleration for oracle2's taint. Both were
+copied from their old vps_oracle local-path PVs on 2026-09-24 (backup:
+`/home/ubuntu/backups/lab-environment-pv-2026-09-24.tar.gz` on vps_oracle).
+Postgres was originally seeded from the compose
+`lab-environment_postgres_data` volume. Everything else
 (`prometheus`/`grafana`/`loki`) is ephemeral in the original compose
 setup too — no data volumes there, so no PVC here either.
 
-### Loading data into the `postgres` PVC
+### Restoring data into a PV
 
-`local-path` is node-local: the PVC's contents survive a node reboot but
-not a node rebuild. Restoring (or, historically, first seeding) it needs
-a throwaway Pod that mounts the PVC before anything else does — the
-StorageClass is `WaitForFirstConsumer`, so the PV's host directory isn't
-created until something actually mounts the claim, and there's nowhere
-to copy data into until then.
-
-This Pod is deliberately not part of the ArgoCD-managed manifests under
-`k8s/` (it's a one-off tool, and a synced Pod would be pruned/recreated
-forever). Apply it by hand, copy the data in, delete it:
+The PVs are plain directories on vps-oracle2, so no seed Pod is needed
+(that was a local-path `WaitForFirstConsumer` workaround). Stop the
+workload by setting its `replicas: 0` in git (a bare `kubectl scale` is
+reverted by selfHeal), then copy with ownership preserved — postgres data
+is uid 999, consul uid 100:
 
 ```bash
-kubectl apply -f - <<'YAML'
-apiVersion: v1
-kind: Pod
-metadata:
-  name: postgres-seed
-  namespace: lab-environment
-  labels:
-    app: postgres-seed
-spec:
-  containers:
-    - name: seed
-      image: busybox:1.36
-      command: ["sleep", "3600"]
-      volumeMounts:
-        - name: postgres-data
-          mountPath: /dst/postgres-data
-      resources:
-        requests:
-          cpu: 50m
-          memory: 32Mi
-        limits:
-          cpu: 200m
-          memory: 128Mi
-  volumes:
-    - name: postgres-data
-      persistentVolumeClaim:
-        claimName: postgres
-YAML
-
-# copy the data in (kubectl cp, or sudo cp -a straight into
-# /var/lib/rancher/k3s/storage/<pv>_lab-environment_postgres/), then:
-kubectl -n lab-environment delete pod postgres-seed
+sudo tar --numeric-owner -C <source-dir> -cf - . \
+  | ssh vps-oracle2 'sudo tar --numeric-owner -xpf - -C /var/lib/lab-environment/<name>'
 ```
+
+Restore `replicas: 1` in git afterwards.

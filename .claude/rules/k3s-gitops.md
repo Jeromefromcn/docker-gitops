@@ -29,6 +29,10 @@ Scaling it to 0 deadlocks self-heal (the component that computes the fix is the 
 
 `headlamp` and `pr-lanes` carry `pod-security.kubernetes.io/enforce: baseline`, and the baseline profile **forbids hostPath volumes** — mount files (e.g. tzdata) in those namespaces via ConfigMap + `subPath` instead. See [`vps_oracle/k3s/apps/headlamp/k8s/tzdata-configmap.yaml`](../../vps_oracle/k3s/apps/headlamp/k8s/tzdata-configmap.yaml).
 
+## Node placement
+
+The cluster has two nodes: the server on vps_oracle and a tainted agent, vps-oracle2 (`dedicated=lab:NoSchedule`). Management components stay on the server — never add a toleration for that taint to anything but workloads meant to run on oracle2. Lab placement comes from the Kyverno mutate policy `lab-environment-on-oracle2`, not from the manifests. Storage on the agent uses static `local` PVs, never local-path (its helper pod can't tolerate the taint). Details: the k3s README's "Nodes" section.
+
 ## Secrets
 
 Plaintext Secrets never go into git. Use SealedSecrets (`vps_oracle/k3s/sealed-secrets/secrets/`, ciphertext is safe to commit); the flow is in the k3s README's sealed-secrets section.

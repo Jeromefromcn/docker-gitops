@@ -32,6 +32,22 @@ Cluster foundation (phase A) and GitOps bootstrap (phase B) for the [K3s roadmap
 
 Re-applying `install/config.yaml` after an edit: copy it to `/etc/rancher/k3s/config.yaml` again, then `sudo systemctl restart k3s`.
 
+## Nodes
+
+Two nodes since 2026-09-24. **This host is the only server** — control plane and every management component (ArgoCD, Kyverno, sealed-secrets, trivy-operator, istiod, coredns, Hubble) run here and are operated from here.
+
+| Node | Role | Node IP | Taint |
+|---|---|---|---|
+| `instance-20260321-2043` (vps_oracle) | server | `100.84.203.73` (tailscale) | — |
+| `vps-oracle2` | agent | `100.100.140.33` (tailscale) | `dedicated=lab:NoSchedule` |
+
+- **Tailscale addressing.** vps-oracle2 is in another OCI tenancy and can't reach `10.0.0.95`, so `install/config.yaml` sets `node-ip`/`advertise-address` to the tailscale IP. Cilium's VXLAN runs inside tailscale's WireGuard; pod MTU 1230 is auto-detected (tailscale0 is 1280). NodePorts still bind `enp0s6`, so everything targeting `10.0.0.95:<NodePort>` (NPM, the relay, prometheus) is unchanged.
+- **What lands on vps-oracle2:** only the per-node DaemonSets (cilium, cilium-envoy, istio-cni, ztunnel — they tolerate every taint) and `lab-environment`, which gets the toleration + `nodeSelector` from the Kyverno mutate policy `lab-environment-on-oracle2`. A new workload for that node needs the same; nothing else ever schedules there.
+- **No local-path on the agent.** local-path's helper pod carries no tolerations, so a claim bound to vps-oracle2 would stay Pending. Use a static `local` PV instead (example: `apps/lab-environment/k8s/pv.yaml`).
+- The agent's config and idempotent installer live in [`vps_oracle2/k3s-agent/`](../../vps_oracle2/k3s-agent/README.md) and run from this host over SSH. The tailscale ACL exception it needs is in [`tailscale/policy.hujson`](../../tailscale/policy.hujson).
+- Monitoring: inspector `k3s-node-not-ready` (12h) and `oracle2-k3s-containerd-images`; Grafana `vps-oracle2 k3s Kubelet Down` and `Lab API Down` (minutes).
+- **Known gap, pre-existing:** trivy-operator's node-collector (infra assessment) can't run on either node — `trivy-system` enforces PSS `baseline`, which rejects its `hostPID`/hostPath pod. The only `ClusterInfraAssessmentReport` is vps_oracle's from 2026-08-15, before the label.
+
 **Non-login shells:** `~/.profile` is only read by login shells. A plain non-login shell (`bash -c '...'` instead of `bash -lc '...'`, and most cron/CI/script contexts) won't pick up `KUBECONFIG`, and `kubectl` fails with a permission-denied error on `/etc/rancher/k3s/k3s.yaml` that reads like a bug rather than an unset env var. Those contexts need `export KUBECONFIG=$HOME/.kube/config` set explicitly before calling `kubectl`.
 
 ## Cilium
@@ -205,7 +221,7 @@ Commit the output (safe — it's ciphertext), push, then delete the old bare Sec
 
 ## lab-environment
 
-K3s-native, migrated from a separate independently-managed project (`~/jerome/lab-environment`), not from anything in this repo's `compose/`. Isolated namespace, `replicas: 0` by default, deliberately no shared Prometheus/Grafana/alerting with this cluster's or compose's own monitoring. Full details: [`apps/lab-environment/README.md`](apps/lab-environment/README.md).
+K3s-native, migrated from a separate independently-managed project (`~/jerome/lab-environment`), not from anything in this repo's `compose/`. Isolated namespace, always-on on the vps-oracle2 agent node since 2026-09-24 (was `replicas: 0` on this host), deliberately no shared Prometheus/Grafana/alerting with this cluster's or compose's own monitoring. Full details: [`apps/lab-environment/README.md`](apps/lab-environment/README.md).
 
 ## homepage
 
