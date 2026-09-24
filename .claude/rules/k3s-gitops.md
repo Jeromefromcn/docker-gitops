@@ -17,6 +17,8 @@ Correct order: **edit the file → commit → push → let ArgoCD sync (or `argo
 - Read-only diagnostics (`kubectl get` / `describe` / `logs`, `argocd app diff`) are fine at any time.
 - For genuine live trial-and-error, disable that Application's `selfHeal` first and re-enable it once the final version is back in git.
 
+**Recreating a resource (e.g. to change an immutable PVC field) — confirm ArgoCD has the new revision first.** Push, hard-refresh (`kubectl -n argocd annotate application <app> argocd.argoproj.io/refresh=hard --overwrite`), check `.status.sync.revision` matches `git rev-parse HEAD`, and only then delete the live object. Deleted too early, selfHeal recreates it instantly from the *old* cached manifest — happened 2026-09-24 with lab-environment's PVCs, which then had to be deleted a second time.
+
 ## Editing an Application object means syncing `root`
 
 After editing a file under `argocd/apps/` (including adding a new Application), sync **`root`**, not the Application the edit is about — `root` is the layer that applies the Application *objects* themselves. Syncing the Application only re-applies whatever `sources` are already live and silently ignores the edit to its own spec.
