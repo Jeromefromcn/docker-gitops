@@ -21,6 +21,26 @@
 		// Same pattern for oracle2 (separate OCI tenancy): oracle-hub -> oracle2 only,
 		// one-directional, nothing else can reach tag:oracle2.
 		{"src": ["tag:oracle-hub"], "dst": ["tag:oracle2"], "ip": ["*"]},
+
+		// The one deliberate exception to "oracle2 never initiates": oracle2 is a k3s
+		// agent node in the cluster whose server runs on oracle-hub, and a node must
+		// reach its control plane. Only what k8s + Cilium strictly need:
+		// apiserver/supervisor (6443), Cilium VXLAN (8472/udp), Cilium node health
+		// (4240 + icmp). Everything else on oracle-hub stays unreachable — see tests.
+		{"src": ["tag:oracle2"], "dst": ["tag:oracle-hub"], "ip": ["tcp:6443", "udp:8472", "tcp:4240", "icmp:*"]},
+	],
+
+	// Asserted on every PR (gitops-acl-action `test`) and every apply; a policy
+	// edit that breaks the trust model fails CI instead of silently opening access.
+	"tests": [
+		// oracle2 -> oracle-hub: only the k3s node ports.
+		{"src": "tag:oracle2", "proto": "tcp", "accept": ["tag:oracle-hub:6443", "tag:oracle-hub:4240"], "deny": ["tag:oracle-hub:22", "tag:oracle-hub:80", "tag:oracle-hub:443", "tag:oracle-hub:9090", "tag:oracle-hub:10250"]},
+		{"src": "tag:oracle2", "proto": "udp", "accept": ["tag:oracle-hub:8472"], "deny": ["tag:oracle-hub:53", "tag:oracle-hub:41641"]},
+		// oracle2 and gcp-lab can never reach gcp-lab / each other / back to oracle-hub.
+		{"src": "tag:oracle2", "deny": ["tag:gcp-lab:22", "tag:gcp-lab:9100"]},
+		{"src": "tag:gcp-lab", "deny": ["tag:oracle-hub:22", "tag:oracle-hub:6443", "tag:oracle2:22", "tag:oracle2:6443"]},
+		// oracle-hub keeps full reach (kubelet 10250, VXLAN, monitoring, ssh).
+		{"src": "tag:oracle-hub", "accept": ["tag:oracle2:10250", "tag:oracle2:8472", "tag:oracle2:9100", "tag:gcp-lab:22"]},
 	],
 
 	// Define users and devices that can use Tailscale SSH.
