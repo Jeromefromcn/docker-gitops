@@ -37,6 +37,14 @@ spec:
             # exist at all otherwise — see configmaps.yaml.
             - -hcl
             - 'telemetry { prometheus_retention_time = "24h" }'
+            # Consul refuses to start a server whose data dir has been offline
+            # longer than server_rejoin_age_max (default 168h): "refusing to
+            # rejoin cluster ... consider wiping your data dir". Hit on
+            # 2026-09-24 bringing the lab back after 5 weeks at replicas 0.
+            # A single-server bootstrap has no cluster to be stale against,
+            # so the guard only costs the KV; effectively disable it.
+            - -hcl
+            - 'server_rejoin_age_max = "87600h"'
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
