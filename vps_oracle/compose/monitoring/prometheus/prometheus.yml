@@ -57,6 +57,9 @@ scrape_configs:
           - https://plans.jerome.cloudns.asia
           - https://trilium.jerome.cloudns.asia
           - https://vikunja.jerome.cloudns.asia
+          # lab-environment end-to-end, via vps-oracle2's own NodePort over
+          # tailscale (see probe_lab_api in grafana probe-rules.yml)
+          - http://100.100.140.33:30097/api/vet/vets
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -106,6 +109,8 @@ scrape_configs:
     static_configs:
       - targets:
           - jerome.cloudns.asia:39876
+          # vps-oracle2 k3s agent kubelet, over tailscale
+          - 100.100.140.33:10250
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

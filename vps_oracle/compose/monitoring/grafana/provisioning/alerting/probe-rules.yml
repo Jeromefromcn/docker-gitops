@@ -217,6 +217,73 @@ groups:
                     type: lt
                     params: [1]
 
+      # vps-oracle2 is a k3s agent node. Host-level alerts (node_exporter) don't
+      # fire if only k3s-agent dies, and nothing on vps_oracle notices either,
+      # so probe the agent's kubelet port directly over tailscale.
+      - uid: probe_oracle2_kubelet
+        title: vps-oracle2 k3s Kubelet Down
+        condition: B
+        for: 3m
+        noDataState: OK
+        labels:
+          severity: critical
+        annotations:
+          summary: "k3s agent kubelet on vps-oracle2 (100.100.140.33:10250) is unreachable — node likely NotReady, lab-environment down"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="100.100.140.33:10250"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      # End-to-end lab check: oracle2 NodePort (tailscale) -> Cilium -> api-gateway
+      # -> vets-service -> postgres. The blackbox container isn't on the docker
+      # `proxy` network, so it can't use vps_oracle's NodePort relay; oracle2's
+      # own NodePort on its tailscale IP is reachable instead.
+      - uid: probe_lab_api
+        title: Lab API Down
+        condition: B
+        for: 5m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "lab-environment api-gateway on vps-oracle2 is not serving /api/vet/vets"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{instance="http://100.100.140.33:30097/api/vet/vets"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
       - uid: probe_homepage
         title: Homepage Down
         condition: B
