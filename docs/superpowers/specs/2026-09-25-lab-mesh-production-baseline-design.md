@@ -10,7 +10,7 @@ The owner now wants to use it for **interview demos of SDLC capabilities** (cana
 
 Guiding principle agreed during design: **the lab must simulate a realistic production environment, not a pretty lab.** Anything a real production system would have (mesh, resilience policies, authz, multiple replicas) is resident. Only things that would not exist in real production (e.g. header-triggered fault injection) are added temporarily during a demo. The RCA agent's eval baseline is re-established on the new environment; comparability with the 2026-07-31 runs is knowingly given up.
 
-The work is decomposed into three sub-projects, each with its own spec → plan → implementation cycle:
+The work is decomposed into three sub-projects, each with its own spec → plan → implementation cycle (status and notes for all of them: [SDLC demo roadmap](2026-09-25-lab-sdlc-demo-roadmap.md)):
 
 1. **This spec** — production baseline: mesh onboarding, multi-instance, service discovery migration, secrets, evidence chain
 2. Demo scenarios and the `docs/demo/` runbook (rate limiting, canary/blue-green, mirroring, fault injection, chaos) — depends on 1

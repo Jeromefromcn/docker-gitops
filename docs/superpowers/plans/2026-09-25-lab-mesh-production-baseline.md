@@ -2664,8 +2664,9 @@ Also update the ResourceQuota comment if the README quotes quota numbers.
 
 - [ ] **Step 6: Commit, confirm, merge; clean up worktree**
 
+In `docs/superpowers/specs/2026-09-25-lab-sdlc-demo-roadmap.md`, set sub-project 1's Status to `Done <date> — acceptance results in the spec` and sub-project 2's to `Ready for spec`.
 ```bash
-git add docs/superpowers/specs/2026-09-25-lab-mesh-production-baseline-design.md k3s/apps/lab-environment/README.md
+git add docs/superpowers/specs/2026-09-25-lab-mesh-production-baseline-design.md docs/superpowers/specs/2026-09-25-lab-sdlc-demo-roadmap.md k3s/apps/lab-environment/README.md
 git commit -m "docs(lab-environment): record baseline acceptance results and current state
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
