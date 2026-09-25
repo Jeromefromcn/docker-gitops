@@ -21,7 +21,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: api-gateway
-          image: ops-lab/api-gateway:dev
+          image: ops-lab/api-gateway:83323857b5ba
           env:
             - name: TZ
               value: "Asia/Hong_Kong"

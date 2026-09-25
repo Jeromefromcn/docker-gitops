@@ -21,7 +21,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: vets-service
-          image: ops-lab/vets-service:dev
+          image: ops-lab/vets-service:83323857b5ba
           env:
             - name: TZ
               value: "Asia/Hong_Kong"

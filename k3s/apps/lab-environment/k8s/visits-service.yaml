@@ -21,7 +21,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: visits-service
-          image: ops-lab/visits-service:dev
+          image: ops-lab/visits-service:83323857b5ba
           env:
             - name: TZ
               value: "Asia/Hong_Kong"

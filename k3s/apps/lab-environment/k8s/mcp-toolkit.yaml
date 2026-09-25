@@ -21,7 +21,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: mcp-toolkit
-          image: ops-lab/mcp-toolkit:dev
+          image: ops-lab/mcp-toolkit:cd555a4bf770
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
