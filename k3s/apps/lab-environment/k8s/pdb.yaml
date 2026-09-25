@@ -1,0 +1,21 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: customers-service
+  namespace: lab-environment
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: customers-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway
+  namespace: lab-environment
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api-gateway
