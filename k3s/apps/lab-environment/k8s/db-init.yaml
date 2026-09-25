@@ -3,12 +3,23 @@ kind: ServiceAccount
 metadata:
   name: db-init
   namespace: lab-environment
+  # Hook resources: the PreSync Job runs before the sync applies regular
+  # resources, so everything it needs must be a PreSync hook too, in an
+  # earlier wave.
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: db-init-sql
   namespace: lab-environment
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
 data:
   # Idempotent rewrite of the fork's db/postgresql/{schema,data}.sql, which
   # DROP and re-seed on every app start (fatal with several replicas).
