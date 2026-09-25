@@ -1,5 +1,5 @@
 "use strict";
-// Patches a routing bug in claude-code-router v3.0.20's minified server.js, at
+// Patches the subagent routing bug in claude-code-router v3.0.20 and v3.1.1 minified server.js, at
 // container startup, before the gateway loads it. The patch lives here in git
 // and is re-applied by every node process ccr starts (loaded via NODE_OPTIONS
 // --require, same mechanism as sse-coalesce.cjs / export-model-routing.cjs), so
@@ -35,7 +35,7 @@
 // ZPe lives in the upstream minified dist (`/app/packages/core/dist/main/
 // server.js`), inside the image layer — there is no config switch for it. The
 // patch is applied at startup rather than committed into the image because the
-// image is built from a pinned git tag (v3.0.20); patching at runtime keeps the
+// image is built from a pinned git tag; patching at runtime keeps the
 // change reviewable in this repo and re-appliable after any rebuild.
 
 const fs = require("node:fs");
@@ -55,6 +55,21 @@ const OLD_ZPE =
 const NEW_ZPE =
   'function ZPe(e,t,r,n){if(!gh(e,t,"claude-code"))return!0;' +
   'let o=u0(e,t,"claude-code"),i=LP(o?.env?.[w5],t,r);' +
+  'if(e.builtInClaudeCodeSubagent===!0)return!i;' +
+  'return!i||!n||i.canonicalSelector.toLowerCase()!==n.canonicalSelector.toLowerCase()}';
+
+// v3.1.1 renamed ZPe to m1e but retained the same unconditional subagent
+// branch. Keep the separate exact match so an unknown future minified build is
+// never modified blindly.
+const OLD_M1E =
+  'function m1e(e,t,r,n){if(!Ky(e,t,"claude-code"))return!0;' +
+  'if(e.builtInClaudeCodeSubagent===!0)return!1;' +
+  'let o=Tv(e,t,"claude-code"),i=Rv(o?.env?.[o9],t,r);' +
+  'return!i||!n||i.canonicalSelector.toLowerCase()!==n.canonicalSelector.toLowerCase()}';
+
+const NEW_M1E =
+  'function m1e(e,t,r,n){if(!Ky(e,t,"claude-code"))return!0;' +
+  'let o=Tv(e,t,"claude-code"),i=Rv(o?.env?.[o9],t,r);' +
   'if(e.builtInClaudeCodeSubagent===!0)return!i;' +
   'return!i||!n||i.canonicalSelector.toLowerCase()!==n.canonicalSelector.toLowerCase()}';
 
@@ -78,8 +93,15 @@ function patchOnce() {
     return;
   }
 
-  if (src.includes(OLD_ZPE)) {
-    const patched = src.replace(OLD_ZPE, MARKER + NEW_ZPE);
+  const rule = src.includes(OLD_ZPE)
+    ? [OLD_ZPE, NEW_ZPE]
+    : src.includes(OLD_M1E)
+      ? [OLD_M1E, NEW_M1E]
+      : null;
+
+  if (rule) {
+    const [oldRule, newRule] = rule;
+    const patched = src.replace(oldRule, MARKER + newRule);
     if (patched === src) {
       console.error("[patch-subagent-routing] replace produced no change");
       return;
@@ -101,10 +123,10 @@ function patchOnce() {
       return;
     }
     console.error(
-      "[patch-subagent-routing] applied ZPe fix to",
+      "[patch-subagent-routing] applied subagent routing fix to",
       SERVER_JS,
     );
-  } else if (src.includes(NEW_ZPE)) {
+  } else if (src.includes(NEW_ZPE) || src.includes(NEW_M1E)) {
     console.error(
       "[patch-subagent-routing] already patched, skipping",
     );
