@@ -111,6 +111,13 @@ Three independent facts compose into the failure:
 
 1. Claude Code's `Artifact` tool, in the variant that ships with the 12-tool / deferred-tools mode, declares `file_paths.items.pattern = "^[^\0]*$"` — a NUL-excluding regex written with the short escape.
 2. DeepSeek's request validator does not accept the `\0` escape in a `pattern`, and fails the entire request rather than the offending field. `\u0000` is accepted.
+   A second error variant seen during the investigation names the mechanism outright — the validator compiles the pattern, and its regex engine will not take `\0`:
+
+   ```
+   Invalid schema for function 'T': "^[^\\0]*$" is not a "regex"
+   ```
+
+   (Strictly, `\0` is only a valid identity escape where an octal escape cannot start; their engine evidently refuses it.)
 3. A session's tool definitions are frozen in its `prompt_snapshot` at creation and re-sent on resume, so the incompatibility is bound to the *session*, not to the current provider or ccr version.
 
 Switching provider mid-session therefore changes the tunnel but not the payload: the old session keeps sending a schema DeepSeek will not parse, while a new session never had the field in the first place.
@@ -163,4 +170,5 @@ Then against the live gateway after `docker compose up -d`, plus a real `claude 
 - **Not fully explained: why a session gets the rich or lean `Artifact` variant.** The correlation with the tool count (12/deferred vs 29) is exact across every snapshot on this machine, but the mechanism behind that split was not chased down. It does not matter for the fix — the middleware is variant-agnostic — but it does mean the "which sessions are affected" question can only be answered by inspecting a session's snapshot, not predicted.
 - **One unexplained 502.** During staging, the first streaming implementation returned `502 upstream_connect / Failed to reach upstream provider` twice, then, after `content-length` stripping was added, 10/10 and 5/5 succeeded. The logged header list contained no `content-length`, so the strip was a no-op on that path and cannot be shown to be the cause. Treat the 502 as unexplained; if it recurs, instrument `dispatch` before assuming the body rewrite is sound.
 - **Only `\0` is handled.** If another provider turns out to reject a different escape, the fix is the same shape but the escape table needs extending. Consider generalising `DECODED_ESCAPE` to a configurable set before adding a second case.
-- **An inspector check would fit here.** A check over ccr's `request-logs.sqlite` for non-2xx rows whose body contains `Invalid schema for function` would have caught this the day the group was switched, instead of leaving it to be noticed as "old sessions are broken". Not added yet.
+- **An inspector check now covers this class**: `vps_oracle/host-native/inspector/checks/ccr-tool-schema-rejections.sh` reads ccr's `request-logs.sqlite` (via the container's own node — the volume is unreadable from the host and the host has no sqlite3) and alerts on any non-2xx row in the window whose body carries a schema-rejection signature. It is deliberately narrow: a general non-2xx alert would fire on bad requests, expired keys and context overflows, which are all noisy and usually the caller's own doing. It would have caught this the day the group was switched.
+  A remark on the first live run: it flagged 24 rows, the newest of which was **after** the fix appeared to be working — all 24 turned out to predate the deploy, and the newest carried the session id of a fork created during the investigation, i.e. a replayed capture rather than a live session. When reading this check's output, compare against the container's start time (`docker inspect -f '{{.State.StartedAt}}' ccr`), not against "when I fixed it"; the window is deliberately generous so an unresolved problem keeps alerting.
