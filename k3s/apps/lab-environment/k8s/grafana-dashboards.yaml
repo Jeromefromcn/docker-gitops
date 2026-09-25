@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: lab-environment
+data:
+  lab-mesh-overview.json: |
+    {
+      "uid": "lab-mesh-overview",
+      "title": "Lab Mesh Overview",
+      "schemaVersion": 39,
+      "refresh": "10s",
+      "time": {"from": "now-30m", "to": "now"},
+      "panels": [
+        {"type": "timeseries", "title": "customers-service RPS per pod (load balancing)",
+         "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "sum by (pod) (rate(http_server_requests_seconds_count{service=\"customers-service\", uri!~\"/actuator.*\"}[1m]))", "legendFormat": "{{pod}}"}]},
+        {"type": "timeseries", "title": "Mesh requests by service and code (waypoint)",
+         "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "sum by (destination_canonical_service, response_code) (rate(istio_requests_total{reporter=\"waypoint\"}[1m]))", "legendFormat": "{{destination_canonical_service}} {{response_code}}"}]},
+        {"type": "timeseries", "title": "Envoy response flags (UT=timeout, UH=no healthy upstream, URX=retry limit, UO=overflow)",
+         "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "sum by (destination_canonical_service, response_flags) (rate(istio_requests_total{response_flags!=\"-\"}[5m]))", "legendFormat": "{{destination_canonical_service}} {{response_flags}}"}]},
+        {"type": "timeseries", "title": "P99 latency (ms) by service",
+         "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "histogram_quantile(0.99, sum by (le, destination_canonical_service) (rate(istio_request_duration_milliseconds_bucket{reporter=\"waypoint\"}[5m])))", "legendFormat": "{{destination_canonical_service}}"}]},
+        {"type": "timeseries", "title": "Outlier ejections active",
+         "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "sum by (cluster_name) (envoy_cluster_outlier_detection_ejections_active{gateway=\"waypoint\"})", "legendFormat": "{{cluster_name}}"}]},
+        {"type": "timeseries", "title": "Upstream retries",
+         "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "sum by (cluster_name) (rate(envoy_cluster_upstream_rq_retry{gateway=\"waypoint\"}[5m]))", "legendFormat": "{{cluster_name}}"}]}
+      ]
+    }

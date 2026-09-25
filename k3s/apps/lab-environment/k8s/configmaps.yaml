@@ -49,6 +49,29 @@ data:
             target_label: instance
           - target_label: env
             replacement: lab
+
+      # Waypoint + ingress Envoy stats (istio_requests_total etc.). Envoy
+      # exposes them on the sidecar's own admin port 15020, not the gateway's
+      # service port, and the pods are found by the Gateway API's own label so
+      # neither gateway has to be named twice.
+      - job_name: envoy-stats
+        metrics_path: /stats/prometheus
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [lab-environment]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
+            action: keep
+            regex: waypoint|lab-ingress
+          - source_labels: [__address__]
+            regex: '([^:]+)(?::\d+)?'
+            replacement: '$1:15020'
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
+            target_label: gateway
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -141,6 +164,19 @@ data:
           - labels:
               pod_name:
               service: container_name
+          # Envoy (waypoint/ingress) JSON access logs: promote only
+          # low-cardinality fields; trace_id stays in the line (Grafana's
+          # derived field links it to Jaeger).
+          - match:
+              selector: '{service="istio-proxy"}'
+              stages:
+                - json:
+                    expressions:
+                      response_code: response_code
+                      response_flags: response_flags
+                - labels:
+                    response_code:
+                    response_flags:
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -148,25 +184,48 @@ metadata:
   name: grafana-provisioning
   namespace: lab-environment
 data:
+  # Fixed UIDs: the dashboard and the cross-datasource links below refer to
+  # datasources by uid, so a re-provisioned Grafana keeps them resolvable.
   datasources.yml: |
     apiVersion: 1
 
     datasources:
       - name: Prometheus
+        uid: prometheus
         type: prometheus
         access: proxy
         url: http://prometheus:9090
         isDefault: true
 
       - name: Loki
+        uid: loki
         type: loki
         access: proxy
         url: http://loki:3100
+        jsonData:
+          # Envoy JSON logs carry "trace_id"; Spring app logs carry the same
+          # 32-hex trace id in their correlation prefix. Either way the id is
+          # the only 32-hex run in the line, so one regex covers both.
+          derivedFields:
+            - name: TraceID
+              matcherRegex: '([0-9a-f]{32})'
+              datasourceUid: jaeger
+              url: '$${__value.raw}'
 
       - name: Jaeger
+        uid: jaeger
         type: jaeger
         access: proxy
         url: http://jaeger:16686
+        jsonData:
+          # The reverse direction: from a span, show the log lines that carry
+          # its trace id. Widened by 5 min either side for clock skew.
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: '-5m'
+            spanEndTimeShift: '5m'
+            customQuery: true
+            query: '{namespace="lab-environment"} |= "$${__trace.traceId}"'
   dashboards.yml: |
     apiVersion: 1
 
