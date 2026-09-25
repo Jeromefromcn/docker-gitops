@@ -105,3 +105,105 @@ spec:
             paths:
               - /actuator
               - /actuator/*
+---
+# L4 (ztunnel): the business pods accept connections only from the waypoint,
+# and from Prometheus on the metrics port (it scrapes pod IPs directly, so it
+# never traverses the waypoint and the L7 policies above do not see it).
+# Ports verified against the live deployments and the waypoint access log's
+# authority field: customers 8081, visits 8082, vets 8083.
+#
+# Kubelet health probes are host-originated and are not subject to ztunnel
+# enforcement — measured, not assumed: the pods stayed Ready throughout the
+# STRICT PeerAuthentication rollout, which would have rejected plaintext
+# probe traffic had it traversed ztunnel.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: api-gateway-direct
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: api-gateway
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/waypoint
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/prometheus
+      to:
+        - operation:
+            ports: ["8080"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: customers-service-direct
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: customers-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/waypoint
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/prometheus
+      to:
+        - operation:
+            ports: ["8081"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: visits-service-direct
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: visits-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/waypoint
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/prometheus
+      to:
+        - operation:
+            ports: ["8082"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: vets-service-direct
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: vets-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/waypoint
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/prometheus
+      to:
+        - operation:
+            ports: ["8083"]
