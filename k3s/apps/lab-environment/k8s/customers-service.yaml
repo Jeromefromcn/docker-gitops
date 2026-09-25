@@ -48,6 +48,10 @@ spec:
             # the fork's own init DROPs tables on every start.
             - name: SPRING_SQL_INIT_MODE
               value: "never"
+            # Pools are sized against postgres max_connections across all
+            # replicas (7 pods x 5), not left at Hikari's default 10 each.
+            - name: SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE
+              value: "5"
             # JVM container-detection is broken under this containerd/cgroup v2
             # (MaxHeap defaults to ~6Gi = 25% of host RAM), so the heap grows
             # past the 512Mi limit and gets OOM-killed. The apps only use

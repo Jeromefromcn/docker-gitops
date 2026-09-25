@@ -37,6 +37,19 @@ spec:
       containers:
         - name: postgres
           image: postgres:16
+          # Keepalives reap backends whose client vanished without a FIN
+          # (2026-09-25: enrolling running pods into ambient left ~30 leaked
+          # half-open connections and exhausted max_connections). 200 leaves
+          # room for rolling-update surge pods on top of 7 pools x 5.
+          args:
+            - "-c"
+            - "max_connections=200"
+            - "-c"
+            - "tcp_keepalives_idle=60"
+            - "-c"
+            - "tcp_keepalives_interval=10"
+            - "-c"
+            - "tcp_keepalives_count=6"
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
