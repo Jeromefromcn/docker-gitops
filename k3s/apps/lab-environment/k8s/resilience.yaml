@@ -3,9 +3,21 @@
 #
 # Retries happen only at internal hops and only for idempotent GETs on
 # transient failures. 500 is deliberately not in retryOn: that is an
-# application bug, and retrying it just multiplies the damage. The edge
-# (api-gateway) never retries, so attempts cannot multiply across hops — the
-# retry budget is bounded at two extra tries on exactly one hop.
+# application bug, and retrying it just multiplies the damage.
+#
+# Retries DO compound across hops, and the budget is not as small as it looks.
+# The api-gateway VirtualService below only covers the ingress -> api-gateway
+# hop; it does nothing about api-gateway -> customers or customers -> visits,
+# and both of those carry 503 in retryOn. One external GET can therefore
+# become 3 attempts at the gateway, each fanning out to 3 at customers, each
+# to 3 at visits: 9 requests to the deepest service. Latency stays bounded by
+# perTryTimeout (1s per try), the attempt count does not.
+#
+# This is currently latent rather than active: the three chaos scenarios all
+# measure attempts=1, because their symptoms are 502/504/UT and none of those
+# is in retryOn. It becomes live the moment a dependency fails with 503.
+# If that matters, the fix is a per-hop retry budget or dropping 503 from the
+# inner hops — not adding retries at the edge.
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
