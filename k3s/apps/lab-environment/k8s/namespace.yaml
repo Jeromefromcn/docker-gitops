@@ -10,10 +10,11 @@ metadata:
   namespace: lab-environment
 spec:
   hard:
-    requests.cpu: "1.5"
-    requests.memory: 3.5Gi
-    # 5: the four JVM services got 1000m limits (was 250m) for startup —
-    # sum of all limits is 4.93. Overcommits vps-oracle2's 2 cores on paper;
-    # limits only matter when several JVMs start at once.
-    limits.cpu: "5"
-    limits.memory: 4.25Gi
+    # Requests only, sized just to let the lab schedule (2026-09-25 baseline:
+    # customers x5 + api-gateway x3 at 384Mi JVM requests, 4 Envoys, traffic
+    # generator, db-init Job, one rolling-update surge pod). Limits are
+    # deliberately not capped here: CPU limits are overcommitted on purpose
+    # (JVM startup bursts), and each container's own memory limit is its OOM
+    # ceiling. Raise when something genuinely stops scheduling.
+    requests.cpu: "2"
+    requests.memory: 6Gi
