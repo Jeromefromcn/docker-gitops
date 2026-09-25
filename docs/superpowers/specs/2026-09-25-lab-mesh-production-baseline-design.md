@@ -234,3 +234,39 @@ Run in throwaway namespaces `lab-spike` (ambient) / `lab-spike-out` (not meshed)
 
 - Current state: `k3s/apps/lab-environment/README.md` (topology, replicas, mesh, secrets, NodePorts, db-init, rollback); lab-environment repo README/`init-consul-kv.sh`; toolkit README (`get_service_health` source).
 - `docs/demo/` belongs to sub-project 2.
+
+## Implementation results (2026-09-26)
+
+All seven acceptance criteria were run against the live lab on 2026-09-26.
+
+| Acceptance | Result | Evidence |
+|---|---|---|
+| 1 Rolling update | **PASS** | `customers-service` rolled 5/5 in 168 s via a `lab.jerome/rollout-rev` bump (17:12:09→17:14:57Z); `owners` count 10 before and 10 after (max id 10); **894/894 generator requests were 200, zero errors**. |
+| 2 LB spread | **PASS** | 5 live customers pods, per-pod RPS 0.318 / 0.327 / 0.371 / 0.393 / 0.343 — evenly spread, no straggler. |
+| 3 Log↔trace | **PASS** | Trace `a341411396e7ab55c82c020cd18bbc60`: 15 spans across `api-gateway`, `customers-service`, `visits-service`, `waypoint.lab-environment` and `lab-ingress-istio.lab-environment`. The same trace id appears in the waypoint and ingress JSON access logs, and Grafana's Loki→Jaeger and Jaeger→Loki links are provisioned in both directions. |
+| 4 Authz/mTLS | **PASS** | `traffic-generator`→`customers-service:8081/owners` via the Service = **403** (L7, `sa/traffic-generator` not in `customers-service-callers`); `/actuator/env` via the ingress = **403**; plaintext from a `default`-namespace pod to a STRICT customers pod = **000, curl exit 56**; a meshed pod calling a pod IP directly = **reset** (L4); `traffic-generator`→`postgres:5432` = **reset** (L4). |
+| 5 Health tool | **PASS** | `get_service_health("customers-service")` → `instance_count 5, healthy_instance_count 5`, `source: kubernetes`. |
+| 6 Probe + scenarios | **PASS** | `probe_success{instance="http://100.100.140.33:30097/api/vet/vets"}` = 1 throughout, so `Lab API Down` stayed green. All three chaos scenarios still trigger — symptoms below. |
+| 7 Secrets | **PASS** | 0 Consul KV keys contain `password`; `PGPASSWORD=<old> psql -h postgres` fails with exit 2 (verified over the scram path, not the pg_hba `trust` line). |
+
+### Observed RCA scenario symptoms
+
+Endpoints: `/api/gateway/owners/6` is the gateway's own aggregation (gateway → customers and gateway → visits); `/api/customer/owners/6/visits` is the customers-service aggregation (gateway → customers → visits). Scenario 2 only affects the latter — the hop it breaks is customers→visits, which the gateway path never touches.
+
+| Scenario | Client codes | Duration | response_flags | attempts |
+|---|---|---|---|---|
+| `customers_slow_query` | 500 ×5 | ~1.02 s | waypoint `504 UT` at 1000 ms on `customers-service:8081` | 1 |
+| `customers_downstream_error` (on `/api/customer/owners/6/visits`) | 502 ×5 | 27–99 ms | waypoint `502 -` on `customers-service:8081` | 1 |
+| `visits_redis_timeout` | `/api/gateway/owners/6`: **200** ×5 @ ~1.03 s; `/api/customer/owners/6/visits`: **504** ×5 @ ~1.01 s | ~1.02 s | `504 UT` at 1000 ms on `visits-service:8082` | 1 |
+
+Three things this table records that change how the lab should be read:
+
+1. **The 1 s `perTryTimeout` fires, not the 3 s route timeout.** Every timeout-shaped symptom is truncated at exactly 1000 ms, so the injected delay's true size is invisible in the latency: `customers_slow_query` looks identical whether the delay is 1.1 s or 30 s.
+2. **No retry is attempted on any of them (`attempts=1`).** `retryOn` is `connect-failure,refused-stream,unavailable,503`, which deliberately excludes both timeouts (`UT`) and 5xx — a 502/504 sails straight through. Retries therefore only appear on connection-level failures, not on the symptoms these three scenarios produce.
+3. **The same downstream slowness yields 200 and 504 on two different paths**, purely from where the timeout sits: `visits_redis_timeout` makes `/api/gateway/owners/6` succeed slowly (~1.03 s) while `/api/customer/owners/6/visits` fails at 504 (~1.01 s), because only the latter's route carries the 1 s `perTryTimeout`. An RCA agent that assumes "one scenario = one symptom" will misdiagnose this.
+
+### Deliberate full-outage measurement (Review Focus 4)
+
+Deleting all five `customers-service` pods at once took **92 s** to recover to 5/5 (17:17:36→17:19:08Z) — five JVMs booting simultaneously on a 2-core node. During it the generator saw **117 failures**: `503` on `/api/customer/owners*` (no healthy upstream) and `500` on `/api/gateway/owners*` (the gateway's fallback). `/api/vet/vets` served **148 × 200 with zero failures** throughout, which is why the end-to-end probe stayed green — the probe path does not touch customers-service.
+
+Deleting the `consul` pod cost nothing visible: **126/126 requests were 200** afterwards. The running apps do not depend on Consul to serve traffic, only to fetch config at startup and to read the chaos toggles.
