@@ -1,0 +1,111 @@
+# L7 authorization, enforced at the waypoint (the Services carry
+# istio.io/use-waypoint). Who may call which Service, in two phases: the four
+# caller policies start in dry-run so a missing legitimate caller shows up as
+# a shadow denial instead of a 403 in production traffic. Remove the
+# istio.io/dry-run annotations only once the shadow count is confirmed zero.
+#
+# Client audit (from live Consul KV and pod env, 2026-09-26):
+#   api-gateway        <- lab-ingress-istio (the only external entry)
+#   customers-service  <- api-gateway
+#   visits-service     <- api-gateway, customers-service
+#   vets-service       <- api-gateway
+# Prometheus scrapes pod IPs directly rather than through the waypoint, and
+# kubelet probes originate from the node, so neither appears here.
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: api-gateway-callers
+  namespace: lab-environment
+  annotations:
+    istio.io/dry-run: "true"
+spec:
+  targetRefs:
+    - kind: Service
+      group: ""
+      name: api-gateway
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/lab-ingress-istio
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: customers-service-callers
+  namespace: lab-environment
+  annotations:
+    istio.io/dry-run: "true"
+spec:
+  targetRefs:
+    - kind: Service
+      group: ""
+      name: customers-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/api-gateway
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: visits-service-callers
+  namespace: lab-environment
+  annotations:
+    istio.io/dry-run: "true"
+spec:
+  targetRefs:
+    - kind: Service
+      group: ""
+      name: visits-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/api-gateway
+              - cluster.local/ns/lab-environment/sa/customers-service
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: vets-service-callers
+  namespace: lab-environment
+  annotations:
+    istio.io/dry-run: "true"
+spec:
+  targetRefs:
+    - kind: Service
+      group: ""
+      name: vets-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/api-gateway
+---
+# actuator exposes env/heapdump, so it is never reachable through Service
+# traffic. Enforced from the start, not dry-run: it targets the waypoint only,
+# and both kubelet probes and Prometheus reach pods by IP, never through it.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-actuator
+  namespace: lab-environment
+spec:
+  targetRefs:
+    - kind: Gateway
+      group: gateway.networking.k8s.io
+      name: waypoint
+  action: DENY
+  rules:
+    - to:
+        - operation:
+            paths:
+              - /actuator
+              - /actuator/*

@@ -1,0 +1,83 @@
+# STRICT for the business services and the data stores. Every client of these
+# is a meshed workload (see the audit in authz.yaml), so nothing legitimate
+# speaks plaintext to them:
+#   postgres <- customers/vets/visits-service + the db-init Job
+#   redis    <- visits-service
+#   the four services <- the waypoint (Service traffic) + prometheus (pod IPs)
+# Kubelet health probes come from the node, not from a meshed workload.
+#
+# Ops UIs (grafana, jaeger, consul, prometheus, mcp-toolkit) deliberately have
+# no PeerAuthentication: NPM reaches them in plaintext over NodePort from
+# outside the mesh, which the namespace-wide PERMISSIVE default still allows.
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: api-gateway
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: api-gateway
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: customers-service
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: customers-service
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: vets-service
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: vets-service
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: visits-service
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: visits-service
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: postgres
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: redis
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  mtls:
+    mode: STRICT
