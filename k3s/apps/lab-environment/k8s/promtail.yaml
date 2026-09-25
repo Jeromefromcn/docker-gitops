@@ -17,6 +17,12 @@ spec:
       labels:
         trivy-operator.skip: "true"
         app: promtail
+      annotations:
+        # promtail-config.yml is mounted via subPath, which never hot-reloads
+        # and does not even pick up a ConfigMap update on a running pod.
+        # Bump this whenever promtail-config changes. (Found the hard way:
+        # the Task 13 JSON pipeline stage was a no-op on a 26h-old pod.)
+        lab.jerome/config-rev: "1"
     spec:
       enableServiceLinks: false
       containers:

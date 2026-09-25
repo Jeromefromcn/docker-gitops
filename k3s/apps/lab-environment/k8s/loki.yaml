@@ -17,6 +17,11 @@ spec:
       labels:
         trivy-operator.skip: "true"
         app: loki
+      annotations:
+        # loki-config.yml is mounted via subPath, which never hot-reloads.
+        # Bump this whenever loki-config changes. (Same gap as promtail —
+        # see the note there.)
+        lab.jerome/config-rev: "1"
     spec:
       enableServiceLinks: false
       containers:
