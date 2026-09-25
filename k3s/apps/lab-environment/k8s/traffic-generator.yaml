@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traffic-generator
+  namespace: lab-environment
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traffic-generator
+  namespace: lab-environment
+data:
+  run.sh: |
+    #!/bin/sh
+    # ~2 rps of browsing traffic: owner list, owner detail (gateway
+    # aggregation -> customers -> visits), single owner, vet list. One log
+    # line per request so error counts are provable from Loki.
+    i=0
+    while true; do
+      i=$((i + 1))
+      id=$(( (i % 10) + 1 ))
+      case $((i % 4)) in
+        0) path="/api/customer/owners" ;;
+        1) path="/api/gateway/owners/$id" ;;
+        2) path="/api/vet/vets" ;;
+        *) path="/api/customer/owners/$id" ;;
+      esac
+      code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$TARGET_URL$path")
+      echo "$(date -Iseconds) $code $path"
+      sleep 0.5
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator
+  namespace: lab-environment
+  labels:
+    app: traffic-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-generator
+  template:
+    metadata:
+      labels:
+        app: traffic-generator
+        trivy-operator.skip: "true"
+    spec:
+      serviceAccountName: traffic-generator
+      enableServiceLinks: false
+      containers:
+        - name: traffic-generator
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "/opt/run.sh"]
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            - name: TARGET_URL
+              value: "http://api-gateway:8080"
+          volumeMounts:
+            - name: script
+              mountPath: /opt
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+      volumes:
+        - name: script
+          configMap:
+            name: traffic-generator
