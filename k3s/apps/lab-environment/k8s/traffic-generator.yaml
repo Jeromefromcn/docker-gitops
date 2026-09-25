@@ -58,7 +58,9 @@ spec:
             - name: TZ
               value: "Asia/Hong_Kong"
             - name: TARGET_URL
-              value: "http://api-gateway:8080"
+              # Through the ingress gateway, so every generated request
+              # exercises the same edge the demo's external calls do.
+              value: "http://lab-ingress-istio:80"
           volumeMounts:
             - name: script
               mountPath: /opt
