@@ -155,6 +155,38 @@ For each profile you create in the ccr panel, set up the corresponding `on.sh`/`
 
 **Only the last hop of the sync chain isn't automatic**: ccr panel save → `routing.json` update + push notification to switchboard (millisecond-level; on push failure the fallback is opening the page or the 30s poll) → each group's `.env` syncs immediately → but a claude process already running only reads the new env vars when a new session is opened (a direnv limitation, see gotcha #3 in "Four gotchas" above). `../switchboard/app.py`'s `POST /refresh` is the receiving end of this notification chain — on receipt it runs `config.scan_all(...)` once in a background thread (the same function the page load triggers) and returns immediately, so it doesn't block the notifier.
 
+## Outgoing tool-schema sanitiser (sanitize-tool-schema.cjs)
+
+DeepSeek's request validator rejects a JSON-Schema `pattern` that uses the `\0` escape, and rejects it by **refusing the whole request with a 400**:
+
+```
+400 Invalid schema for function 'Artifact': {"type":"string","minLength":1,
+"maxLength":1024,"pattern":"^[^\\0]*$"} is not valid under any of the schemas
+listed in the 'anyOf' keyword
+```
+
+`\0` is a legal regex escape for NUL, but DeepSeek's validator does not accept it — while `\u0000`, which means exactly the same thing, it does. Claude Code's `Artifact` tool ships that pattern on `file_paths.items` in its richer variant, and that variant is frozen into a session's prompt snapshot when the session is created. The result is a session that cannot talk to DeepSeek **at all**, while a freshly created session works: the old session keeps sending the old tool schema, the new one never had the offending field. (This is also why an upgrade of ccr does not help — the incompatibility is in the tool schema, not in ccr.)
+
+`sanitize-tool-schema.cjs` rewrites that one escape on the way out. Provider requests do **not** go through `globalThis.fetch` — the only such call the gateway makes is its own `/__ccr/raw-trace-sync` upload — so the middleware hooks undici's `Dispatcher.dispatch`, where the body arrives as an `AsyncGenerator` of chunks; `fetch` is wrapped too, as defence in depth.
+
+**Scope: it only ever rewrites `pattern` values on tool definitions** — `tools[].input_schema` (Anthropic shape) and `tools[].function.parameters` (OpenAI shape). A `\0` in message text, a system prompt, or a tool description is left exactly as it is; rewriting those would silently alter conversation content, and this middleware sits in front of *all* provider traffic. The body is buffered (bounded) so it can be parsed as a whole, and re-serialised only when something actually changed.
+
+**It also drops `content-length` and `content-encoding`** from the outgoing headers, because the body gets longer (3 → 7 bytes per escaped `\0`) and any length the caller had computed would be stale — the same reasoning `sse-coalesce.cjs` applies to the response side.
+
+Anything unexpected makes it fall back to forwarding the original bytes untouched: an unparseable body, an unknown chunk type, a body over the cap, an error of any kind. Binary content types (multipart / octet-stream / image / audio / video) are never touched. `\0` followed by a digit is left alone — that would be an octal escape.
+
+Diagnostics live behind three env vars (set them on the compose `environment:` when debugging; the first two are off by default):
+
+| Env var | Effect |
+|---|---|
+| `CCR_SCHEMA_SANITIZE=0` | Disable the middleware entirely |
+| `CCR_SCHEMA_SANITIZE_DEBUG=1` | Log the outgoing header list on each rewrite, and a per-request summary |
+| `CCR_SCHEMA_SANITIZE_MAX_BYTES` | Buffer cap (default 64 MiB); a larger body is forwarded untouched |
+
+`docker logs ccr \| grep sanitize-tool-schema` shows one `rewrote N pattern value(s)` line per rewritten request. Editing the `.cjs` needs `docker compose up -d --force-recreate` for the same reason as `sse-coalesce.cjs`: `--require` is only read at process start.
+
+Run the unit tests with `node vps_oracle/compose/ccr/sanitize-tool-schema.test.cjs` — they cover the scope rule (prose untouched), chunk-boundary reassembly from 1 byte up, binary content types, octal escapes, the size cap, and stdout cleanliness.
+
 ## CCR admin panel (change routing / add provider / generate client key)
 
 Two routes in:

@@ -35,7 +35,10 @@ services:
       # first node process after an image rebuild re-applies it, and it does not
       # depend on any state inside the image. See
       # docs/incidents/2026-08-30-ccr-subagent-flash-routing.md.
-      NODE_OPTIONS: "--require /data/.claude-code-router/sse-coalesce.cjs --require /data/.claude-code-router/export-model-routing.cjs --require /data/.claude-code-router/patch-subagent-routing.cjs"
+      # And sanitize-tool-schema.cjs: rewrites the `\0` escape in outgoing tool
+      # schemas, which DeepSeek's request validator rejects with a 400 — see
+      # docs/incidents/2026-09-25-ccr-deepseek-artifact-schema-400.md.
+      NODE_OPTIONS: "--require /data/.claude-code-router/sse-coalesce.cjs --require /data/.claude-code-router/export-model-routing.cjs --require /data/.claude-code-router/patch-subagent-routing.cjs --require /data/.claude-code-router/sanitize-tool-schema.cjs"
       # Coalescing window (milliseconds). Zhipu emits one delta every 25-50ms, and a
       # 40ms window often catches only 1-2, giving an actual merge ratio of just
       # 3-5x; enlarging the window plus a dedicated large thinking window (thinking
@@ -72,6 +75,7 @@ services:
       - ./sse-coalesce.cjs:/data/.claude-code-router/sse-coalesce.cjs:ro
       - ./export-model-routing.cjs:/data/.claude-code-router/export-model-routing.cjs:ro
       - ./patch-subagent-routing.cjs:/data/.claude-code-router/patch-subagent-routing.cjs:ro
+      - ./sanitize-tool-schema.cjs:/data/.claude-code-router/sanitize-tool-schema.cjs:ro
       # Landing directory for the exported files — deliberately not inside the
       # ccr-data volume above: that volume (including config.sqlite) has directory
       # permissions 700 root:root, so other containers can't read it even when mounted;
