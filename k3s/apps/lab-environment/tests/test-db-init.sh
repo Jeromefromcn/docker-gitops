@@ -45,8 +45,32 @@ expect visits "SELECT count(*) FROM visits" 4
 expect customers "INSERT INTO owners (first_name,last_name,address,city,telephone) VALUES ('T','T','a','c','1') RETURNING id" 11
 run_init
 expect customers "SELECT count(*) FROM owners" 11
+# A count alone is not enough: "delete the row and insert a new one with the
+# same id" would keep the count at 11 while destroying the app's data. Assert
+# the contents of both an app-inserted row and an untouched seed row.
+expect customers "SELECT first_name||'|'||last_name FROM owners WHERE id=11" 'T|T'
+expect customers "SELECT first_name||'|'||last_name||'|'||city FROM owners WHERE id=6" 'Jean|Coleman|Monona'
+expect customers "SELECT name FROM types WHERE id=1" 'cat'
 expect customers "INSERT INTO owners (first_name,last_name,address,city,telephone) VALUES ('U','U','a','c','2') RETURNING id" 12
 expect visits "INSERT INTO visits (pet_id,visit_date,description) VALUES (1,'2026-01-01','x') RETURNING id" 5
 run_init
 expect visits "SELECT count(*) FROM visits" 5
+expect visits "SELECT description FROM visits WHERE id=5" 'x'
+expect vets "SELECT first_name||' '||last_name FROM vets WHERE id=1" 'James Carter'
+
+# --- the empty-database path -----------------------------------------------
+# Everything above runs the fork's own schema.sql first, so db-init's DDL is
+# only ever a no-op there and its IDENTITY/sequence handling is never
+# exercised. That is exactly the path a rebuilt PV takes, and it is the one
+# where a missing setval() would silently hand out colliding ids.
+q postgres <<< "CREATE DATABASE customers_empty;"
+q customers_empty < "$WORK/customers.sql" >/dev/null
+expect customers_empty "SELECT count(*) FROM owners" 10
+expect customers_empty "SELECT count(*) FROM types" 6
+expect customers_empty "SELECT count(*) FROM pets" 13
+# The sequence must be usable immediately after the DDL. If db-init left it at
+# its initial value this returns 1 instead of 11 — i.e. it would overwrite the
+# row the seed just inserted.
+expect customers_empty "INSERT INTO owners (first_name,last_name,address,city,telephone) VALUES ('E','E','a','c','3') RETURNING id" 11
+expect customers_empty "SELECT first_name||'|'||last_name FROM owners WHERE id=1" 'George|Franklin'
 echo "PASS"
