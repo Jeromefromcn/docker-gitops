@@ -40,6 +40,13 @@ spec:
               value: "8500"
             - name: SPRING_CLOUD_CONSUL_DISCOVERY_PREFER_IP_ADDRESS
               value: "true"
+            # Unique Consul instance ID per pod. The default (<name>-<port>) is
+            # shared by every replica, so during a rolling update the old pod's
+            # deregistration deleted the new pod's registration (2026-09-25).
+            # Interim until Consul discovery is removed entirely.
+            - name: SPRING_CLOUD_CONSUL_DISCOVERY_INSTANCE_ID
+              valueFrom:
+                fieldRef: {fieldPath: metadata.name}
             # JVM container-detection is broken under this containerd/cgroup v2
             # (MaxHeap defaults to ~6Gi = 25% of host RAM), so the heap grows
             # past the 512Mi limit and gets OOM-killed. The apps only use
