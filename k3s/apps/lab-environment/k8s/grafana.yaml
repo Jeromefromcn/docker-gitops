@@ -17,6 +17,10 @@ spec:
       labels:
         trivy-operator.skip: "true"
         app: grafana
+      annotations:
+        # Datasources and the dashboards provider are subPath mounts, which
+        # do not pick up ConfigMap changes; this bumps a roll when they change.
+        lab.jerome/config-rev: "1"
     spec:
       enableServiceLinks: false
       containers:
@@ -38,6 +42,10 @@ spec:
             - name: dashboards-provider
               mountPath: /etc/grafana/provisioning/dashboards/dashboards.yml
               subPath: dashboards.yml
+            # Directory mount, no subPath: Grafana's file provider rescans
+            # every 30s, so a dashboard edit hot-reloads without a roll.
+            - name: dashboards
+              mountPath: /etc/grafana/provisioning/dashboards/json
           resources:
             requests:
               cpu: 25m
@@ -52,6 +60,9 @@ spec:
         - name: dashboards-provider
           configMap:
             name: grafana-provisioning
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
 ---
 apiVersion: v1
 kind: Service
