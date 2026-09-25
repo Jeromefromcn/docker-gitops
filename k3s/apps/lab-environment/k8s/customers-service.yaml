@@ -36,6 +36,10 @@ spec:
             - name: DATA_DB_PASSWORD
               valueFrom:
                 secretKeyRef: {name: lab-db-credentials, key: password}
+            # Schema/seed is owned by the db-init PreSync Job (db-init.yaml);
+            # the fork's own init DROPs tables on every start.
+            - name: SPRING_SQL_INIT_MODE
+              value: "never"
             # JVM container-detection is broken under this containerd/cgroup v2
             # (MaxHeap defaults to ~6Gi = 25% of host RAM), so the heap grows
             # past the 512Mi limit and gets OOM-killed. The apps only use
