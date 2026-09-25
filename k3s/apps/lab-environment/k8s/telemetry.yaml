@@ -1,0 +1,13 @@
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: lab-environment
+spec:
+  tracing:
+    - providers:
+        - name: otel-lab
+      randomSamplingPercentage: 100.0
+  accessLogging:
+    - providers:
+        - name: lab-json-accesslog

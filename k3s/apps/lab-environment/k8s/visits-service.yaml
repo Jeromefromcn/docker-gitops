@@ -27,6 +27,7 @@ spec:
         prometheus.io/port: "8082"
         prometheus.io/path: /actuator/prometheus
     spec:
+      serviceAccountName: visits-service
       enableServiceLinks: false
       containers:
         - name: visits-service
@@ -96,6 +97,8 @@ kind: Service
 metadata:
   name: visits-service
   namespace: lab-environment
+  labels:
+    istio.io/use-waypoint: waypoint
 spec:
   selector:
     app: visits-service

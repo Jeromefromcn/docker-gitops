@@ -27,6 +27,7 @@ spec:
         prometheus.io/port: "8083"
         prometheus.io/path: /actuator/prometheus
     spec:
+      serviceAccountName: vets-service
       enableServiceLinks: false
       containers:
         - name: vets-service
@@ -89,6 +90,8 @@ kind: Service
 metadata:
   name: vets-service
   namespace: lab-environment
+  labels:
+    istio.io/use-waypoint: waypoint
 spec:
   selector:
     app: vets-service

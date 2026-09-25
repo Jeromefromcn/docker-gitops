@@ -27,6 +27,7 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: /actuator/prometheus
     spec:
+      serviceAccountName: api-gateway
       enableServiceLinks: false
       containers:
         - name: api-gateway
@@ -80,6 +81,8 @@ kind: Service
 metadata:
   name: api-gateway
   namespace: lab-environment
+  labels:
+    istio.io/use-waypoint: waypoint
 spec:
   type: NodePort
   selector:

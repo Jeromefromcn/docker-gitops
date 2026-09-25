@@ -27,6 +27,7 @@ spec:
         prometheus.io/port: "8081"
         prometheus.io/path: /actuator/prometheus
     spec:
+      serviceAccountName: customers-service
       enableServiceLinks: false
       containers:
         - name: customers-service
@@ -97,6 +98,8 @@ kind: Service
 metadata:
   name: customers-service
   namespace: lab-environment
+  labels:
+    istio.io/use-waypoint: waypoint
 spec:
   selector:
     app: customers-service

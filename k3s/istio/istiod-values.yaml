@@ -30,6 +30,36 @@ meshConfig:
       zipkin:
         service: jaeger.mesh-observability.svc.cluster.local
         port: 9411
+    # lab-environment: Envoy spans to the lab's own Jaeger over OTLP.
+    # OpenTelemetry (W3C traceparent), not Zipkin (B3): Spring Boot 4
+    # propagates W3C, so B3 would split Envoy and app spans into two traces.
+    - name: otel-lab
+      opentelemetry:
+        service: jaeger.lab-environment.svc.cluster.local
+        port: 4317
+    # lab-environment: JSON access log with trace_id, so a log line links
+    # to its Jaeger trace and upstream_host/attempts show LB and retries.
+    - name: lab-json-accesslog
+      envoyFileAccessLog:
+        path: /dev/stdout
+        logFormat:
+          labels:
+            start_time: "%START_TIME%"
+            method: "%REQ(:METHOD)%"
+            path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+            protocol: "%PROTOCOL%"
+            response_code: "%RESPONSE_CODE%"
+            response_flags: "%RESPONSE_FLAGS%"
+            duration_ms: "%DURATION%"
+            upstream_service_time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+            upstream_cluster: "%UPSTREAM_CLUSTER%"
+            upstream_host: "%UPSTREAM_HOST%"
+            attempts: "%UPSTREAM_REQUEST_ATTEMPT_COUNT%"
+            trace_id: "%TRACE_ID%"
+            request_id: "%REQ(X-REQUEST-ID)%"
+            downstream_peer: "%DOWNSTREAM_PEER_URI_SAN%"
+            route_name: "%ROUTE_NAME%"
+            authority: "%REQ(:AUTHORITY)%"
 
 global:
   waypoint:

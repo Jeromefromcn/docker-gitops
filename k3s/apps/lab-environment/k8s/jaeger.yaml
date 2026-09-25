@@ -27,6 +27,9 @@ spec:
               value: "Asia/Hong_Kong"
             - name: COLLECTOR_ZIPKIN_HOST_PORT
               value: ":9411"
+            # OTLP ingest for Istio's otel-lab provider (Envoy spans).
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
             # Default all-in-one memory storage keeps every trace forever with
             # no eviction, so RSS grows until it hits the memory limit no
             # matter how high that limit is set (already bumped 128Mi->256Mi
@@ -41,6 +44,8 @@ spec:
               name: ui
             - containerPort: 9411
               name: zipkin
+            - containerPort: 4317
+              name: otlp-grpc
           resources:
             requests:
               cpu: 25m
@@ -66,3 +71,7 @@ spec:
     - port: 9411
       targetPort: 9411
       name: zipkin
+    - port: 4317
+      targetPort: 4317
+      name: grpc-otlp
+      appProtocol: grpc
