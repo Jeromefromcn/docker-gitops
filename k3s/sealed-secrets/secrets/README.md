@@ -7,3 +7,10 @@ running in the `sealed-secrets` namespace.
 
 Produced by `kubeseal --controller-name sealed-secrets --controller-namespace sealed-secrets`,
 never hand-written.
+
+## Inventory
+
+| File | Namespace | Purpose |
+|---|---|---|
+| `github-pr-generator-token.sealed.yaml` | `argocd` | Fine-grained GitHub PAT for the `pr-lanes` ApplicationSet PR generator |
+| `lab-db-credentials.sealed.yaml` | `lab-environment` | PostgreSQL user/password for the lab (postgres, business services, `db-init` Job) |
