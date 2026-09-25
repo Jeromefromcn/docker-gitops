@@ -12,11 +12,28 @@ metadata:
   namespace: lab-environment
 spec:
   hard:
-    # Requests only, sized just to let the lab schedule (2026-09-25 baseline:
-    # customers x5 + api-gateway x3 at 384Mi JVM requests, 4 Envoys, traffic
-    # generator, db-init Job, one rolling-update surge pod). Limits are
-    # deliberately not capped here: CPU limits are overcommitted on purpose
-    # (JVM startup bursts), and each container's own memory limit is its OOM
-    # ceiling. Raise when something genuinely stops scheduling.
+    # Requests only. This is a blast-radius ceiling for the node, not a memory
+    # budget for the lab: nothing here caps a container's run-time usage (its
+    # own limit does), it only bounds what the scheduler reserves so the other
+    # namespaces on vps-oracle2 can still place pods. Limits are deliberately
+    # not capped: CPU limits are overcommitted on purpose (JVM startup bursts).
+    #
+    # Sized as ~70% of the node's 11927Mi allocatable, and derived from what a
+    # release actually needs:
+    #   steady state (5x customers + 3x api-gateway + 2x waypoint + 2x ingress
+    #     + the infra/observability pods, all at their JVM/Envoy requests)  5200Mi
+    #   + one rolling-update surge pod for each Deployment a release touches
+    #     (business x4 + postgres + waypoint + generator)                   1824Mi
+    #   + the 64Mi db-init PreSync hook (small, but a sync cannot start
+    #     without it, so it must always fit)                                  64Mi
+    #                                       worst-case peak = 7088Mi -> 8Gi cap
+    # 6Gi was the old limits.memory value carried over, not a derived number,
+    # and it deadlocked a release of 3+ workloads on 2026-09-25: the surge pods
+    # filled the quota, the hook was rejected with FailedCreate, and the sync
+    # stalled on "waiting for completion of hook" for 10 minutes.
+    #
+    # Consequence of the CPU value below: requests.cpu 2 equals the whole node,
+    # so the quota never binds on CPU — the node's own 2 cores do. Peak CPU
+    # requests reach ~1825m/2000m once a release plus the ingress rolls.
     requests.cpu: "2"
-    requests.memory: 6Gi
+    requests.memory: 8Gi
