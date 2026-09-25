@@ -26,6 +26,9 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8081"
         prometheus.io/path: /actuator/prometheus
+        # Bump to trigger a rolling restart without changing the image — used
+        # to demo zero-downtime rollout, and by the acceptance run.
+        lab.jerome/rollout-rev: "1"
     spec:
       serviceAccountName: customers-service
       enableServiceLinks: false
