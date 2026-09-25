@@ -1,0 +1,190 @@
+# Resident production policies: every one of these is behaviour a real
+# deployment would carry, not a demo extra.
+#
+# Retries happen only at internal hops and only for idempotent GETs on
+# transient failures. 500 is deliberately not in retryOn: that is an
+# application bug, and retrying it just multiplies the damage. The edge
+# (api-gateway) never retries, so attempts cannot multiply across hops — the
+# retry budget is bounded at two extra tries on exactly one hop.
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: api-gateway
+  namespace: lab-environment
+spec:
+  hosts:
+    - api-gateway.lab-environment.svc.cluster.local
+  http:
+    - route:
+        - destination:
+            host: api-gateway.lab-environment.svc.cluster.local
+      timeout: 5s
+      retries:
+        attempts: 0
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: customers-service
+  namespace: lab-environment
+spec:
+  hosts:
+    - customers-service.lab-environment.svc.cluster.local
+  http:
+    - match:
+        - method:
+            exact: GET
+      route:
+        - destination:
+            host: customers-service.lab-environment.svc.cluster.local
+      timeout: 3s
+      retries:
+        attempts: 2
+        perTryTimeout: 1s
+        retryOn: connect-failure,refused-stream,unavailable,503
+    # Anything that is not an idempotent GET: no retry, looser timeout.
+    - route:
+        - destination:
+            host: customers-service.lab-environment.svc.cluster.local
+      timeout: 5s
+      retries:
+        attempts: 0
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: visits-service
+  namespace: lab-environment
+spec:
+  hosts:
+    - visits-service.lab-environment.svc.cluster.local
+  http:
+    - match:
+        - method:
+            exact: GET
+      route:
+        - destination:
+            host: visits-service.lab-environment.svc.cluster.local
+      timeout: 3s
+      retries:
+        attempts: 2
+        perTryTimeout: 1s
+        retryOn: connect-failure,refused-stream,unavailable,503
+    - route:
+        - destination:
+            host: visits-service.lab-environment.svc.cluster.local
+      timeout: 5s
+      retries:
+        attempts: 0
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: vets-service
+  namespace: lab-environment
+spec:
+  hosts:
+    - vets-service.lab-environment.svc.cluster.local
+  http:
+    - match:
+        - method:
+            exact: GET
+      route:
+        - destination:
+            host: vets-service.lab-environment.svc.cluster.local
+      timeout: 3s
+      retries:
+        attempts: 2
+        perTryTimeout: 1s
+        retryOn: connect-failure,refused-stream,unavailable,503
+    - route:
+        - destination:
+            host: vets-service.lab-environment.svc.cluster.local
+      timeout: 5s
+      retries:
+        attempts: 0
+---
+# maxEjectionPercent 50: with 5 customers pods at most 2 are ejected at once;
+# with a single replica (vets, visits) it floors to 0, because Envoy never
+# ejects the last healthy host of a cluster by design. That asymmetry is real
+# production behaviour and is a demo talking point, not a gap.
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: api-gateway
+  namespace: lab-environment
+spec:
+  host: api-gateway.lab-environment.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 200
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: customers-service
+  namespace: lab-environment
+spec:
+  host: customers-service.lab-environment.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 200
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: visits-service
+  namespace: lab-environment
+spec:
+  host: visits-service.lab-environment.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 200
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: vets-service
+  namespace: lab-environment
+spec:
+  host: vets-service.lab-environment.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 200
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
