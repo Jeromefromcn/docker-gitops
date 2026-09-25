@@ -30,7 +30,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: visits-service
-          image: ops-lab/visits-service:83323857b5ba
+          image: ops-lab/visits-service:8839b4c7fa57
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
@@ -38,15 +38,6 @@ spec:
               value: "consul"
             - name: SPRING_CLOUD_CONSUL_PORT
               value: "8500"
-            - name: SPRING_CLOUD_CONSUL_DISCOVERY_PREFER_IP_ADDRESS
-              value: "true"
-            # Unique Consul instance ID per pod. The default (<name>-<port>) is
-            # shared by every replica, so during a rolling update the old pod's
-            # deregistration deleted the new pod's registration (2026-09-25).
-            # Interim until Consul discovery is removed entirely.
-            - name: SPRING_CLOUD_CONSUL_DISCOVERY_INSTANCE_ID
-              valueFrom:
-                fieldRef: {fieldPath: metadata.name}
             # Overrides nothing: the Consul KV key config/<svc>/data/db.password
             # is deleted; the password lives only in this SealedSecret.
             - name: DATA_DB_PASSWORD

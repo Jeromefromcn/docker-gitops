@@ -1,3 +1,37 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-toolkit
+  namespace: lab-environment
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mcp-toolkit-health
+  namespace: lab-environment
+rules:
+  # get_service_health: read-only view of instances, nothing else.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mcp-toolkit-health
+  namespace: lab-environment
+subjects:
+  - kind: ServiceAccount
+    name: mcp-toolkit
+    namespace: lab-environment
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mcp-toolkit-health
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,10 +52,11 @@ spec:
         trivy-operator.skip: "true"
         app: mcp-toolkit
     spec:
+      serviceAccountName: mcp-toolkit
       enableServiceLinks: false
       containers:
         - name: mcp-toolkit
-          image: ops-lab/mcp-toolkit:cd555a4bf770
+          image: ops-lab/mcp-toolkit:fa66eb38b0fc
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
