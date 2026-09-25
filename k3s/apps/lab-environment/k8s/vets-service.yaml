@@ -8,7 +8,12 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      # One extra pod at a time: zero downtime, and never more than one JVM
+      # booting at once on the 2-core node.
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: vets-service
@@ -53,9 +58,12 @@ spec:
           ports:
             - containerPort: 8083
           resources:
+            # Request ~ observed RSS (270-340Mi) plus headroom, so the
+            # scheduler doesn't reserve the full limit; the limit stays the
+            # OOM ceiling. Heap is -Xms64m/-Xmx192m — non-heap drives RSS.
             requests:
               cpu: 50m
-              memory: 512Mi
+              memory: 384Mi
             limits:
               cpu: 1000m
               memory: 512Mi
