@@ -207,3 +207,44 @@ spec:
       to:
         - operation:
             ports: ["8083"]
+---
+# L4 (ztunnel) for the data stores. Client sets verified from live Consul KV
+# (config/<svc>/data/db.host=postgres, redis.host=redis for visits only) and
+# pod env: mcp-toolkit holds only consul/prometheus/loki/jaeger URLs, Grafana
+# only its three datasources, and toxiproxy has zero proxies configured so it
+# is not in the data path. db-init must be here or a future sync's PreSync
+# hook could not reach the database.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: postgres-clients
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/customers-service
+              - cluster.local/ns/lab-environment/sa/vets-service
+              - cluster.local/ns/lab-environment/sa/visits-service
+              - cluster.local/ns/lab-environment/sa/db-init
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: redis-clients
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/visits-service
