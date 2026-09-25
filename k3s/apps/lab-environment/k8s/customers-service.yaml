@@ -31,6 +31,11 @@ spec:
               value: "8500"
             - name: SPRING_CLOUD_CONSUL_DISCOVERY_PREFER_IP_ADDRESS
               value: "true"
+            # Overrides nothing: the Consul KV key config/<svc>/data/db.password
+            # is deleted; the password lives only in this SealedSecret.
+            - name: DATA_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: lab-db-credentials, key: password}
             # JVM container-detection is broken under this containerd/cgroup v2
             # (MaxHeap defaults to ~6Gi = 25% of host RAM), so the heap grows
             # past the 512Mi limit and gets OOM-killed. The apps only use

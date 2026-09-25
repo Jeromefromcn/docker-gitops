@@ -41,9 +41,11 @@ spec:
             - name: TZ
               value: "Asia/Hong_Kong"
             - name: POSTGRES_USER
-              value: "petclinic"
+              valueFrom:
+                secretKeyRef: {name: lab-db-credentials, key: username}
             - name: POSTGRES_PASSWORD
-              value: "petclinic"
+              valueFrom:
+                secretKeyRef: {name: lab-db-credentials, key: password}
             - name: POSTGRES_DB
               value: "postgres"
             - name: POSTGRES_MULTIPLE_DATABASES
