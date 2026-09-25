@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-ingress-params
+  namespace: lab-environment
+data:
+  # Takes over NodePort 30097 from the api-gateway Service so NPM's
+  # api.lab host and the "Lab API Down" probe keep working unchanged.
+  service: |
+    spec:
+      type: NodePort
+      ports:
+        - name: http
+          port: 80
+          nodePort: 30097
+  deployment: |
+    spec:
+      replicas: 2
+      template:
+        metadata:
+          labels:
+            trivy-operator.skip: "true"
+        spec:
+          containers:
+            - name: istio-proxy
+              env:
+                - name: TZ
+                  value: "Asia/Hong_Kong"
+              resources:
+                requests: {cpu: 100m, memory: 128Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: lab-ingress
+  namespace: lab-environment
+spec:
+  gatewayClassName: istio
+  infrastructure:
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: lab-ingress-params
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: lab-api
+  namespace: lab-environment
+spec:
+  parentRefs:
+    - name: lab-ingress
+  rules:
+    - backendRefs:
+        - name: api-gateway
+          port: 8080

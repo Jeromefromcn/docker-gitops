@@ -83,11 +83,16 @@ metadata:
   namespace: lab-environment
   labels:
     istio.io/use-waypoint: waypoint
+    # Without this, ingress-gateway traffic skips the waypoint and the
+    # edge policies in resilience.yaml/authz.yaml never apply to it.
+    # Verified in Task 1 spike 8: removing the label still returns 200 but
+    # the VirtualService is not applied.
+    istio.io/ingress-use-waypoint: "true"
 spec:
-  type: NodePort
+  # ClusterIP, not NodePort: external entry is lab-ingress-istio on 30097.
   selector:
     app: api-gateway
   ports:
-    - port: 8080
+    - name: http
+      port: 8080
       targetPort: 8080
-      nodePort: 30097
