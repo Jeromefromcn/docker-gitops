@@ -46,6 +46,7 @@ Implemented (phase 2, k3s layer):
 - `checks/k3s-stuck-terminating.sh` (alert) — Terminating pods stuck for more than 15 minutes
 - `checks/k3s-node-not-ready.sh` (alert) — any Node whose Ready condition isn't True (added with the vps-oracle2 agent node; needs `nodes` get/list in `k3s/rbac.yaml`)
 - `checks/k3s-oom-killed-containers.sh` (alert) — `lastState.terminated.reason=OOMKilled` within the last 24 hours; `k3s-evicted-pods.sh` can't catch this case (the pod stays `Running` the whole time, only the container is killed and restarted), added after the 2026-08-17 io_pressure_critical incident (jaeger/trivy were both OOM-killed because their limits were too tight)
+- `checks/k3s-capacity-pressure.sh` (alert) — the three ways a workload stops being able to run in the lab namespace: a ResourceQuota used at or above `INSPECTOR_QUOTA_USED_PCT` (default 90) of a hard limit, a ReplicaSet whose pods were refused at admission (`FailedCreate`), or a pod Pending past `INSPECTOR_PENDING_MINUTES` (default 5). Needs `resourcequotas` and `replicasets` get+list in `k3s/rbac.yaml` — and needs them *necessarily*, not conveniently: quota usage is invisible on a pod object, and a pod refused at admission never exists as one, so neither signal can be derived from the `pods` grant. Scoped to `lab-environment` deliberately (`INSPECTOR_LAB_NAMESPACE`) — the same signals cluster-wide would flag PR lanes legitimately waiting for capacity, and a check that cries wolf twice a day stops being read. Added after the 2026-09-25 incident where the quota could not admit a release plus its PreSync hook: every signal above was present for ~10 minutes before anyone noticed, and it was noticed only because pods began `CrashLoopBackOff`.
 
 Implemented (NPM reverse proxy layer):
 - `checks/direnv-envrc-trust.sh` (alert) — runs `direnv export bash` from each group dir (`~/jerome`, `~/bridget`, `~/evidence`) and flags any whose `.envrc` reports "is blocked", i.e. whose direnv trust was revoked because the file's content changed since it was last `direnv allow`ed. It is alert-only and never auto-allows: `direnv allow` is itself the trust mechanism, and a revoked `.envrc` must be human-reviewed before re-trusting (the file is arbitrary shell, and the symlinked `shell-env/*.envrc` changes take effect on the live system immediately). Added after the 2026-09-13 incident where a comment-only translation sweep revoked trust and silently froze group provider/account switching (full story in [`docs/incidents/2026-09-13-switchboard-direnv-envrc-trust-revoked.md`](../../../docs/incidents/2026-09-13-switchboard-direnv-envrc-trust-revoked.md)).
@@ -111,7 +112,7 @@ Trigger once manually: `sudo systemctl start docker-gitops-inspector.service`; s
 
 ## k3s access (one-time setup for phase 2)
 
-The k3s checks don't use the admin kubeconfig; they use a least-privilege SA (`inspector/docker-gitops-inspector`: pods/jobs get+list+delete, PV get+list, everything else denied):
+The k3s checks don't use the admin kubeconfig; they use a least-privilege SA (`inspector/docker-gitops-inspector`: pods/jobs get+list+delete, PV/nodes/resourcequotas/replicasets get+list, everything else denied — notably secrets and configmaps, which `setup-kubeconfig.sh` asserts stay unreadable):
 
 ```bash
 cd vps_oracle/host-native/inspector

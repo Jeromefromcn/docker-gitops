@@ -34,6 +34,16 @@ rules:
 - apiGroups: [""]
   resources: ["nodes"]
   verbs: ["get", "list"]
+# k3s-capacity-pressure.sh (added 2026-09-26). Read-only metadata, and both
+# are required rather than convenient: quota usage is invisible on a pod, and
+# a pod refused at admission (FailedCreate) never exists as a pod object, so
+# neither signal can be derived from the `pods` grant above.
+- apiGroups: [""]
+  resources: ["resourcequotas"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
