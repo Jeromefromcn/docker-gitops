@@ -30,6 +30,7 @@ Ground rules agreed on 2026-09-25:
 - **Write the spec only after sub-project 1's acceptance.** Scenario steps and expected evidence depend on what the lab actually shows: trace shape, response flags, the RCA scenarios' new symptoms (recorded in the sub-project 1 spec's "Implementation results").
 - Runbook location: `docs/demo/`. Every scenario uses the same fixed structure so it can be rendered as a web page: **purpose → preconditions → commands → expected result → evidence (query / screenshot) → talking points → reset**.
 - Order matters when demoing: outlier ejection lasts 30 s and a rate-limit window 60 s — routing scenarios first, then resilience, then authz, rate limiting last.
+- Add lab capacity alerts in the lab Grafana: pods stuck `Pending` (quota or node requests exhausted), high CPU throttling, container restarts / OOMKills. Sub-project 1 deliberately sizes the quota to "just schedules" (requests only, 2 CPU / 6Gi) and accepts limit overcommit, so these alerts are how a capacity problem surfaces.
 - Keep recorded backups (screenshots / terminal recordings) of every scenario in case the live cluster misbehaves during an interview.
 - Talking points should include the pitfalls actually hit (e.g. from `docs/incidents/` and the pr-lanes phase I–L docs: fault-injection delay not truncated by timeout, abort being a local reply that never trips outlier detection, RBAC-before-Lua filter order), not only the happy path.
 
