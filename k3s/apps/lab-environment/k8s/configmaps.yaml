@@ -22,16 +22,33 @@ data:
           - targets: ["consul:8500"]
 
       # Business services expose Spring Boot Actuator's Prometheus endpoint.
+      # Discovered per pod (a Service-name target would hit one random
+      # replica per scrape). Opt-in via prometheus.io/* pod annotations.
       - job_name: spring-boot-services
-        metrics_path: /actuator/prometheus
-        static_configs:
-          - targets:
-              - "customers-service:8081"
-              - "vets-service:8083"
-              - "visits-service:8082"
-              - "api-gateway:8080"
-            labels:
-              env: lab
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [lab-environment]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            regex: '([^:]+)(?::\d+)?;(\d+)'
+            replacement: '$1:$2'
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: service
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_name, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            separator: ":"
+            target_label: instance
+          - target_label: env
+            replacement: lab
 ---
 apiVersion: v1
 kind: ConfigMap

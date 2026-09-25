@@ -17,6 +17,10 @@ spec:
       labels:
         trivy-operator.skip: "true"
         app: vets-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8083"
+        prometheus.io/path: /actuator/prometheus
     spec:
       enableServiceLinks: false
       containers:
