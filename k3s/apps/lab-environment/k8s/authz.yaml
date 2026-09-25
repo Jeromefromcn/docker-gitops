@@ -1,8 +1,12 @@
 # L7 authorization, enforced at the waypoint (the Services carry
-# istio.io/use-waypoint). Who may call which Service, in two phases: the four
-# caller policies start in dry-run so a missing legitimate caller shows up as
-# a shadow denial instead of a 403 in production traffic. Remove the
-# istio.io/dry-run annotations only once the shadow count is confirmed zero.
+# istio.io/use-waypoint). Who may call which Service.
+#
+# The four caller policies were dry-run first: with istio.io/dry-run set, a
+# would-be-denied request still succeeded and incremented the waypoint's
+# rbac.*shadow_denied counter instead. Baseline over real traffic was 0, and
+# an illegal call (traffic-generator -> customers-service, a principal not in
+# customers-service-callers) raised it by exactly 1, so the policies match
+# what they intend to. Now enforced.
 #
 # Client audit (from live Consul KV and pod env, 2026-09-26):
 #   api-gateway        <- lab-ingress-istio (the only external entry)
@@ -17,8 +21,6 @@ kind: AuthorizationPolicy
 metadata:
   name: api-gateway-callers
   namespace: lab-environment
-  annotations:
-    istio.io/dry-run: "true"
 spec:
   targetRefs:
     - kind: Service
@@ -36,8 +38,6 @@ kind: AuthorizationPolicy
 metadata:
   name: customers-service-callers
   namespace: lab-environment
-  annotations:
-    istio.io/dry-run: "true"
 spec:
   targetRefs:
     - kind: Service
@@ -55,8 +55,6 @@ kind: AuthorizationPolicy
 metadata:
   name: visits-service-callers
   namespace: lab-environment
-  annotations:
-    istio.io/dry-run: "true"
 spec:
   targetRefs:
     - kind: Service
@@ -75,8 +73,6 @@ kind: AuthorizationPolicy
 metadata:
   name: vets-service-callers
   namespace: lab-environment
-  annotations:
-    istio.io/dry-run: "true"
 spec:
   targetRefs:
     - kind: Service
