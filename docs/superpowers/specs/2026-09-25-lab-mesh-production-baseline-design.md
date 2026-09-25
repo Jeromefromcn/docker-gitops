@@ -98,9 +98,10 @@ flowchart LR
 - Downstream URLs become configuration properties with Service-DNS defaults: `http://customers-service:8081`, `http://visits-service:8082`, `http://vets-service:8083`.
 - Remove `@LoadBalanced` from the gateway's `RestTemplate`/`WebClient.Builder` and customers-service's `RestTemplate`; gateway routes `lb://<svc>` → `http://<svc>:<port>`.
 - Remove `spring-cloud-starter-consul-discovery`, Spring Cloud LoadBalancer and `@EnableDiscoveryClient`. Keep the Consul config starter — `ChaosToggleWatcher` needs its `ConsulClient` bean.
-- **Trace propagation must survive**: clients are built from Spring Boot's auto-configured `RestTemplateBuilder`/`WebClient.Builder` (which carry the observation instrumentation), never `new`/`WebClient.builder()`. A test asserts outbound calls carry `traceparent`.
+- **Trace propagation must survive**: clients are built from Spring Boot's auto-configured `RestTemplateBuilder`/`WebClient.Builder` (which carry the observation instrumentation), never `new`/`WebClient.builder()`.
+  - *Not implemented as written.* No test asserts this in the fork — the only occurrence of `traceparent` there is a comment in `spring-petclinic-api-gateway/pom.xml`. The property itself **is** established, by measurement rather than by a unit test: the acceptance trace `a341411396e7ab55c82c020cd18bbc60` carries 15 spans across `lab-ingress-istio`, `waypoint`, `api-gateway`, `customers-service` and `visits-service`, which is only possible if every hop propagated. A regression test is still worth adding, and belongs with sub-project 3's CI work rather than here.
 - Gateway: remove the `Retry` default filter (D8); keep `CircuitBreaker` + fallback.
-- Run the existing test suite plus the new propagation test; build with `scripts/build.sh` (tagging both `:dev` and `:<git-sha>`), import into vps-oracle2 containerd.
+- Run the existing test suite; build with `scripts/build.sh` (tagging both `:dev` and `:<git-sha>`), import into vps-oracle2 containerd.
 
 **Toolkit (`ops-agent-toolkit-mcp`)**
 - `get_service_health(service)` queries the K8s API with the in-cluster ServiceAccount token: EndpointSlices (`kubernetes.io/service-name=<service>`) plus the backing pods. Returns one entry per instance: pod name, IP, ready, restart count. The response shape stays as close to the old "list of instances with status" as possible to limit agent-prompt impact; the docstring states the source is K8s.
@@ -267,6 +268,8 @@ Three things this table records that change how the lab should be read:
 
 ### Deliberate full-outage measurement (Review Focus 4)
 
-Deleting all five `customers-service` pods at once took **92 s** to recover to 5/5 (17:17:36→17:19:08Z) — five JVMs booting simultaneously on a 2-core node. During it the generator saw **117 failures**: `503` on `/api/customer/owners*` (no healthy upstream) and `500` on `/api/gateway/owners*` (the gateway's fallback). `/api/vet/vets` served **148 × 200 with zero failures** throughout, which is why the end-to-end probe stayed green — the probe path does not touch customers-service.
+Deleting all five `customers-service` pods at once took **92 s** to recover to 5/5 (17:17:36→17:19:08Z) — five JVMs booting simultaneously on a 2-core node. During it the generator saw **117 failures**: `503` on `/api/customer/owners*` (no healthy upstream) and `500` on `/api/gateway/owners*`. `/api/vet/vets` served **148 × 200 with zero failures** throughout, which is why the end-to-end probe stayed green — the probe path does not touch customers-service.
+
+The `500` is not a fallback, and the distinction is worth keeping straight. The gateway's Resilience4j circuit breaker wraps **only the visits call** (`ApiGatewayController`: `visitsServiceClient.getVisitsForPets(...)` with fallback `emptyVisitsForPets()`); `customersServiceClient.getOwner(...)` is unprotected, so a customers outage surfaces as Spring's default 500 rather than a handled response. `FallbackController` returns **503**, and it is not on this code path at all — `/api/gateway/owners/{id}` is a `@RestController` aggregation, not a Spring Cloud Gateway route, so the fallback filter never runs. An RCA agent told "500 = the gateway's fallback" would go looking for a circuit breaker in the wrong place; the real finding is that only one of the two downstream calls on that route is protected.
 
 Deleting the `consul` pod cost nothing visible: **126/126 requests were 200** afterwards. The running apps do not depend on Consul to serve traffic, only to fetch config at startup and to read the chaos toggles.
