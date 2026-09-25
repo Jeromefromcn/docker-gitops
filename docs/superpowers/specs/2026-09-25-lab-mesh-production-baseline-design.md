@@ -203,6 +203,14 @@ Each is a minimal experiment during planning/implementation; a failure changes t
 7. Services start with `data.db.password` supplied only by the Secret-backed env var `DATA_DB_PASSWORD` (KV key removed).
 8. The ingress `HTTPRoute` (parentRef: ingress Gateway) and the waypoint `VirtualService` for `api-gateway` coexist without one overriding the other (the `pr-lanes` VS/HTTPRoute conflict was on the same Service parentRef).
 
+### Spike results (Task 1, 2026-09-25)
+
+Run in throwaway namespaces `lab-spike` (ambient) / `lab-spike-out` (not meshed) on vps_oracle, then deleted.
+
+- Spike 1: PASS — workload-selector `PeerAuthentication` STRICT is enforced by ztunnel: plaintext from a non-mesh pod to the STRICT pod fails (curl exit 52, empty reply), the PERMISSIVE neighbour returns 200, and a meshed client reaches the STRICT pod with 200.
+- Spike 3: PASS — `infrastructure.parametersRef` ConfigMap applied: waypoint Deployment `replicas: 2` with requests 100m/128Mi, limits 500m/256Mi; ingress Service `type: NodePort`, `http=80/30198` as requested. The generated ingress Service also exposes `status-port` 15021 on an auto-assigned NodePort (32478 here) — not in the lab's 30092–30097 range. Generated ServiceAccounts are named `waypoint` and `<gateway-name>-istio`.
+- Spike 8: PASS — ingress `HTTPRoute` served the request (200) and the waypoint `VirtualService` applied (`x-vs-applied: true`). **`istio.io/ingress-use-waypoint: "true"` on the backend Service is required**: with the label removed, the request still returned 200 but the VirtualService header disappeared, i.e. ingress traffic bypassed the waypoint.
+
 ## Acceptance criteria
 
 1. Rolling-restart customers-service: data identical before/after, **0 errors** in the traffic generator's requests during the rollout.
