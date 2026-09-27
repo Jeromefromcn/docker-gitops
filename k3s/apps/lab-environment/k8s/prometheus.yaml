@@ -77,7 +77,7 @@ spec:
       annotations:
         # prometheus.yml is mounted via subPath, which never hot-reloads.
         # Bump this whenever prometheus-config changes.
-        lab.jerome/config-rev: "3"
+        lab.jerome/config-rev: "4"
     spec:
       serviceAccountName: prometheus
       enableServiceLinks: false

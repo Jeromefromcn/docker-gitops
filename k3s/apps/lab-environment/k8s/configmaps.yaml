@@ -33,6 +33,12 @@ data:
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
             action: keep
             regex: "true"
+          # The ingress/waypoint Envoys carry Istio's prometheus.io annotations
+          # too; envoy-stats scrapes them, so skip them here or every istio_*
+          # series is counted twice.
+          - source_labels: [__meta_kubernetes_pod_label_gateway_networking_k8s_io_gateway_name]
+            action: drop
+            regex: .+
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
             target_label: __metrics_path__
             regex: (.+)
