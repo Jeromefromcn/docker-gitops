@@ -38,10 +38,13 @@ spec:
     #   + surge: business x4 (20m) + ingress + waypoint (50m) + generator 200m
     #   + db-init PreSync hook                                          20m
     #                                        worst-case peak = 770m
-    # Upper bound: vps-oracle2's 2000m minus the node DaemonSets (250m) and
-    # a ztunnel surge pod (50m) = 1700m. Any value up to it means whatever
-    # the quota admits can also be scheduled — the quota rejects a pod
-    # (FailedCreate) before the node would leave it Pending. 1200m keeps
+    # Upper bound: vps-oracle2's allocatable 1700m (2000m minus the kubelet
+    # reservations in k3s/install/agent-vps-oracle2/config.yaml) minus the
+    # node DaemonSets (250m) and a ztunnel surge pod (50m) = 1400m. Memory
+    # holds the same way: the full 8Gi quota + DaemonSets ~640Mi fits the
+    # ~9.4Gi allocatable. Staying under the bound means whatever the quota
+    # admits can also be scheduled — the quota rejects a pod (FailedCreate)
+    # before the node would leave it Pending. 1200m keeps
     # ~430m above the peak for sub-project 2b's extra Deployments.
     # The old value, 2, was the whole node, so the quota never bound on CPU
     # and the node's cores did: a release peaked at ~1825m/2000m.

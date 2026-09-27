@@ -23,3 +23,15 @@ node-taint:
   - dedicated=lab:NoSchedule
 node-label:
   - dedicated=lab
+
+# Reserve room for what runs here outside pods, which the scheduler cannot
+# see: the docker compose stacks under vps_oracle2/compose/ (dify,
+# sillytavern, glances, ...: ~1.7Gi RSS, near-zero CPU) plus the OS
+# (system-reserved), and k3s-agent + containerd (~90m, kube-reserved).
+# Without it allocatable equalled capacity, so pods could be scheduled into
+# memory those processes already use. Allocatable becomes 1700m / ~9.4Gi;
+# the lab quota (k3s/apps/lab-environment/k8s/namespace.yaml) is sized
+# against that. Stopping dify would let system-reserved memory shrink.
+kubelet-arg:
+  - "system-reserved=cpu=200m,memory=2Gi"
+  - "kube-reserved=cpu=100m,memory=256Mi"
