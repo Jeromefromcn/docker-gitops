@@ -38,16 +38,19 @@ spec:
             #
             # The bound was the right instinct but the number was wrong:
             # measured 2026-09-27 at ~41KiB of heap per retained trace, so
-            # 5000 traces needs ~202MiB of heap — which is most of the old
-            # 256Mi limit, and the GC pacer was allowed to reach next_gc at
-            # 324MiB, 26% over the cap. First container died at 254.7MiB
-            # after 2h43m; the next survived 33h at 243.6MiB purely because
-            # it happened not to tip over. Either cut MEMORY_MAX_TRACES or
-            # size the limit well above the 203MiB plateau — see below.
+            # 5000 traces needs ~202MiB of heap — most of the old 256Mi
+            # limit — while the GC pacer was allowed to reach next_gc at
+            # 324MiB, 26% over the cap. The first container died at 254.7MiB
+            # after 2h43m; the next survived 33h at 243.6MiB only because it
+            # happened not to tip over. Both halves are fixed as of
+            # 2026-09-27: 2000 traces is ~83MiB of heap, comfortably inside
+            # the 384Mi limit below. Cutting the bound alone would have made
+            # the old limit work; the raise is what leaves room to raise the
+            # bound again later without another kill.
             - name: SPAN_STORAGE_TYPE
               value: "memory"
             - name: MEMORY_MAX_TRACES
-              value: "5000"
+              value: "2000"
             # Go soft memory limit, below the cgroup limit — see the same
             # note in prometheus.yaml.
             - name: GOMEMLIMIT
