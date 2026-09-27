@@ -8,7 +8,7 @@
 # blanket prune, so exactly the reported targets are the ones removed.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 MAX_AGE_SECONDS="${INSPECTOR_STOPPED_CONTAINER_MAX_AGE_SECONDS:-604800}"
 

@@ -18,38 +18,35 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 [ -n "${INSPECTOR_DRY_RUN:-}" ] && export INSPECTOR_DRY_RUN
 
-CHECKS_DIR="$SCRIPT_DIR/checks"
 # One results file per inspected instance, so the report can group by instance.
 results_dir="$(mktemp -d)"
 trap 'rm -rf "$results_dir"' EXIT
 
 start_epoch="$(date +%s.%N)"
 
-# Local checks, plus per-host remote checks that live under
-# <repo>/<host>/inspector-checks/checks/ (they run here but inspect <host>).
+# This engine (inspect.sh, lib/, systemd/, state/) owns no checks of its own.
+# It discovers every check tree under <repo>/<x>/inspector-checks/checks/ —
+# one per thing that can be inspected, including vps_oracle itself — and runs
+# them all from here. Each tree is reached the same way; see the four READMEs
+# (vps_oracle/, vps_oracle2/, vps_gcp/, k3s/) for what each one inspects.
 REPO_ROOT="${INSPECTOR_REPO_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
-# Which instance a check inspects: local checks -> vps_oracle,
-# <host>/inspector-checks/ -> <host>. The report is one logical inspection
-# grouped by instance, so it never matters which machine ran the script.
-#
-# The rule needs no special case for a component that spans hosts. An
-# inspector over `k3s/` has no single host to belong to, but it does not
-# need one: k3s/ is a directory at the repo root like any other host, so
-# its checks live in k3s/inspector-checks/ and the name reads correctly
-# from there. Keeping a cluster-wide check under a host's directory instead
-# is not a naming problem to paper over — the report will attribute its
-# findings to that host, and the pod namespace it inspects may live
-# anywhere (the 2026-09-27 lab OOM: reported under vps_oracle, running on
-# vps-oracle2).
+# Which instance a check inspects is simply the directory it lives in. The
+# report is one logical inspection grouped by instance, so it never matters
+# which machine ran the script — but it matters very much which directory a
+# check is filed under, because that is the only thing deciding which machine
+# its findings are attributed to. There is deliberately no exception for
+# vps_oracle or for anything else: a check about the cluster belongs under
+# k3s/ (which spans two nodes), one about another host under that host, and
+# one about this host under vps_oracle/inspector-checks/. Filing a check under
+# the wrong directory is not a naming problem to paper over — the 2026-09-27
+# lab OOM was reported under vps_oracle while every pod it concerned runs on
+# vps-oracle2.
 declare -A inst_checks=()
 inst_order=()
-for check in "$CHECKS_DIR"/*.sh "$REPO_ROOT"/*/inspector-checks/checks/*.sh; do
+for check in "$REPO_ROOT"/*/inspector-checks/checks/*.sh; do
   [ -e "$check" ] || continue
   check_name="$(basename "$check")"
-  case "$check" in
-    "$CHECKS_DIR"/*) instance="vps_oracle" ;;
-    *) instance="$(basename "$(dirname "$(dirname "$(dirname "$check")")")")" ;;
-  esac
+  instance="$(basename "$(dirname "$(dirname "$(dirname "$check")")")")"
   if [ -z "${inst_checks[$instance]:-}" ]; then
     inst_order+=("$instance"); inst_checks[$instance]=0
   fi

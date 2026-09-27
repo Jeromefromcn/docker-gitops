@@ -9,7 +9,7 @@
 # prune` semantics but with per-target reporting.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 docker info >/dev/null 2>&1 || {
   emit_result "alert" "flagged" "check:docker-unused-networks.sh" \

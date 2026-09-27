@@ -11,31 +11,37 @@ assert_true() {
     echo "FAIL - $desc"; failures=$((failures + 1)); fi
 }
 
-echo "== hermetic aggregation test: fake checks/ dir, stubbed apprise =="
+echo "== hermetic aggregation test: fake check trees, stubbed apprise =="
 work_dir="$(mktemp -d)"
-mkdir -p "$work_dir/checks" "$work_dir/lib"
+mkdir -p "$work_dir/lib" "$work_dir/repo/vps_fake1/inspector-checks/lib"
 cp "$INSPECTOR_DIR/lib/common.sh" "$work_dir/lib/common.sh"
+cp "$INSPECTOR_DIR/lib/common.sh" "$work_dir/repo/vps_fake1/inspector-checks/lib/common.sh"
 cp "$INSPECTOR_DIR/inspect.sh" "$work_dir/inspect.sh"
 
-cat > "$work_dir/checks/aaa-emits-auto.sh" <<'EOF'
+# The engine has no checks of its own: it discovers every
+# <repo>/*/inspector-checks/checks/ tree, so the fixtures must be laid out as
+# a tree of that shape, not as a bare checks/ beside inspect.sh.
+fakes="$work_dir/repo/vps_fake1/inspector-checks/checks"
+mkdir -p "$fakes"
+cat > "$fakes/aaa-emits-auto.sh" <<'EOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 emit_result "auto" "deleted" "fake-target-1" "fake detail 1"
 EOF
-cat > "$work_dir/checks/bbb-emits-alert-and-fails.sh" <<'EOF'
+cat > "$fakes/bbb-emits-alert-and-fails.sh" <<'EOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 emit_result "alert" "flagged" "fake-target-2" "fake detail 2"
 exit 1
 EOF
-# A fake remote-host check, to assert the per-instance summary lists it.
+# A second instance that flags nothing, to assert the per-instance summary
+# still lists it.
 mkdir -p "$work_dir/repo/vps_fake2/inspector-checks/checks"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$work_dir/repo/vps_fake2/inspector-checks/checks/quiet.sh"
-chmod +x "$work_dir/repo/vps_fake2/inspector-checks/checks/quiet.sh"
 export INSPECTOR_REPO_ROOT="$work_dir/repo"
-chmod +x "$work_dir/checks/"*.sh "$work_dir/inspect.sh"
+chmod +x "$fakes"/*.sh "$work_dir/repo/vps_fake2/inspector-checks/checks/quiet.sh" "$work_dir/inspect.sh"
 
 # Stub curl (send_apprise's only external dependency) so this test
 # never makes a network call: capture the payload to a file and always
@@ -67,8 +73,10 @@ assert_true "payload title is the English inspection title" \
   "$(grep -q "Inspection report ·" "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "payload body uses English section headers" \
   "$(grep -q "Auto-handled" "$work_dir/captured_payload.json" && grep -q "Needs manual review" "$work_dir/captured_payload.json" && echo true || echo false)"
-assert_true "report header shows the local instance's counts" \
-  "$(grep -q 'vps_oracle — 2 checks, 2 need review, 1 auto-handled' "$work_dir/captured_payload.json" && echo true || echo false)"
+assert_true "report header shows the flagging instance's counts" \
+  "$(grep -q 'vps_fake1 — 2 checks, 2 need review, 1 auto-handled' "$work_dir/captured_payload.json" && echo true || echo false)"
+assert_true "no check is attributed to a host that has no check tree" \
+  "$(grep -q 'vps_oracle —' "$work_dir/captured_payload.json" && echo false || echo true)"
 assert_true "report lists the remote instance even though it flagged nothing" \
   "$(grep -q 'vps_fake2 — 1 check, all clear' "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "payload contains no CJK characters" \

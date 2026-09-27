@@ -20,7 +20,7 @@
 # process on the box instead of contending for it.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 sudo -n true 2>/dev/null || {
   emit_result "alert" "flagged" "check:k3s-containerd-images.sh" \

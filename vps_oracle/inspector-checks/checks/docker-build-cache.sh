@@ -17,7 +17,7 @@
 # time those two stacks are built, nothing else.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 MAX_AGE_SECONDS="${INSPECTOR_BUILD_CACHE_MAX_AGE_SECONDS:-604800}"
 

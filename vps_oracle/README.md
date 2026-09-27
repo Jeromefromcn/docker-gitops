@@ -15,7 +15,8 @@ This machine runs more than just docker compose; each subdirectory under `vps_or
 | Directory | What it manages | Conventions in |
 |---|---|---|
 | `compose/` | docker compose stacks; each subdirectory is that stack's working directory | root [README.md](../README.md) |
-| `host-native/` | systemd services running directly on the host (not containers): `inspector` (read-only host checks across docker + k3s), `host-firewall` (iptables rules, `INPUT` defaults to REJECT), `npm-nodeport-relay` (TCP relay from NPM to the k3s NodePort) | each service's `host-native/<service>/README.md` (indexed in the root [README.md](../README.md) table) |
+| `host-native/` | systemd services running directly on the host (not containers): `inspector` (the inspection **engine** — it triggers every `<repo>/*/inspector-checks/` tree, this host's included), `host-firewall` (iptables rules, `INPUT` defaults to REJECT), `npm-nodeport-relay` (TCP relay from NPM to the k3s NodePort) | each service's `host-native/<service>/README.md` (indexed in the root [README.md](../README.md) table) |
+| `inspector-checks/` | inspection checks **about this host** (docker, containerd, sessions, NPM, ccr), run by `host-native/inspector/` and reported under the `vps_oracle` instance. Kept here rather than beside the engine so that a check's location is what the report attributes its findings to | [inspector-checks/README.md](inspector-checks/README.md) |
 | `tofu/` | OpenTofu brownfield adoption: VCN / subnet / IGW / route table / security list (recursively bringing the upstream OCI network resources under management) | [tofu/README.md](tofu/README.md) |
 | `dotfiles/` | part of this machine's local config (Claude Code global settings, shell/git config, VS Code Server machine-level settings, etc.), symlinked into the repo for management | [dotfiles/README.md](dotfiles/README.md) |
 

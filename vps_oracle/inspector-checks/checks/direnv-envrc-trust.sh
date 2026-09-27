@@ -22,7 +22,7 @@
 # the normal export blob (exit 0) when allowed.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 # Space-separated list of directories whose .envrc must stay direnv-allowed.
 # Defaults to the three group dirs that are symlinked to shell-env/*.envrc.

@@ -10,7 +10,7 @@
 # ${VAR} literals valid without the stack's .env present.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 REPO_ROOT="${INSPECTOR_REPO_ROOT:-$(cd "$INSPECTOR_ROOT/../.." && pwd)}"
 

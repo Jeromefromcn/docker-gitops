@@ -29,7 +29,7 @@
 # a read-only query.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 CCR_CONTAINER="${INSPECTOR_CCR_CONTAINER:-ccr}"
 WINDOW_HOURS="${INSPECTOR_CCR_SCHEMA_WINDOW_HOURS:-24}"

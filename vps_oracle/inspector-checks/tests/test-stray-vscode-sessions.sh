@@ -4,7 +4,7 @@
 # hermetic fixture (never the real ~/.claude/sessions).
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 failures=0
 assert_true() {

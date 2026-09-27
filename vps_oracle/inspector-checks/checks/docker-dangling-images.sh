@@ -8,7 +8,7 @@
 # prune has no per-image report and would ignore the age threshold.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 MAX_AGE_SECONDS="${INSPECTOR_DANGLING_IMAGE_MAX_AGE_SECONDS:-604800}"
 

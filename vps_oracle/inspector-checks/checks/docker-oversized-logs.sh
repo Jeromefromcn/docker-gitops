@@ -11,7 +11,7 @@
 # bash, not in find's -size, so tests can exercise it with a stub.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 THRESHOLD_BYTES="${INSPECTOR_LOG_ALERT_BYTES:-52428800}"
 

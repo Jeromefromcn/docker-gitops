@@ -3,7 +3,7 @@
 # a stubbed crictl.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/lib.sh"
+source "$SCRIPT_DIR/../../../vps_oracle/host-native/inspector/tests/lib.sh"
 
 work_dir="$(mktemp -d)"
 bin_dir="$work_dir/bin"

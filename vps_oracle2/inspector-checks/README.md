@@ -2,12 +2,12 @@
 
 Inspection checks **about vps-oracle2**, but **executed on vps_oracle**.
 
-vps-oracle2 runs no inspector of its own. The single inspector (`vps_oracle/host-native/inspector/`, a systemd timer on vps_oracle) discovers these checks in addition to its own and folds their results into the same Telegram report. This directory exists so that a check's location tells you which machine it inspects: `vps_oracle/host-native/inspector/checks/` = vps_oracle itself, `<host>/inspector-checks/checks/` = that host, reached remotely.
+vps-oracle2 runs no inspector of its own. The single inspector (`vps_oracle/host-native/inspector/`, a systemd timer on vps_oracle) discovers these checks in addition to its own and folds their results into the same Telegram report. This directory exists so that a check's location tells you which machine it inspects: `vps_oracle/inspector-checks/checks/` = vps_oracle itself, `<host>/inspector-checks/checks/` = that host, reached remotely.
 
 ```mermaid
 flowchart LR
   T[systemd timer<br/>on vps_oracle] --> I[inspect.sh]
-  I --> L["inspector/checks/*.sh<br/>(vps_oracle)"]
+  I --> L["vps_oracle/inspector-checks/checks/*.sh"]
   I --> R["vps_oracle2/inspector-checks/checks/*.sh"]
   R -- "DOCKER_HOST=ssh://ubuntu@vps-oracle2" --> O[(vps-oracle2 docker)]
   L --> TG[one Telegram report]
@@ -26,7 +26,7 @@ The report is one logical inspection grouped by instance: `inspect.sh` attribute
 
 ## Current checks
 
-Each mirrors the local check of the same name in `vps_oracle/host-native/inspector/checks/`, same tier and thresholds (env vars are shared, e.g. `INSPECTOR_STOPPED_CONTAINER_MAX_AGE_SECONDS`).
+Each mirrors the local check of the same name in `vps_oracle/inspector-checks/checks/`, same tier and thresholds (env vars are shared, e.g. `INSPECTOR_STOPPED_CONTAINER_MAX_AGE_SECONDS`).
 
 | Check | Tier | What it does on oracle2 |
 |---|---|---|

@@ -51,7 +51,7 @@ So:
 
 - **Prefer letting the service's own nginx/gateway handle path routing**, and have NPM do a single ordinary forward to that one container. The reason dify needs 8 Custom Locations is precisely that this repo's dify compose lacks the official `nginx` service.
 - **When you decommission a compose stack, disable the corresponding proxy host in NPM at the same time**. A reverse-proxy record left enabled with no backend is a landmine.
-- Safety net: `vps_oracle/host-native/inspector/checks/npm-nginx-config.sh` runs `nginx -t` at 09:00/21:00 daily and sends a Telegram alert if the config is broken. It runs in a separate process and doesn't affect the serving nginx, so you can always run it once manually to confirm: `docker exec npm nginx -t`.
+- Safety net: `vps_oracle/inspector-checks/checks/npm-nginx-config.sh` runs `nginx -t` at 09:00/21:00 daily and sends a Telegram alert if the config is broken. It runs in a separate process and doesn't affect the serving nginx, so you can always run it once manually to confirm: `docker exec npm nginx -t`.
 
 
 ## Final checks

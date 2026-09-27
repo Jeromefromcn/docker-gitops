@@ -37,7 +37,7 @@
 # it -- each iteration guards its own failure paths explicitly instead.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 CLAUDE_SESSIONS_DIR="${INSPECTOR_CLAUDE_SESSIONS_DIR:-$HOME/.claude/sessions}"
 CLAUDE_PROJECTS_DIR="${INSPECTOR_CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"

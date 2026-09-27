@@ -7,17 +7,17 @@ description: Add or modify an inspection check — local to vps_oracle, about an
 
 The inspection scripts run via a systemd timer at 09:00/21:00 daily, and each run always sends a Telegram report. For background and the tiering design, see the [design doc](../../../docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md).
 
-**Where it goes** — the directory a check lives in is what the report uses to say *which machine* its findings are about, so it has to name the thing the check actually inspects:
+**Where it goes** — the directory a check lives in is what the report uses to say *which machine* its findings are about, so it has to name the thing the check actually inspects. Every target has a tree; the engine under `vps_oracle/host-native/inspector/` is not one of them and holds no checks.
 
 | The check inspects | Location | Sources |
 |---|---|---|
-| vps_oracle itself | `vps_oracle/host-native/inspector/checks/` | `$SCRIPT_DIR/../lib/common.sh` |
+| vps_oracle itself | `vps_oracle/inspector-checks/checks/` | `$SCRIPT_DIR/../lib/local.sh` |
 | another host, reached over SSH | `<host>/inspector-checks/checks/` | `$SCRIPT_DIR/../lib/remote.sh` (sets `DOCKER_HOST`) |
 | the k3s cluster, both nodes | `k3s/inspector-checks/checks/` | `$SCRIPT_DIR/../lib/kube.sh` |
 
 No logic about a remote host or the cluster belongs under `vps_oracle/`. Tests go in the sibling `tests/` in every case.
 
-A cluster-wide check belongs under `k3s/`, never under a host: it reads the API rather than one machine, so filing it under a host attributes its findings to that host — the 2026-09-27 lab OOM was reported under `vps_oracle` while every `lab-environment` pod runs on vps-oracle2. The `k3s-` name prefix proves nothing either way: `vps_oracle`'s `k3s-containerd-images.sh` is genuinely node-local (it reads this host's containerd via `crictl`). See `vps_oracle2/inspector-checks/README.md` and `k3s/inspector-checks/README.md`. Every alert must name the instance — or, for a cluster-wide check, the node — it concerns.
+A cluster-wide check belongs under `k3s/`, never under a host: it reads the API rather than one machine, so filing it under a host attributes its findings to that host — the 2026-09-27 lab OOM was reported under `vps_oracle` while every `lab-environment` pod runs on vps-oracle2. The `k3s-` name prefix proves nothing either way: `k3s-containerd-images.sh` is genuinely node-local (it reads this host's containerd via `crictl`) and belongs in `vps_oracle/inspector-checks/`. See the README in the tree you are writing into. Every alert must name the instance — or, for a cluster-wide check, the node — it concerns.
 
 ## Hard rule: one check, one test
 
@@ -59,7 +59,7 @@ Cover at least these cases:
 # <one line describing what this detects>. <which line in the design doc this corresponds to, and the tiering rationale>
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"   # ../lib/remote.sh for <host>/, ../lib/kube.sh for k3s/
+source "$SCRIPT_DIR/../lib/local.sh"   # ../lib/remote.sh for <host>/, ../lib/kube.sh for k3s/
 ```
 
 - Output always goes through `emit_result <tier> <action> <target> <detail>`; `tier` is `auto`/`alert`, `action` is `flagged`/`deleted`/`would-delete`

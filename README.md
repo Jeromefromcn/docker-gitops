@@ -22,16 +22,19 @@ docker-gitops/
 │   │   ├── postgres/              #   shared postgres
 │   │   └── redis/                 #   shared redis (ACL users)
 │   ├── host-native/               # systemd services on the host itself (not containers)
-│   │   ├── inspector/             #   read-only host checks, systemd timer
+│   │   ├── inspector/             #   the inspection engine (systemd timer); owns no checks
 │   │   ├── host-firewall/         #   hand-written iptables rules
 │   │   ├── npm-nodeport-relay/    #   TCP relay so NPM reaches the k3s NodePort
+│   ├── inspector-checks/          #   checks about vps_oracle (run by the engine above)
 │   ├── dotfiles/                  # host-local config, symlinked into the repo
 │   └── tofu/                      # OpenTofu brownfield adoption of the OCI network
 ├── vps_gcp/                       # GCP free-tier e2-micro (practice instance)
 │   ├── compose/                   #   node-exporter + glances + plans (run via `docker --context gcp`)
+│   ├── inspector-checks/          #   checks about vps-gcp (reached over SSH)
 │   └── tofu/                      # OpenTofu greenfield lifecycle practice
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
 │   ├── compose/                   #   node-exporter, glances, portainer-agent, dify, sillytavern (run via `docker --context oracle2`)
+│   ├── inspector-checks/          #   checks about vps-oracle2 (reached over SSH)
 │   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
 ├── k3s/                           # the k3s cluster spanning hosts (always via ArgoCD GitOps): server on vps_oracle, vps-oracle2 as agent
 ├── tailscale/                     # tailnet ACL policy, applied by GitOps (see tailscale/README.md)
@@ -40,9 +43,9 @@ docker-gitops/
 └── .github/                       # CI: repo-conventions check, image build/sign, tailscale ACL apply
 ```
 
-Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `tofu/` (OpenTofu IaC — `vps_oracle/tofu/` brownfield adoption of the OCI network, `vps_gcp/tofu/` greenfield lifecycle practice; governed by `.claude/rules/tofu-conventions.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), `host-native/` (explained below), and `inspector-checks/` (checks about that host that the vps_oracle inspector runs remotely over SSH, kept under the host they inspect so alerts are attributable; see `vps_oracle2/inspector-checks/README.md`, `vps_gcp/inspector-checks/README.md`). Each follows its own conventions; see the corresponding subdirectory's README.
+Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `tofu/` (OpenTofu IaC — `vps_oracle/tofu/` brownfield adoption of the OCI network, `vps_gcp/tofu/` greenfield lifecycle practice; governed by `.claude/rules/tofu-conventions.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), `host-native/` (explained below), and `inspector-checks/` — inspection checks **about that host**, discovered and run by the vps_oracle inspector engine. Every inspection target has one, including vps_oracle itself and the k3s cluster, because the tree a check lives in is exactly what decides which machine the report attributes its findings to. See `vps_oracle/inspector-checks/README.md`, `vps_oracle2/inspector-checks/README.md`, `vps_gcp/inspector-checks/README.md`. Each follows its own conventions; see the corresponding subdirectory's README.
 
-Components that span hosts live at the repo root instead of under a `<host>/`: `k3s/` (one cluster whose server runs on vps_oracle and whose agent is vps-oracle2; managed by ArgoCD GitOps — changes go through git push + ArgoCD sync, not manual commands; see `k3s/README.md`) and `tailscale/` (the tailnet ACL).
+Components that span hosts live at the repo root instead of under a `<host>/`: `k3s/` (one cluster whose server runs on vps_oracle and whose agent is vps-oracle2; managed by ArgoCD GitOps — changes go through git push + ArgoCD sync, not manual commands; see `k3s/README.md`) and `tailscale/` (the tailnet ACL). The same rule gives the k3s cluster its own check tree, `k3s/inspector-checks/`.
 
 Every VPS in this repo is expected to join the same Tailscale mesh VPN (installed natively on the host, not containerized) so hosts reach each other over private tailscale IPs instead of the public internet — see `docs/misc/2026-09-13-oracle-gcp-tailscale-mesh-vpn.md` for the oracle↔gcp setup this was first built for.
 
@@ -54,7 +57,7 @@ Each subdirectory under `vps_oracle/host-native/` corresponds to a service that 
 
 | Subdirectory | What it is |
 |---|---|
-| [`inspector/`](vps_oracle/host-native/inspector/README.md) | host-native bash inspection scripts, triggered by a systemd timer daily at 09:00/21:00, that detect and clean up stray VS Code/Claude session process trees and accumulated `.vscode-server` version directories, and send one English Telegram report per run. See the [design doc](docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md) for the background (self-protection rules, auto/alert tiers) |
+| [`inspector/`](vps_oracle/host-native/inspector/README.md) | the inspection **engine** — host-native bash, triggered by a systemd timer daily at 09:00/21:00. It owns no checks: it globs every `<repo>/*/inspector-checks/` tree, runs them, and sends one English Telegram report per run grouped by instance. Checks detect and clean up stray VS Code/Claude session process trees, accumulated `.vscode-server` directories, docker leftovers, k3s problems and more; each tree's README lists its own. See the [design doc](docs/superpowers/specs/2026-08-15-vps-oracle-inspector-design.md) for the background (self-protection rules, auto/alert tiers) |
 | [`host-firewall/`](vps_oracle/host-native/host-firewall/README.md) | the single source of truth for the hand-written iptables rules, applied as a systemd oneshot at boot |
 | [`npm-nodeport-relay/`](vps_oracle/host-native/npm-nodeport-relay/README.md) | a TCP relay in the host netns that lets NPM (a docker container) reach the k3s NodePort that only the host can reach |
 

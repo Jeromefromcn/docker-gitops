@@ -7,7 +7,7 @@
 # "VS Code server version-directory pile-up" row.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/local.sh"
 
 SERVERS_DIR="${INSPECTOR_VSCODE_SERVERS_DIR:-$HOME/.vscode-server/cli/servers}"
 KEEP_COUNT="${INSPECTOR_KEEP_SERVER_VERSIONS:-2}"
