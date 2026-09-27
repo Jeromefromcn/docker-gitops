@@ -37,7 +37,7 @@ docs/demo/
   06-secret-rotation.md
   07-gitops-selfheal-rollback.md
   08-load-test.md
-  recordings/                     rehearsal asciinema casts + evidence output (backups)
+  evidence/                       rehearsal evidence output per scenario (backup if the live cluster misbehaves)
 k3s/apps/lab-environment/demo/
   demo-window                     start|stop <scenario> — writes UTC start/end to a state file
   demo-evidence                   runs <scenario>'s evidence queries over its recorded window
@@ -121,12 +121,12 @@ Lab Mesh Overview gets a capacity row: requests used vs quota, throttling ratio 
 2. After the rehearsal the lab is back at baseline: chaos toggles false, replica counts as in git, generator all-200, ArgoCD `Synced/Healthy`, `main` carries the `demo:` commits and their reverts.
 3. All five capacity alerts fired once and resolved on their own.
 4. The production Prometheus host can reach KSM's NodePort (reachability only, not wired).
-5. `docs/demo/recordings/` holds an asciinema cast and the evidence output for every scenario.
+5. `docs/demo/evidence/` holds the rehearsal's `demo-evidence` output for every scenario.
 6. Updated: roadmap status, lab README (isolation wording, KSM dependency), `docs-layout.md` (`docs/demo/` is current state).
 
 ## Prerequisites on vps_oracle
 
-Neither `asciinema` nor `k6` is installed. `asciinema` is an apt package (host change, confirm before installing); k6 runs from the `grafana/k6` image and needs no install.
+`k6` is not installed; it runs from the `grafana/k6` image and needs no install. No terminal or screen recordings are made (decided 2026-09-27): the backup for a misbehaving live cluster is the rehearsal's evidence output.
 
 ## Out of scope
 
