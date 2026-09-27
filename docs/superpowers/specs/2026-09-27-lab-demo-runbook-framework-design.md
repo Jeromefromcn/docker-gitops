@@ -135,3 +135,54 @@ Lab Mesh Overview gets a capacity row: requests used vs quota, throttling ratio 
 - Every scenario needing a new mechanism (2b, 2c).
 - The runbook web page (roadmap's separate row).
 - Production monitoring consumption of KSM.
+
+## Implementation results (2026-09-27)
+
+Implemented from [the plan](../plans/2026-09-27-lab-demo-runbook-framework.md), executed inline on `main`.
+
+| # | Criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | Full rehearsal 01–08 in order, every `demo-evidence` passes | **PASS**, with reruns | 00, 01, 03, 07, 04, 05 and 06 passed first time. 02 failed (2/304 generator errors) and was rerun with 03 and 07 after the preStop fix. 06 was rerun to measure that fix. 08 comes from the one load-test run: the user chose not to overload the node twice. |
+| 2 | Lab back at baseline; `main` carries the `demo:` commits and reverts | **PASS** | `demo-reset preflight` → `baseline OK`; `main` has two rehearsal sets of `demo:` commits (c4e4743…2fc80f7, c1bbca0…d6daf96), each with its revert |
+| 3 | All five capacity alerts fired and resolved | **PASS** | Real test pods took all five rules to `Alerting` (Restarts and OOMKilled by 13:46Z, Pending and Quota by 13:49Z, Throttling at 14:01Z); all back to `inactive` after cleanup |
+| 4 | KSM NodePort answers from the host shell | **PASS** | `curl :30115/metrics` → `200` |
+| 5 | `docs/demo/evidence/` holds every scenario's output | **PASS** | 8 files |
+| 6 | Roadmap, lab README, `docs-layout.md` updated | **PASS** | this commit series |
+
+### Measured
+
+- **02 rolling update**:
+  - The sync, PreSync hook included, lands ~45 s after the push; the rollout then takes ~2 min.
+  - Errors: 0/310 on the first run, 2/304 on the rehearsal (that failure led to the preStop fix below), 0/293 after the fix.
+- **03 schema migration**: `db-init` completes ~7 s before the first new pod; owners stay at 10/10.
+- **07 self-heal**:
+  - ArgoCD resyncs the Deployment within 1 s of the manual scale.
+  - READY returns to 5/5 after ~74 s (JVM startup), with 0 generator errors during the dip.
+- **06 secret rotation**:
+  - The Secret updates ~10 s after the push.
+  - Errors: 4/360 before the preStop fix, 2/350 after it. None came from authentication.
+- **08 load test**:
+  - Knee: P99 rises from 76 to 188 ms at ~31 req/s and reaches 842 ms at ~70 req/s.
+  - Bottleneck: **vets-service's Hikari pool** — connection waits up to 2.99 s while node CPU peaked at only 1.29 of 2 cores. The spec's hypothesis (CPU) was wrong, which the design anticipated.
+
+### Deviations from the plan, and why
+
+- **Short windows:** evidence reads 20 s past the window's end, over at least 60 s (new `settle()`, TDD). A few-second window has no Prometheus samples of its own.
+- **Unparsable Loki lines:** every `| json` Loki selector skips unparsable lines (`__error__=""`). One truncated istio-proxy line was failing every metric query.
+- **ArgoCD sync wait:** pages that push wait for ArgoCD to finish syncing the pushed SHA before `rollout status`. Without the wait, `rollout status` reported the previous rollout as finished.
+- **07 evidence source:** 07 reads self-heal from kube-state-metrics (available replicas dipping to 1) and the ArgoCD controller log. The API server merges repeated ScalingReplicaSet events, and ArgoCD's history does not record self-heal syncs.
+- **04 checks:**
+  - curl exit codes vary (52 or 56), so the page no longer uses them as proof.
+  - The ztunnel check requires one rejection per L4 attempt (≥ 3).
+- **03 first-new-pod check:** it ignores terminating pods, because preStop-draining pods outlive `rollout status`.
+- **08 evidence:** it measures both candidate bottlenecks (node CPU and the Hikari pool) and names the one that saturated. The Envoy queries are pinned to `job="envoy-stats"`.
+- **Throttling alert test:** the test pod runs two busy loops under a 50m limit. A single loop under 100m showed only ~38 % of periods throttled.
+- **Platform fixes made during 2a:**
+  - A native `preStop` sleep of 10 s on the four business Deployments.
+  - The lab Prometheus no longer scrapes the Envoy gateways twice (every `istio_*` series had been doubled).
+
+### Open findings (not fixed in 2a)
+
+- **UF to new pods during concurrent rollouts:** while several services roll at once, the waypoint can still get `UF,URX` connecting to a new, Ready customers pod. It happened for up to ~30 s after the rollout ended, and ztunnel logged nothing for those attempts. IP reuse is suspected but not verified. Tracked in 2c.
+- **vets-service is the first capacity lever:** one replica with a 5-connection pool. More replicas or a bigger pool comes before more CPU.
+- **02's Kubernetes piece can go stale:** it counts pods created since the window started, so re-running it after 07 counts 07's pods too. Its ArgoCD piece is correct (Review Focus 1, pinned).

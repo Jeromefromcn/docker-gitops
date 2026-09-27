@@ -1,0 +1,17 @@
+== load-test  window 2026-09-27T14:19:44Z → 2026-09-27T14:25:45Z (361s)
+      minute  rps   p99(ms)
+      14:19     1  57
+      14:20     6  68
+      14:21     9  70
+      14:22    16  76
+      14:23    31  188
+      14:24    51  145
+      14:25    70  842
+  [envoy         ] PASS  waypoint RPS and P99 per minute over the run: 7 points (want >= 5)
+      89 inbound-vip|8083|http|vets-service.lab-environment.svc.cluster.local;
+      3 inbound-vip|8081|http|customers-service.lab-environment.svc.cluster.local;
+  [envoy         ] PASS  upstream timeouts (UT, 1 s per-try) during the run: 92 — the hop that gave out first is the top line
+  [cadvisor      ] PASS  peak node CPU 1.2945738262373523 of 2 cores; peak container throttling 0.3875 (jaeger-d55f4f869-7wxn6)
+  [app           ] PASS  saturated resource: vets-service DB connection pool (waited up to 2.985353827s for a connection)
+  [note          ]       Lab CPU Throttling alert state: Normal (needs 10 min sustained)
+== OK: 4 passed (3 infrastructure-layer)

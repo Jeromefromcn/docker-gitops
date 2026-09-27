@@ -1,0 +1,8 @@
+== schema-migration  window 2026-09-27T14:55:14Z → 2026-09-27T14:58:04Z (170s)
+  [argocd        ] PASS  sync of c1bbca0 ran db-init as PreSync/Succeeded (want PreSync/Succeeded; last op revision c1bbca0)
+  [kubernetes    ] PASS  db-init completed 2026-09-27T14:55:48Z, first new customers pod 2026-09-27T14:55:55Z (hook first)
+  [postgres      ] PASS  owners before/after the re-run: 10/10 (idempotent)
+      applying customers.sql
+      applying vets.sql
+      applying visits.sql
+== OK: 3 passed (2 infrastructure-layer)
