@@ -1,6 +1,6 @@
 == gitops-selfheal-rollback  window 2026-09-27T14:58:39Z → 2026-09-27T15:02:35Z (236s)
   [kubernetes    ] PASS  available customers-service replicas dipped to 1 during the window (manual scale to 1)
-  [argocd        ] PASS  selfHeal synced Deployment/customers-service back to c1bbca0 at 2026-09-27T22:58:40+08:00
+  [argocd        ] PASS  selfHeal synced only Deployment/customers-service (at c1bbca0) at 2026-09-27T22:58:40+08:00
   [argocd        ] PASS  ArgoCD deployed the revert 2b96db2 inside the window
-  [kubernetes    ] PASS  live rollout-rev/ready '3 5' equals git's '3 5' after the revert
+  [kubernetes    ] PASS  live rollout-rev/ready '4 5' equals git's '4 5' after the revert
 == OK: 4 passed (4 infrastructure-layer)
