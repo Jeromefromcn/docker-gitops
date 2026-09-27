@@ -43,8 +43,14 @@ demo-evidence secret-rotation
 ```
 
 ## Expected result
-`Secret updated`, `ALTER ROLE`, three completed rollouts. Evidence: old
-password rejected, new accepted, all three clients restarted.
+`Secret updated` ~10 s after the push, `ALTER ROLE`, three completed
+rollouts (~3 minutes). Evidence: old password rejected, new accepted, all
+three clients restarted. Rehearsal 2026-09-27: 4 non-200 out of 360
+generator requests — none from authentication. Two were `503 UC` from old
+customers pods closing connections as they terminated, two were `504 UT`
+from cold vets/visits pods missing the 1 s per-try timeout. Rolling three
+Deployments at once exposes a shutdown-drain gap that a one-service
+rollout (scenario 02: zero errors) does not.
 
 ## Evidence
 - **ArgoCD:** a sealed-secrets app deployment inside the window.
@@ -59,7 +65,9 @@ password rejected, new accepted, all three clients restarted.
   database must both be on the new password before `lab-environment` syncs.
 - Between step 2 and the end of step 3, old pods keep working on pooled
   connections (Hikari max 5); only a *new* connection with the old password
-  fails. The note line is that window, measured.
+  would fail — and in rehearsal none did. The errors the note line counts
+  came from the rollouts themselves (see Expected result): the honest cost
+  of this rotation is the restart, not the password switch.
 - Verification pitfall: inside the postgres pod the local socket is `trust`
   and `-h postgres` is now reset by ztunnel — only the pod's own IP reaches
   the scram line. A check that "passes" on the wrong path proves nothing.
