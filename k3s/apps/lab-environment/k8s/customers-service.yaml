@@ -87,6 +87,13 @@ spec:
           # startupProbe holds readiness off until the app is actually up
           # (up to 180 s); readinessProbe then uses Spring's own readiness
           # group, so "Ready" means "serving", not "container started".
+          # Keep serving while the endpoint removal reaches the waypoint:
+          # without it the app exits on SIGTERM while the waypoint still
+          # routes to the pod, and those requests fail 503 UF mid-rollout.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
           startupProbe:
             httpGet:
               path: /actuator/health/liveness
