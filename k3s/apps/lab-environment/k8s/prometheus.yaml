@@ -60,8 +60,22 @@ spec:
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
+            # Go's soft memory limit, deliberately below the cgroup limit.
+            # Unset, the GC pacer is free to overshoot the container limit
+            # before collecting — the 2026-09-27 OOMKill followed exactly
+            # that shape (container-to-container anon differed by 55MiB at
+            # comparable uptime, far more than the +0.02MiB/h RSS slope).
+            # Sized well above the ~190MiB anon floor so it bounds the
+            # spike without causing GC thrash.
+            - name: GOMEMLIMIT
+              value: "400MiB"
           args:
             - --config.file=/etc/prometheus/prometheus.yml
+            # No volume, so the TSDB lives on the container's writable
+            # layer and its page cache is charged to the same cgroup. This
+            # caps that growth direction; it does not bound anon, which is
+            # what the memory limit above has to cover.
+            - --storage.tsdb.retention.size=128MB
           ports:
             - containerPort: 9090
           volumeMounts:
@@ -69,12 +83,17 @@ spec:
               mountPath: /etc/prometheus/prometheus.yml
               subPath: prometheus.yml
           resources:
+            # Raised 2026-09-27, from 128Mi/192Mi. The old limit was below
+            # this container's actual need, not merely tight: anon alone
+            # (not reclaimable) reached 188MiB before a kill, and the TSDB's
+            # page cache is charged to the same cgroup, so only ~120MiB of
+            # the budget was ever available to the Go heap.
             requests:
               cpu: 50m
-              memory: 128Mi
+              memory: 256Mi
             limits:
               cpu: 100m
-              memory: 192Mi
+              memory: 512Mi
       volumes:
         - name: config
           configMap:
