@@ -317,6 +317,16 @@ policies are enforced — if a legitimate caller starts getting 403s, re-add
 `istio.io/dry-run: "true"` to that policy to restore the behaviour while you
 find the missing principal.
 
+## Capacity alerts
+
+Five Grafana-managed rules (folder *Lab Capacity*, `configmaps.yaml` →
+`alerting.yml`): Pod Pending 3m, Quota Near Limit >90% 2m, CPU Throttling
+>50% 10m, Container Restarts, OOMKilled. They have **no contact point** —
+they are visible in this Grafana only; the inspector is what pages. They
+exist because the quota sizes requests only and limits are overcommitted,
+so these are how a capacity problem surfaces. The Lab Mesh Overview's
+bottom row plots the same signals.
+
 ## Data
 
 `postgres` and `consul` are stateful, on static `local` PVs on vps-oracle2

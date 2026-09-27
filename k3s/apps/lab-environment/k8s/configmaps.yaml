@@ -276,6 +276,93 @@ data:
         options:
           path: /etc/grafana/provisioning/dashboards/json
           foldersFromFilesStructure: true
+  # Lab capacity alerts. No contact point on purpose: they show in this
+  # Grafana only — the inspector already pages for Pending/FailedCreate/quota,
+  # and chaos drills must stay out of the real alert pipeline. To page later,
+  # add a contact point + notification policy; these rules do not change.
+  alerting.yml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: lab_capacity
+        folder: Lab Capacity
+        interval: 30s
+        rules:
+          - uid: lab_pod_pending
+            title: Lab Pod Pending
+            condition: B
+            for: 3m
+            noDataState: OK
+            annotations:
+              summary: "A lab-environment pod has been Pending for 3 minutes (quota or node requests exhausted?)"
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: {from: 300, to: 0}
+                model: {refId: A, instant: true, expr: 'sum(kube_pod_status_phase{namespace="lab-environment", phase="Pending"})'}
+              - refId: B
+                datasourceUid: '__expr__'
+                model: {refId: B, type: threshold, expression: A, conditions: [{evaluator: {type: gt, params: [0]}}]}
+          - uid: lab_quota_near_limit
+            title: Lab Quota Near Limit
+            condition: B
+            for: 2m
+            noDataState: OK
+            annotations:
+              summary: "lab-environment-quota requests above 90% of hard"
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: {from: 300, to: 0}
+                model: {refId: A, instant: true, expr: 'max(max by (resource) (kube_resourcequota{namespace="lab-environment", type="used"}) / max by (resource) (kube_resourcequota{namespace="lab-environment", type="hard"}))'}
+              - refId: B
+                datasourceUid: '__expr__'
+                model: {refId: B, type: threshold, expression: A, conditions: [{evaluator: {type: gt, params: [0.9]}}]}
+          - uid: lab_cpu_throttling
+            title: Lab CPU Throttling
+            condition: B
+            for: 10m
+            noDataState: OK
+            annotations:
+              summary: "A lab container spent over 50% of its CFS periods throttled for 10 minutes"
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: {from: 600, to: 0}
+                model: {refId: A, instant: true, expr: 'max(rate(container_cpu_cfs_throttled_periods_total{namespace="lab-environment", container!=""}[5m]) / rate(container_cpu_cfs_periods_total{namespace="lab-environment", container!=""}[5m]))'}
+              - refId: B
+                datasourceUid: '__expr__'
+                model: {refId: B, type: threshold, expression: A, conditions: [{evaluator: {type: gt, params: [0.5]}}]}
+          - uid: lab_container_restarts
+            title: Lab Container Restarts
+            condition: B
+            for: 0s
+            noDataState: OK
+            annotations:
+              summary: "A lab container restarted in the last 10 minutes"
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: {from: 600, to: 0}
+                model: {refId: A, instant: true, expr: 'sum(increase(kube_pod_container_status_restarts_total{namespace="lab-environment"}[10m]))'}
+              - refId: B
+                datasourceUid: '__expr__'
+                model: {refId: B, type: threshold, expression: A, conditions: [{evaluator: {type: gt, params: [0]}}]}
+          - uid: lab_oomkilled
+            title: Lab OOMKilled
+            condition: B
+            for: 0s
+            noDataState: OK
+            annotations:
+              summary: "A lab container was OOMKilled and restarted in the last 10 minutes"
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: {from: 600, to: 0}
+                model: {refId: A, instant: true, expr: 'count(max by (pod, container) (kube_pod_container_status_last_terminated_reason{namespace="lab-environment", reason="OOMKilled"}) and on (pod, container) (increase(kube_pod_container_status_restarts_total{namespace="lab-environment"}[10m]) > 0))'}
+              - refId: B
+                datasourceUid: '__expr__'
+                model: {refId: B, type: threshold, expression: A, conditions: [{evaluator: {type: gt, params: [0]}}]}
 ---
 apiVersion: v1
 kind: ConfigMap

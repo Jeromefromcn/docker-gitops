@@ -35,6 +35,20 @@ data:
         {"type": "timeseries", "title": "Upstream retries",
          "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
          "datasource": {"type": "prometheus", "uid": "prometheus"},
-         "targets": [{"expr": "sum by (cluster_name) (rate(envoy_cluster_upstream_rq_retry{gateway=\"waypoint\"}[5m]))", "legendFormat": "{{cluster_name}}"}]}
+         "targets": [{"expr": "sum by (cluster_name) (rate(envoy_cluster_upstream_rq_retry{gateway=\"waypoint\"}[5m]))", "legendFormat": "{{cluster_name}}"}]},
+        {"type": "timeseries", "title": "Quota: requests used / hard",
+         "gridPos": {"x": 0, "y": 24, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "fieldConfig": {"defaults": {"unit": "percentunit", "max": 1}},
+         "targets": [{"expr": "max by (resource) (kube_resourcequota{namespace=\"lab-environment\", type=\"used\"}) / max by (resource) (kube_resourcequota{namespace=\"lab-environment\", type=\"hard\"})", "legendFormat": "{{resource}}"}]},
+        {"type": "timeseries", "title": "CPU throttling ratio by container",
+         "gridPos": {"x": 8, "y": 24, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "fieldConfig": {"defaults": {"unit": "percentunit"}},
+         "targets": [{"expr": "max by (pod, container) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"lab-environment\", container!=\"\"}[5m]) / rate(container_cpu_cfs_periods_total{namespace=\"lab-environment\", container!=\"\"}[5m]))", "legendFormat": "{{pod}}/{{container}}"}]},
+        {"type": "timeseries", "title": "Container restarts (10m)",
+         "gridPos": {"x": 16, "y": 24, "w": 8, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "sum by (pod, container) (increase(kube_pod_container_status_restarts_total{namespace=\"lab-environment\"}[10m]))", "legendFormat": "{{pod}}/{{container}}"}]}
       ]
     }

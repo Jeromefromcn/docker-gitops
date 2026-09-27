@@ -20,7 +20,7 @@ spec:
       annotations:
         # Datasources and the dashboards provider are subPath mounts, which
         # do not pick up ConfigMap changes; this bumps a roll when they change.
-        lab.jerome/config-rev: "1"
+        lab.jerome/config-rev: "2"
     spec:
       enableServiceLinks: false
       containers:
@@ -42,6 +42,9 @@ spec:
             - name: dashboards-provider
               mountPath: /etc/grafana/provisioning/dashboards/dashboards.yml
               subPath: dashboards.yml
+            - name: alerting
+              mountPath: /etc/grafana/provisioning/alerting/alerting.yml
+              subPath: alerting.yml
             # Directory mount, no subPath: Grafana's file provider rescans
             # every 30s, so a dashboard edit hot-reloads without a roll.
             - name: dashboards
@@ -63,6 +66,9 @@ spec:
         - name: dashboards
           configMap:
             name: grafana-dashboards
+        - name: alerting
+          configMap:
+            name: grafana-provisioning
 ---
 apiVersion: v1
 kind: Service
