@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-released-pvs.sh
 #
 # Flags PersistentVolumes in Released phase — unbound but still holding
@@ -8,7 +7,7 @@
 # still be the only copy of data someone wants).
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/kube.sh"
 
 KUBECONFIG_FILE="${INSPECTOR_KUBECONFIG:-$INSPECTOR_STATE_DIR/kubeconfig}"
 

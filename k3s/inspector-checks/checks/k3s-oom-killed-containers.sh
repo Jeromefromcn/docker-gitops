@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-oom-killed-containers.sh
 #
 # Flags containers whose last termination was OOMKilled within the
@@ -12,7 +11,7 @@
 # them) — this check closes that gap.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/kube.sh"
 
 # 24h: comfortably covers the twice-daily run cadence (09:00/21:00)
 # even if one run is missed, without the report going stale silently.

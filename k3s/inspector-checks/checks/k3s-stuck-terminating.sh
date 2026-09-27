@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-stuck-terminating.sh
 #
 # Flags pods stuck in Terminating (deletionTimestamp set longer than
@@ -8,7 +7,7 @@
 # force-deleting is a human decision).
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/kube.sh"
 
 THRESHOLD_SECONDS="${INSPECTOR_TERMINATING_STUCK_SECONDS:-900}"
 KUBECONFIG_FILE="${INSPECTOR_KUBECONFIG:-$INSPECTOR_STATE_DIR/kubeconfig}"

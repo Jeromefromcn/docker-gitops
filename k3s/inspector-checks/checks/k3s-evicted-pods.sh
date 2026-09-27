@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-evicted-pods.sh
 #
 # Deletes leftover pods in Failed phase (Evicted/Error/etc.). Design
@@ -9,7 +8,7 @@
 # already terminal.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/kube.sh"
 
 KUBECONFIG_FILE="${INSPECTOR_KUBECONFIG:-$INSPECTOR_STATE_DIR/kubeconfig}"
 

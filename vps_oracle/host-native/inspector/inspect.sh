@@ -29,32 +29,27 @@ start_epoch="$(date +%s.%N)"
 # <repo>/<host>/inspector-checks/checks/ (they run here but inspect <host>).
 REPO_ROOT="${INSPECTOR_REPO_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 # Which instance a check inspects: local checks -> vps_oracle,
-# <host>/inspector-checks/ -> <host>, unless the check declares its own with a
-# `# inspector-instance: <name>` line. The report is one logical inspection
+# <host>/inspector-checks/ -> <host>. The report is one logical inspection
 # grouped by instance, so it never matters which machine ran the script.
 #
-# The declaration exists because the directory rule answers "which machine
-# does this check belong to", and for a check that reads the cluster API
-# (`kubectl ... -A`) rather than one host there is no true answer: it inspects
-# both nodes at once. Filed under a host label, it silently attributes an
-# agent-node finding to the server — which is how the 2026-09-27 lab OOM read
-# as a vps_oracle problem when every lab pod runs on vps-oracle2. Naming is no
-# substitute: k3s-containerd-images.sh is genuinely node-local (it reads this
-# host's containerd via crictl), so the prefix cannot decide this.
+# The rule needs no special case for a component that spans hosts. An
+# inspector over `k3s/` has no single host to belong to, but it does not
+# need one: k3s/ is a directory at the repo root like any other host, so
+# its checks live in k3s/inspector-checks/ and the name reads correctly
+# from there. Keeping a cluster-wide check under a host's directory instead
+# is not a naming problem to paper over — the report will attribute its
+# findings to that host, and the pod namespace it inspects may live
+# anywhere (the 2026-09-27 lab OOM: reported under vps_oracle, running on
+# vps-oracle2).
 declare -A inst_checks=()
 inst_order=()
 for check in "$CHECKS_DIR"/*.sh "$REPO_ROOT"/*/inspector-checks/checks/*.sh; do
   [ -e "$check" ] || continue
   check_name="$(basename "$check")"
-  # Only the first token is the name; anything after it is a note for the
-  # reader and must not leak into the report header.
-  instance="$(awk '/^# inspector-instance: /{sub(/^# inspector-instance: */, ""); sub(/[[:space:]].*$/, ""); print; exit}' "$check")"
-  if [ -z "$instance" ]; then
-    case "$check" in
-      "$CHECKS_DIR"/*) instance="vps_oracle" ;;
-      *) instance="$(basename "$(dirname "$(dirname "$(dirname "$check")")")")" ;;
-    esac
-  fi
+  case "$check" in
+    "$CHECKS_DIR"/*) instance="vps_oracle" ;;
+    *) instance="$(basename "$(dirname "$(dirname "$(dirname "$check")")")")" ;;
+  esac
   if [ -z "${inst_checks[$instance]:-}" ]; then
     inst_order+=("$instance"); inst_checks[$instance]=0
   fi

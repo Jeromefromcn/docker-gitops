@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-completed-jobs.sh
 #
 # Deletes completed Jobs older than INSPECTOR_COMPLETED_JOB_MAX_AGE_
@@ -10,7 +9,7 @@
 # dimension, matching the spec's own tiering philosophy.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/common.sh"
+source "$SCRIPT_DIR/../lib/kube.sh"
 
 MAX_AGE_SECONDS="${INSPECTOR_COMPLETED_JOB_MAX_AGE_SECONDS:-259200}"
 KUBECONFIG_FILE="${INSPECTOR_KUBECONFIG:-$INSPECTOR_STATE_DIR/kubeconfig}"

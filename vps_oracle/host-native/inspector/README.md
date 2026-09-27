@@ -5,9 +5,7 @@ Host-level inspection script, not managed by docker compose (like `vps_oracle/ho
 
 **Notification language**: the Telegram report title and body are English only (2026-08-16 user request; the repo docs remain Chinese). `tests/test-inspect.sh` has a corresponding assertion (title, section headers, no CJK characters). The title carries no host name: a report is one logical inspection, and the `Inspected` section names the instances covered.
 
-**Report layout**: one logical inspection, grouped by instance — `vps_oracle` for `checks/`, `<host>` for `<host>/inspector-checks/`, unless the check declares its own with a `# inspector-instance: <name>` line; it never says which machine ran the scripts.
-
-The declaration is for checks that read the cluster API (`kubectl … -A`) rather than this host. The directory rule answers "which machine does this check belong to", and such a check inspects both nodes at once, so any host label misattributes its findings — the 2026-09-27 lab OOM was reported under `vps_oracle` while every `lab-environment` pod runs on vps-oracle2, and only the pod's own `nodeName` showed it. Naming cannot decide it either: `k3s-containerd-images.sh` is genuinely node-local (it reads this host's containerd via `crictl`), so the prefix proves nothing. Only the first whitespace-delimited token of the declaration is the instance name; anything after it is a note for the reader.
+**Report layout**: one logical inspection, grouped by instance (`vps_oracle` for `checks/`, `<host>` for `<host>/inspector-checks/`); it never says which machine ran the scripts. An inspector over a component that spans hosts gets its own directory at the repo root, named after that component — [`k3s/inspector-checks/`](../../../k3s/inspector-checks/) — so the rule needs no special case and the instance name still reads correctly. A cluster-wide check left under a host's directory is not a naming problem to paper over: the report attributes its findings to that host, and the namespace it inspects may run anywhere (the 2026-09-27 lab OOM was reported under `vps_oracle` while every `lab-environment` pod runs on vps-oracle2).
 
 Every instance always gets a header — `✅ … all clear`, `✅ … N auto-handled` or `⚠️ … N need review` — so a healthy run visibly covers remote hosts too, and any auto/alert lines sit under their instance's header. The test-only override `INSPECTOR_REPO_ROOT` points the remote-check glob at a fake tree.
 
@@ -43,15 +41,15 @@ Implemented (phase 2, docker layer):
 - `checks/docker-compose-logging-drift.sh` (alert) — compose services missing `logging.options.max-size`
 - `checks/docker-oversized-logs.sh` (alert) — `*-json.log` files over 50MiB each
 
-Implemented (phase 2, k3s layer):
-- `checks/k3s-evicted-pods.sh` (auto) — Failed leftover pods
-- `checks/k3s-completed-jobs.sh` (auto) — Jobs completed for more than 3 days
-- `checks/k3s-containerd-images.sh` (auto) — containerd images with no container referencing them (`sudo crictl`)
-- `checks/k3s-released-pvs.sh` (alert) — Released PVs
-- `checks/k3s-stuck-terminating.sh` (alert) — Terminating pods stuck for more than 15 minutes
-- `checks/k3s-node-not-ready.sh` (alert) — any Node whose Ready condition isn't True (added with the vps-oracle2 agent node; needs `nodes` get/list in `k3s/rbac.yaml`)
-- `checks/k3s-oom-killed-containers.sh` (alert) — `lastState.terminated.reason=OOMKilled` within the last 24 hours; the finding names the pod's `nodeName`, since this reads the whole cluster and the report's instance header is `k3s`, not a host. `k3s-evicted-pods.sh` can't catch this case (the pod stays `Running` the whole time, only the container is killed and restarted), added after the 2026-08-17 io_pressure_critical incident (jaeger/trivy were both OOM-killed because their limits were too tight)
-- `checks/k3s-capacity-pressure.sh` (alert) — the three ways a workload stops being able to run in the lab namespace: a ResourceQuota used at or above `INSPECTOR_QUOTA_USED_PCT` (default 90) of a hard limit, a ReplicaSet whose pods were refused at admission (`FailedCreate`), or a pod Pending past `INSPECTOR_PENDING_MINUTES` (default 5). Needs `resourcequotas` and `replicasets` get+list in `k3s/rbac.yaml` — and needs them *necessarily*, not conveniently: quota usage is invisible on a pod object, and a pod refused at admission never exists as one, so neither signal can be derived from the `pods` grant. Scoped to `lab-environment` deliberately (`INSPECTOR_LAB_NAMESPACE`) — the same signals cluster-wide would flag PR lanes legitimately waiting for capacity, and a check that cries wolf twice a day stops being read. Added after the 2026-09-25 incident where the quota could not admit a release plus its PreSync hook: every signal above was present for ~10 minutes before anyone noticed, and it was noticed only because pods began `CrashLoopBackOff`.
+Implemented (phase 2, k3s layer). All but the first read the cluster API rather than this host, so they live in [`k3s/inspector-checks/`](../../../k3s/inspector-checks/) and report under the `k3s` instance — see that directory's README:
+- `k3s/inspector-checks/checks/k3s-evicted-pods.sh` (auto) — Failed leftover pods
+- `k3s/inspector-checks/checks/k3s-completed-jobs.sh` (auto) — Jobs completed for more than 3 days
+- `checks/k3s-containerd-images.sh` (auto) — containerd images with no container referencing them (`sudo crictl`). Stays here deliberately: it reads *this* host's containerd, so it is node-local and correctly reports under `vps_oracle` despite the shared `k3s-` prefix
+- `k3s/inspector-checks/checks/k3s-released-pvs.sh` (alert) — Released PVs
+- `k3s/inspector-checks/checks/k3s-stuck-terminating.sh` (alert) — Terminating pods stuck for more than 15 minutes
+- `k3s/inspector-checks/checks/k3s-node-not-ready.sh` (alert) — any Node whose Ready condition isn't True (added with the vps-oracle2 agent node; needs `nodes` get/list in `k3s/rbac.yaml`)
+- `k3s/inspector-checks/checks/k3s-oom-killed-containers.sh` (alert) — `lastState.terminated.reason=OOMKilled` within the last 24 hours; the finding names the pod's `nodeName`, since this reads the whole cluster and the instance header is `k3s`, not a host. `k3s-evicted-pods.sh` can't catch this case (the pod stays `Running` the whole time, only the container is killed and restarted), added after the 2026-08-17 io_pressure_critical incident (jaeger/trivy were both OOM-killed because their limits were too tight)
+- `k3s/inspector-checks/checks/k3s-capacity-pressure.sh` (alert) — the three ways a workload stops being able to run in the lab namespace: a ResourceQuota used at or above `INSPECTOR_QUOTA_USED_PCT` (default 90) of a hard limit, a ReplicaSet whose pods were refused at admission (`FailedCreate`), or a pod Pending past `INSPECTOR_PENDING_MINUTES` (default 5). Needs `resourcequotas` and `replicasets` get+list in `k3s/rbac.yaml` — and needs them *necessarily*, not conveniently: quota usage is invisible on a pod object, and a pod refused at admission never exists as one, so neither signal can be derived from the `pods` grant. Scoped to `lab-environment` deliberately (`INSPECTOR_LAB_NAMESPACE`) — the same signals cluster-wide would flag PR lanes legitimately waiting for capacity, and a check that cries wolf twice a day stops being read. Added after the 2026-09-25 incident where the quota could not admit a release plus its PreSync hook: every signal above was present for ~10 minutes before anyone noticed, and it was noticed only because pods began `CrashLoopBackOff`.
 
 Implemented (NPM reverse proxy layer):
 - `checks/direnv-envrc-trust.sh` (alert) — runs `direnv export bash` from each group dir (`~/jerome`, `~/bridget`, `~/evidence`) and flags any whose `.envrc` reports "is blocked", i.e. whose direnv trust was revoked because the file's content changed since it was last `direnv allow`ed. It is alert-only and never auto-allows: `direnv allow` is itself the trust mechanism, and a revoked `.envrc` must be human-reviewed before re-trusting (the file is arbitrary shell, and the symlinked `shell-env/*.envrc` changes take effect on the live system immediately). Added after the 2026-09-13 incident where a comment-only translation sweep revoked trust and silently froze group provider/account switching (full story in [`docs/incidents/2026-09-13-switchboard-direnv-envrc-trust-revoked.md`](../../../docs/incidents/2026-09-13-switchboard-direnv-envrc-trust-revoked.md)).
@@ -88,11 +86,7 @@ cd vps_oracle/host-native/inspector
 ./tests/test-docker-unused-volumes.sh
 ./tests/test-docker-compose-logging-drift.sh
 ./tests/test-docker-oversized-logs.sh
-./tests/test-k3s-evicted-pods.sh
-./tests/test-k3s-completed-jobs.sh
 ./tests/test-k3s-containerd-images.sh
-./tests/test-k3s-alerts.sh
-./tests/test-k3s-oom-killed-containers.sh
 ./tests/test-npm-nginx-config.sh
 ./tests/test-direnv-envrc-trust.sh
 ./tests/test-ccr-tool-schema-rejections.sh
@@ -100,7 +94,7 @@ cd vps_oracle/host-native/inspector
 
 `tests/test-common.sh` is the most important test in the whole project — it verifies the "never mistakenly kill yourself" rule itself, which can't be left to eyeballing the code; see the spec's "self-protection rules" section.
 
-Remote-instance tests live next to their checks: `vps_oracle2/inspector-checks/tests/test-*.sh`.
+Tests for the cluster-wide checks are not here — they live next to their checks, like every other instance's: `k3s/inspector-checks/tests/test-*.sh`, `vps_oracle2/inspector-checks/tests/test-*.sh`. CI runs all of them with the same globs.
 
 ## Deploy
 
