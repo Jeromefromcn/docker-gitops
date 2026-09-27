@@ -186,3 +186,35 @@ Implemented from [the plan](../plans/2026-09-27-lab-demo-runbook-framework.md), 
 - **UF to new pods during concurrent rollouts:** while several services roll at once, the waypoint can still get `UF,URX` connecting to a new, Ready customers pod. It happened for up to ~30 s after the rollout ended, and ztunnel logged nothing for those attempts. IP reuse is suspected but not verified. Tracked in 2c.
 - **vets-service is the first capacity lever:** one replica with a 5-connection pool. More replicas or a bigger pool comes before more CPU.
 - **02's Kubernetes piece can go stale:** it counts pods created since the window started, so re-running it after 07 counts 07's pods too. Its ArgoCD piece is correct (Review Focus 1, pinned).
+
+### Deferred minors (from the final review)
+
+Grouped by when to do them: by the risk each poses to a live demo. All paths are under `k3s/apps/lab-environment/` unless shown otherwise. Helper changes follow TDD against `tests/test-demo-helpers.sh` and do not deploy (ArgoCD syncs only `k8s/`).
+
+**A. Before the next real demo** (these can break a demo in progress; do them before the rehearsal that precedes it):
+
+1. **07 page Ctrl-C** (`docs/demo/07-gitops-selfheal-rollback.md`):
+   - Problem: the page runs `kubectl get … -w` and says to Ctrl-C out of it. Ctrl-C also discards the rest of a pasted block.
+   - Fix: replace the watch with an until-loop that polls for `5/5` Ready.
+2. **Sync-wait loops never time out** (pages 02, 06, 07, and 06's Secret wait):
+   - Problem: a rejected `git push` or an auto-sync to a newer commit makes the loop spin silently.
+   - Fix: chain the push with `&&`, and give each loop a deadline.
+3. **06 interrupted** (`docs/demo/06-secret-rotation.md`):
+   - Problem: the old password stays on disk (mode 600) under `~/.local/state/lab-demo` until `demo-reset secret-rotation` runs.
+   - Fix: say so in the page's "If interrupted" section.
+
+**B. With 2c** (2c touches the same code anyway):
+
+4. **Alerts go silent without KSM:** every capacity rule has `noDataState: OK`, so a KSM outage silences all five. Add a "KSM target down" signal. Also, the Quota summary says "requests", but the expression covers every quota resource.
+5. **08's cAdvisor piece always passes** (`demo/scenarios/load-test.sh`): it passes on any measurement, and the real judgement sits in the app piece. Rework it when 2c extends the k6 script.
+6. **08's minute table** (`load-test.sh`): the `join` on `HH:MM` breaks when a run crosses UTC midnight.
+
+**C. When next touching the file** (these only misbehave in rare cases):
+
+7. **03 with no pods** (`demo/scenarios/schema-migration.sh`): the first-pod check passes when there are no non-terminating pods, because `min` returns `null`.
+8. **04 on an odd log line** (`demo/scenarios/zero-trust.sh`): a rejection line with neither `src.workload` nor `src.addr` aborts the run. Fix with `|| src=?`.
+9. **Double stop** (`demo/demo-window`): stopping an already-stopped window silently moves `WINDOW_END` later. Warn instead.
+10. **Test fixture** (`tests/test-demo-helpers.sh`): it restores `customers-service 5 5` instead of reading git's replica count.
+11. **Test coverage and lint:**
+    - Most scenario evidence functions have no stub tests; Review Focus 1 was verified live only.
+    - Three SC2034 warnings remain: unused `i` in `app-vs-mesh-resilience.sh`, `WINDOW_FROM` in `schema-migration.sh`, unused `created` in `secret-rotation.sh`.
