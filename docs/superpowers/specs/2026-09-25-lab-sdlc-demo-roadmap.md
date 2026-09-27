@@ -26,7 +26,7 @@ Ground rules agreed on 2026-09-25:
 | 3 | PR lanes for the lab | Fork CI → GHCR → Cosign; ApplicationSet lanes; lane header propagation; Kyverno signature verification for lab images | 1; ideally 2 so lanes get a runbook scenario | Not started |
 | 4 | Automated progressive delivery (optional) | Argo Rollouts with Istio traffic routing: stepped weights + Prometheus analysis + automatic rollback | 1, 2 | Proposed, not agreed |
 | — | Runbook as a web page | Render `docs/demo/` as a page to present from | 2a (grows with 2b/2c) | Not started |
-| — | Production monitoring consumes kube-state-metrics | Scrape job in the vps_oracle Prometheus against the NodePort 2a reserves, a k3s container dashboard, production alert rules | 2a (KSM deployed) | Not started |
+| — | Production monitoring consumes kube-state-metrics | An `npm-nodeport-relay` instance for the NodePort 2a reserves (the compose Prometheus is a Docker-bridge container), a scrape job in the vps_oracle Prometheus, a k3s container dashboard, production alert rules | 2a (KSM deployed) | Not started |
 | — | Elastic scaling demo (HPA) | Load-driven scale-out of the business services | a bigger oracle2 instance — the node is already near its CPU-requests ceiling, so scale-out has nowhere to go | Blocked on capacity |
 
 ### Sub-project 2 — notes for its spec

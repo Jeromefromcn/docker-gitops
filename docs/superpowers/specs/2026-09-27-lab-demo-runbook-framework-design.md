@@ -73,14 +73,14 @@ Demo order (dependencies: 07 reverts 02's commit; 06 is the riskiest mutation; 0
 | 04 | Zero trust: mTLS / identity authz / actuator lockdown | the five acceptance-4 calls (L7 403, actuator 403, plaintext refused, pod-IP reset, postgres reset) | ★ waypoint access log 403 + RBAC denied stats; ★ ztunnel log denials |
 | 05 | App-level vs mesh-level resilience | Consul `chaos/visits-service/redis-timeout=true` → call both paths → reset + verify | ★ Envoy `504 UT` (reporting hop ≠ faulty hop); Jaeger trace; Resilience4j circuit-breaker metrics |
 | 06 | Secret rotation | new password → `ALTER USER` → kubeseal → commit → push → roll the three services | ★ ArgoCD sync; ★ sealed-secrets controller unseal log; old password rejected over scram; generator error count |
-| 08 | Load test: capacity baseline and bottleneck | k6 stepped load from vps_oracle through NodePort 30097 | ★ waypoint P99/RPS; ★ cAdvisor throttling + `Lab CPU Throttling` firing; k6 summary; Jaeger slow span |
+| 08 | Load test: capacity baseline and bottleneck | k6 stepped load from vps_oracle through NodePort 30097 | ★ waypoint P99/RPS per step; ★ cAdvisor node CPU saturation or container throttling; k6 summary, Jaeger slow traces and the `Lab CPU Throttling` state as supporting notes |
 
 Scenario-specific points:
 
 - **03** does not invent a schema change per interview — that would accumulate cruft in the schema. PreSync runs on every sync, so "hook first, idempotent, no data loss" is shown on 02's sync. Talking points: the 2026-09-25 quota deadlock (surge filled the quota, hook refused with `FailedCreate`) and the hook-wave failure (SA/ConfigMap applied after PreSync).
 - **05** is where traps 3 and 4 are demonstrated: the same fault gives 200 on `/api/gateway/owners/6` and 504 on `/api/customer/owners/6/visits`, and the 504 is logged against `customers-service:8081` although visits is at fault. Also: the gateway's circuit breaker wraps only the visits call, so a customers outage surfaces as Spring's default 500, not a fallback.
 - **06**: the exact order of `ALTER USER` vs Secret update vs rollout, and the resulting error window, are determined during implementation by reading `db-init` and the Hikari pool behaviour and then measuring. The runbook records the measured window, not a guess.
-- **08** runs k6 in a throwaway `docker run --rm grafana/k6` on vps_oracle, never on oracle2 (a load generator sharing the 2 cores would invalidate the numbers). Load is stepped with a hard cap. It **will likely fire the production `Lab API Down` alert (Telegram)** — accepted as realistic and stated in the runbook's preconditions. The deliverable is a measured knee (RPS at which P99 departs) and an evidence chain attributing it to CPU.
+- **08** runs k6 in a throwaway `docker run --rm grafana/k6` on vps_oracle, never on oracle2 (a load generator sharing the 2 cores would invalidate the numbers). Load is stepped with a hard cap. It **will likely fire the production `Lab API Down` alert (Telegram)** — accepted as realistic and stated in the runbook's preconditions. The deliverable is a measured knee (RPS at which P99 departs) and an evidence chain attributing it. CPU is the hypothesis, not a given: with five 1000m-limit JVMs on a 2-core node the node can saturate before any single container is throttled, so the evidence checks node CPU and per-container throttling and fails if neither is saturated — in which case the bottleneck is investigated and the runbook says what it actually is. The `Lab CPU Throttling` alert needs 10 minutes of sustained throttling and a ~6-minute load run will usually leave it pending, so its state is reported, not required.
 - Talking points in every scenario include the pitfalls actually hit (sub-project 1 ledger, `docs/incidents/`, pr-lanes phase I–L), not only the happy path. Examples: 02 — the shared Consul instance ID that deleted new pods' registrations; 04 — ztunnel exposes no authz metrics, so L4 denies are shown by effect (curl exit 56 vs 52).
 
 ### 4. Shared kube-state-metrics
@@ -94,7 +94,7 @@ Scenario-specific points:
 Prometheus, two new jobs:
 
 - `kube-state-metrics` — `metric_relabel_configs` keeps only `namespace="lab-environment"`.
-- `kubelet-cadvisor` — via the API server node proxy; a read-only ClusterRole (`nodes/proxy` get) bound to the lab's `sa/prometheus`.
+- `kubelet-cadvisor` — via the API server node proxy; a read-only ClusterRole (`nodes` list/watch, `nodes/proxy` get) bound to the lab's `sa/prometheus`. `metric_relabel_configs` keeps `lab-environment` containers plus each node's root cgroup (`id="/"`), which is what node-level CPU saturation is read from.
 
 The lab README's "no cross-namespace scraping" sentence is rewritten: the isolation that matters is the alert pipeline, and sharing a read-only metrics source does not breach it.
 
@@ -120,7 +120,7 @@ Lab Mesh Overview gets a capacity row: requests used vs quota, throttling ratio 
 1. A full rehearsal of scenarios 01–08 in order; every `demo-evidence` call passes (≥2 pieces, ≥1 infrastructure-layer).
 2. After the rehearsal the lab is back at baseline: chaos toggles false, replica counts as in git, generator all-200, ArgoCD `Synced/Healthy`, `main` carries the `demo:` commits and their reverts.
 3. All five capacity alerts fired once and resolved on their own.
-4. The production Prometheus host can reach KSM's NodePort (reachability only, not wired).
+4. KSM's NodePort answers from the vps_oracle host shell (reachability only, not wired). The production Prometheus runs in a Docker-bridge container, which cannot reach a k3s NodePort without an `npm-nodeport-relay` instance — enabling that instance is part of the production-monitoring follow-up, not 2a.
 5. `docs/demo/evidence/` holds the rehearsal's `demo-evidence` output for every scenario.
 6. Updated: roadmap status, lab README (isolation wording, KSM dependency), `docs-layout.md` (`docs/demo/` is current state).
 
