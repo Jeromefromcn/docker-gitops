@@ -28,6 +28,33 @@ roleRef:
   kind: Role
   name: prometheus-discovery
 ---
+# Cluster-scoped because nodes are: node discovery for the cAdvisor job and
+# read-only access to each kubelet's /metrics/cadvisor via the API server.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lab-prometheus-cadvisor
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: lab-prometheus-cadvisor
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: lab-environment
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lab-prometheus-cadvisor
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -50,7 +77,7 @@ spec:
       annotations:
         # prometheus.yml is mounted via subPath, which never hot-reloads.
         # Bump this whenever prometheus-config changes.
-        lab.jerome/config-rev: "2"
+        lab.jerome/config-rev: "3"
     spec:
       serviceAccountName: prometheus
       enableServiceLinks: false

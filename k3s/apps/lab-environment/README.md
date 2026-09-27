@@ -5,7 +5,10 @@ independently-managed project). Fully isolated `lab-environment`
 namespace: no shared Prometheus/Grafana/alerting with `vps_oracle`'s own
 monitoring stack (deliberate — this stack's `toxiproxy`-driven chaos
 testing shouldn't share a pipeline with real incident alerting), no
-cross-namespace scraping. (NPM does expose a few `*.lab.jerome.cloudns.asia`
+cross-namespace *alerting*. It does read two shared, read-only sources
+— the cluster-wide kube-state-metrics (`k3s/kube-state-metrics/`, filtered
+to this namespace) and cAdvisor through the API server — because sharing a
+metrics source does not put chaos drills into the real alert pipeline. (NPM does expose a few `*.lab.jerome.cloudns.asia`
 hosts — api/consul/grafana/jaeger — behind an access list.)
 
 ## Runs always-on, on vps-oracle2
