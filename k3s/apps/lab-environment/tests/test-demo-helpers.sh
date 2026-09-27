@@ -66,6 +66,9 @@ cat > "$DEMO_SCENARIO_DIR/borrow.sh" <<'EOF'
 WINDOW_FROM=t1
 evidence_borrow() { record envoy ok "start $WINDOW_START"; record kubernetes ok "end $WINDOW_END"; }
 EOF
+cat > "$DEMO_SCENARIO_DIR/settled.sh" <<'EOF'
+evidence_settled() { settle; record envoy ok "at $SETTLED_AT range $SETTLED_RANGE"; record argocd ok "b"; }
+EOF
 cat > "$DEMO_SCENARIO_DIR/qfail.sh" <<'EOF'
 evidence_qfail() { record envoy ok "a"; v=$(prom 'FAILME'); record argocd ok "never $v"; }
 EOF
@@ -111,6 +114,13 @@ DEMO_NOW=1 "$DEMO/demo-window" start qfail >/dev/null; DEMO_NOW=2 "$DEMO/demo-wi
 check "query failure aborts" 1 "$DEMO/demo-evidence" qfail
 has "$WORK/out" "aborted"
 if grep -q "== OK" "$WORK/out"; then echo "FAIL query failure printed OK"; fails=$((fails+1)); fi
+# settle: short windows are read 20 s past their end, over >= 60 s.
+DEMO_NOW=100 "$DEMO/demo-window" start settled >/dev/null; DEMO_NOW=110 "$DEMO/demo-window" stop settled >/dev/null
+check "settle widens a short window" 0 "$DEMO/demo-evidence" settled
+has "$WORK/out" "at 130 range 60"
+DEMO_NOW=100 "$DEMO/demo-window" start settled >/dev/null; DEMO_NOW=300 "$DEMO/demo-window" stop settled >/dev/null
+check "settle keeps a long window" 0 "$DEMO/demo-evidence" settled
+has "$WORK/out" "at 320 range 220"
 DEMO_SAVE_DIR=$WORK/saved; mkdir -p "$DEMO_SAVE_DIR"
 DEMO_SAVE_DIR=$DEMO_SAVE_DIR check "save copies output" 0 "$DEMO/demo-evidence" t1
 has "$DEMO_SAVE_DIR/t1.txt" "== OK"

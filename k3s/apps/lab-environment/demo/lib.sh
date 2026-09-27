@@ -63,6 +63,15 @@ prom_vector() {
   curl -sf -G "$PROM/api/v1/query" --data-urlencode "query=$2" ${3:+--data-urlencode "time=$3"} \
     | jq -r --arg l "$1" '.data.result[] | "\(.value[1]) \(.metric[$l])"'
 }
+# Prometheus scrapes every 15 s and promtail ships with a lag, so a window
+# of a few seconds has no samples of its own. Waits until 20 s past the
+# window's end and sets SETTLED_AT / SETTLED_RANGE (>= 60 s) for queries.
+settle() {
+  SETTLED_AT=$(( WINDOW_END + 20 ))
+  while [ "$(date +%s)" -lt "$SETTLED_AT" ]; do sleep 2; done
+  SETTLED_RANGE=$(( SETTLED_AT - WINDOW_START ))
+  [ "$SETTLED_RANGE" -ge 60 ] || SETTLED_RANGE=60
+}
 loki_instant() {
   curl -sf -G "$GRAFANA/api/datasources/proxy/uid/loki/loki/api/v1/query" \
     --data-urlencode "query=$1" --data-urlencode "time=${2}000000000"
