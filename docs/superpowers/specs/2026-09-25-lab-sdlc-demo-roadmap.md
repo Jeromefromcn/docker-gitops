@@ -27,6 +27,7 @@ Ground rules agreed on 2026-09-25:
 | 4 | Automated progressive delivery (optional) | Argo Rollouts with Istio traffic routing: stepped weights + Prometheus analysis + automatic rollback | 1, 2 | Proposed, not agreed |
 | — | Runbook as a web page | Render `docs/demo/` as a page to present from | 2a (grows with 2b/2c) | Not started |
 | — | Production monitoring consumes kube-state-metrics | An `npm-nodeport-relay` instance for the NodePort 2a reserves (the compose Prometheus is a Docker-bridge container), a scrape job in the vps_oracle Prometheus, a k3s container dashboard, production alert rules | 2a (KSM deployed) | Not started |
+| — | Least-privilege cAdvisor scrape | The lab Prometheus reads cAdvisor through the API server's node proxy, so its ClusterRole holds `nodes/proxy get` — a verb kubelet also accepts for websocket `exec`. Move to scraping each kubelet's `:10250/metrics/cadvisor` directly with only `nodes/metrics get`; needs the lab pods → node `:10250` path opened first (probed 2026-09-27: connection reset) | 2a | Not started |
 | — | Elastic scaling demo (HPA) | Load-driven scale-out of the business services | a bigger oracle2 instance — the node is already near its CPU-requests ceiling, so scale-out has nowhere to go | Blocked on capacity |
 
 ### Sub-project 2 — notes for its spec
