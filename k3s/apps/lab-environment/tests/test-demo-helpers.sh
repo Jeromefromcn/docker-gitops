@@ -16,10 +16,12 @@ cat > "$WORK/bin/curl" <<'EOF'
 echo "curl $*" >> "$FAKE_LOG"
 case "$*" in
   *FAILME*) exit 22 ;;
+  *"/v1/kv/chaos/"*) [ -z "${FAKE_CONSUL_DOWN:-}" ] || exit 7 ;;&
   *"/v1/kv/chaos/"*)
     if [ -n "${FAKE_CHAOS_ON:-}" ]; then v=dHJ1ZQ==; else v=ZmFsc2U=; fi
     echo "[{\"Key\":\"${FAKE_CHAOS_ON:-chaos/visits-service/redis-timeout}\",\"Value\":\"$v\"}]" ;;
-  *"/loki/api/v1/query"*) echo '{"data":{"result":[{"metric":{},"value":[0,"7"]}]}}' ;;
+  *"/loki/api/v1/query"*)
+    if [ -n "${FAKE_LOKI_EMPTY:-}" ]; then echo '{"data":{"result":[]}}'; else echo '{"data":{"result":[{"metric":{},"value":[0,"7"]}]}}'; fi ;;
   *) echo '{"data":{"result":[]}}' ;;
 esac
 EOF
@@ -28,12 +30,13 @@ cat > "$WORK/bin/kubectl" <<'EOF'
 echo "kubectl $*" >> "$FAKE_LOG"
 case "$*" in
   *" get deploy "*) d=$(sed -E 's/.* get deploy ([^ ]+).*/\1/' <<< "$*"); grep "^$d " "$FAKE_DEPLOYS" | cut -d' ' -f2- ;;
+  *"logs statefulset/argocd-application-controller"*) printf '%s\n' "${FAKE_CTRL_LOG:-}" ;;
   *"logs deploy/traffic-generator"*) for i in 1 2 3; do echo "2026-09-27T00:00:0${i}+00:00 ${FAKE_GEN_CODE:-200} /api/vet/vets"; done ;;
 esac
 EOF
 cat > "$WORK/bin/argocd" <<'EOF'
 #!/bin/bash
-echo "{\"status\":{\"sync\":{\"status\":\"${FAKE_SYNC:-Synced}\"},\"health\":{\"status\":\"Healthy\"}}}"
+echo "{\"status\":{\"sync\":{\"status\":\"${FAKE_SYNC:-Synced}\"},\"health\":{\"status\":\"Healthy\"},\"history\":[]}}"
 EOF
 chmod +x "$WORK/bin/"*
 
@@ -135,5 +138,30 @@ check "reset fails on replica mismatch" 1 "$DEMO/demo-reset" preflight
 sed -i 's/^customers-service .*/customers-service 5 5/' "$FAKE_DEPLOYS"
 FAKE_GEN_CODE=503 check "reset fails on generator errors" 1 "$DEMO/demo-reset" preflight
 FAKE_SYNC=OutOfSync check "reset fails when ArgoCD is not synced" 1 "$DEMO/demo-reset" preflight
+FAKE_CONSUL_DOWN=1 check "reset fails when Consul is unreachable" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "Consul unreachable"
+
+# --- scenario evidence (real scenario files) ---------------------------
+cp "$DEMO/scenarios/rolling-update.sh" "$DEMO_SCENARIO_DIR/"
+printf 'WINDOW_START=1000\nWINDOW_END=1300\n' > "$DEMO_STATE_DIR/rolling-update.window"
+FAKE_LOKI_EMPTY=1 check "02 with no Envoy lines is insufficient" 1 "$DEMO/demo-evidence" rolling-update
+if grep -q '\[envoy *\] PASS' "$WORK/out"; then echo "FAIL 02 envoy piece passed on an empty log stream"; fails=$((fails+1)); else echo "PASS 02 envoy piece fails on an empty log stream"; fi
+
+# 07: selfHeal is a partial sync of the drifted Deployment, at whatever
+# revision is current — another commit may have landed since 02.
+cp "$DEMO/scenarios/gitops-selfheal-rollback.sh" "$DEMO_SCENARIO_DIR/"
+printf 'WINDOW_START=1000\nWINDOW_END=1300\n' > "$DEMO_STATE_DIR/gitops-selfheal-rollback.window"
+export FAKE_CTRL_LOG='time="1970-01-01T00:17:00Z" level=info msg="Initialized new operation: {&SyncOperation{Revision:0123abcd,Prune:true,Resources:[]SyncOperationResource{SyncOperationResource{Group:apps,Kind:Deployment,Name:customers-service,Namespace:,},},}}" application=lab-environment'
+check "07 evidence runs" 1 "$DEMO/demo-evidence" gitops-selfheal-rollback
+has "$WORK/out" "[argocd        ] PASS  selfHeal"
+export FAKE_CTRL_LOG='time="1970-01-01T00:17:00Z" level=info msg="Initialized new operation: {&SyncOperation{Revision:0123abcd,Prune:true,Resources:[]SyncOperationResource{},}}" application=lab-environment'
+check "07 evidence runs on a full sync" 1 "$DEMO/demo-evidence" gitops-selfheal-rollback
+has "$WORK/out" "[argocd        ] FAIL  selfHeal"
+unset FAKE_CTRL_LOG
+
+# --- runbook pages: a secret never goes on a command line (visible in ps) --
+if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
+  echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))
+else echo "PASS no password on argv in the runbook pages"; fi
 
 [ $fails -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

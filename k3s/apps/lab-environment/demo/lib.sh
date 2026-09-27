@@ -100,8 +100,13 @@ git_replicas() { grep -m1 -E '^\s+replicas:' "$LAB_K8S/$1.yaml" | awk '{print $2
 # --- baseline ---------------------------------------------------------------
 baseline_check() {
   local bad=0 on d got want st lines total non200
-  on=$(curl -sf "$CONSUL/v1/kv/chaos/?recurse" | jq -r '.[] | select((.Value // "" | @base64d) != "false") | .Key')
-  [ -z "$on" ] || { echo "chaos toggles still on: $on"; bad=1; }
+  # Called as an if-condition, so set -e is off here: every read checks its
+  # own exit status, or an unreachable Consul would read as "no toggles on".
+  if ! on=$(curl -sf "$CONSUL/v1/kv/chaos/?recurse" | jq -r '.[] | select((.Value // "" | @base64d) != "false") | .Key'); then
+    echo "Consul unreachable — chaos toggles not read"; bad=1
+  elif [ -n "$on" ]; then
+    echo "chaos toggles still on: $on"; bad=1
+  fi
   for d in $BUSINESS; do
     want=$(git_replicas "$d")
     got=$(kubectl -n "$NS" get deploy "$d" -o jsonpath='{.status.readyReplicas} {.spec.replicas}')

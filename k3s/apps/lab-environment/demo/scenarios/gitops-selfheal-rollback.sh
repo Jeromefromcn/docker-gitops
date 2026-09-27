@@ -1,19 +1,21 @@
 # 07 — selfHeal undoes a manual change; git revert is the rollback.
 evidence_gitops_selfheal_rollback() {
-  local range=$(( WINDOW_END - WINDOW_START )) want minavail demo heal ok revert deployed live gitrev
+  local range=$(( WINDOW_END - WINDOW_START )) want minavail heal rev ok revert deployed live gitrev
   want=$(git_replicas customers-service)
   # Not ScalingReplicaSet events: the API server folds repeats into one
   # "(combined from similar events)" object, losing the scale-down message.
   # KSM keeps the dip — readiness takes ~70 s, so a 15 s scrape cannot miss it.
   minavail=$(prom "min_over_time(kube_deployment_status_replicas_available{namespace=\"$NS\", deployment=\"customers-service\"}[${range}s])" "$WINDOW_END")
   rec_if kubernetes "available customers-service replicas dipped to $minavail during the window (manual scale to 1)" [ "$minavail" = 1 ]
-  # selfHeal is a sync to the revision already deployed, limited to the
-  # drifted resource; ArgoCD's history does not record it, its log does.
-  demo=$(git -C "$REPO_ROOT" log -1 --grep='^demo: rolling-restart customers-service$' --format=%H)
+  # selfHeal is a sync limited to the drifted resource, at whatever revision
+  # is current (not necessarily 02's — another commit may have landed).
+  # ArgoCD's history does not record it; the controller log does. A full
+  # sync (the revert) lists no resources, so it cannot match.
   heal=$(kubectl -n argocd logs statefulset/argocd-application-controller --since-time="$(iso "$WINDOW_START")" \
-    | grep 'Initialized new operation' | grep "Revision:$demo" | grep -m1 'Kind:Deployment,Name:customers-service' \
-    | grep -oP 'time="\K[^"]+' || true)
-  rec_if argocd "selfHeal synced Deployment/customers-service back to ${demo:0:7} at ${heal:-never}" [ -n "$heal" ]
+    | grep 'Initialized new operation' \
+    | grep -m1 'SyncOperationResource{Group:apps,Kind:Deployment,Name:customers-service,' || true)
+  rev=$(grep -oP 'Revision:\K[0-9a-f]+' <<< "$heal" || true)
+  rec_if argocd "selfHeal synced only Deployment/customers-service (at ${rev:0:7}) at $(grep -oP 'time="\K[^"]+' <<< "$heal" || echo never)" [ -n "$heal" ]
   revert=$(git -C "$REPO_ROOT" log -1 --grep='^Revert "demo: rolling-restart customers-service"$' --format=%H)
   deployed=$(argocd app get lab-environment --core -o json \
     | jq -r --arg s "$(iso "$WINDOW_START")" '[.status.history[] | select(.deployedAt >= $s) | .revision] | join(" ")')
