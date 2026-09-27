@@ -17,7 +17,7 @@ evidence_rolling_update() {
   created=$(kubectl -n "$NS" get pods -l app=customers-service -o json | jq --arg s "$(iso "$WINDOW_START")" \
     '[.items[] | select(.metadata.creationTimestamp >= $s) | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))] | length')
   rec_if kubernetes "customers-service pods replaced in the window and Ready: $created (want $want)" [ "$created" -eq "$want" ]
-  non2xx=$(loki_count '{service="istio-proxy"} | json | response_code!~"2.."' "$WINDOW_START" "$WINDOW_END")
+  non2xx=$(loki_count '{service="istio-proxy"} | json | __error__="" | response_code!~"2.."' "$WINDOW_START" "$WINDOW_END")
   rec_if envoy "non-2xx responses at ingress + waypoint during the rollout: $non2xx (want 0)" [ "$non2xx" -eq 0 ]
   total=$(loki_count '{service="traffic-generator"}' "$WINDOW_START" "$WINDOW_END")
   bad=$(loki_count '{service="traffic-generator"} !~ " 200 "' "$WINDOW_START" "$WINDOW_END")

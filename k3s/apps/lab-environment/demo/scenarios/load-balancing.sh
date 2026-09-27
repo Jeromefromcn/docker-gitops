@@ -7,7 +7,7 @@ evidence_load_balancing() {
   t=$(( WINDOW_END + 20 ))
   while [ "$(date +%s)" -lt "$t" ]; do sleep 2; done
   range=$(( t - WINDOW_START )); [ "$range" -ge 60 ] || range=60
-  hosts=$(loki_by upstream_host '{service="istio-proxy"} | json | authority=~"customers-service.*"' "$WINDOW_START" "$WINDOW_END")
+  hosts=$(loki_by upstream_host '{service="istio-proxy"} | json | __error__="" | authority=~"customers-service.*"' "$WINDOW_START" "$WINDOW_END")
   echo "$hosts" | sed 's/^/      /'
   n=$(echo "$hosts" | grep -c . || true)
   rec_if envoy "waypoint spread customers-service requests over $n pods (want $want)" [ "$n" -eq "$want" ]

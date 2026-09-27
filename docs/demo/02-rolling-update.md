@@ -18,15 +18,19 @@ git diff
 git commit -m "demo: rolling-restart customers-service" -- $F
 git push
 argocd app get lab-environment --core --refresh >/dev/null
+# Wait until ArgoCD has synced this commit (the PreSync hook runs first) —
+# otherwise rollout status reports the *old* rollout as done.
+until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do sleep 5; done
 kubectl -n lab-environment rollout status deploy/customers-service --timeout=6m
 demo-window stop rolling-update
 demo-evidence rolling-update
 ```
 
 ## Expected result
-`rollout status` walks 5 → 5 one pod at a time (maxSurge 1, maxUnavailable
-0) and finishes in ~3 minutes. Evidence: demo commit deployed, five new
-Ready pods, zero non-2xx at the mesh, zero generator errors.
+The sync, PreSync hook included, lands ~45 s after the push. `rollout
+status` then walks 5 → 5 one pod at a time (maxSurge 1, maxUnavailable 0)
+in ~2 minutes. Evidence: demo commit deployed, five new Ready pods, zero
+non-2xx at the mesh, zero generator errors.
 
 ## Evidence
 - **ArgoCD:** the demo commit in the app's history inside the window.

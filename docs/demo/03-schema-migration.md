@@ -16,7 +16,7 @@ demo-evidence schema-migration
 ```
 
 ## Expected result
-PreSync lists `ServiceAccount/db-init`, `ConfigMap/db-init-sql`,
+PreSync lists `Namespace/lab-environment`, `ServiceAccount/db-init`, `ConfigMap/db-init-sql`,
 `Job/db-init`, all `Succeeded`; the job log shows `applying customers.sql`,
 `vets.sql`, `visits.sql`; owners count unchanged.
 
