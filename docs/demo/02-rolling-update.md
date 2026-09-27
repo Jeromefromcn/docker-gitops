@@ -41,6 +41,10 @@ non-2xx at the mesh, zero generator errors.
 ## Talking points
 - `maxSurge: 1 / maxUnavailable: 0` + readiness on the actuator readiness
   group + PDB `minAvailable: 3`: capacity never drops below five.
+- The 10 s `preStop` sleep is what makes "zero" true. Without it the first
+  rehearsal (2026-09-27) failed 2/304 requests `503 UF`: the app exited on
+  SIGTERM while the waypoint still routed to the terminating pod. After the
+  fix: 0/293.
 - The annotation bump is how you restart without a new image; ArgoCD would
   revert a `kubectl rollout restart` as drift.
 - Measured history: the first rolling update under Consul discovery threw

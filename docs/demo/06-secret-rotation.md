@@ -45,12 +45,17 @@ demo-evidence secret-rotation
 ## Expected result
 `Secret updated` ~10 s after the push, `ALTER ROLE`, three completed
 rollouts (~3 minutes). Evidence: old password rejected, new accepted, all
-three clients restarted. Rehearsal 2026-09-27: 4 non-200 out of 360
-generator requests — none from authentication. Two were `503 UC` from old
-customers pods closing connections as they terminated, two were `504 UT`
-from cold vets/visits pods missing the 1 s per-try timeout. Rolling three
-Deployments at once exposes a shutdown-drain gap that a one-service
-rollout (scenario 02: zero errors) does not.
+three clients restarted. Measured 2026-09-27, never from authentication:
+
+| Run | Non-200 / requests | Cause (Envoy flags) |
+|---|---|---|
+| before the preStop drain | 4 / 360 | `503 UC` from terminating customers pods; `504 UT` from cold vets/visits pods |
+| after the preStop drain | 2 / 350 | `504 UT` (cold vets pod); `503 UC`+`UF,URX` from the waypoint to a *new*, Ready customers pod |
+
+The drain fixed the terminating-pod case (scenario 02 went from 2/304 to
+0/293). The remaining `UF` to freshly started pods is a second, open
+failure mode — it outlasted the rollout by ~30 s and is tracked under
+sub-project 2c (mesh resilience); it is not hidden by loosening the note.
 
 ## Evidence
 - **ArgoCD:** a sealed-secrets app deployment inside the window.
@@ -67,7 +72,8 @@ rollout (scenario 02: zero errors) does not.
   connections (Hikari max 5); only a *new* connection with the old password
   would fail — and in rehearsal none did. The errors the note line counts
   came from the rollouts themselves (see Expected result): the honest cost
-  of this rotation is the restart, not the password switch.
+  of this rotation is restarting three services at once, not the password
+  switch.
 - Verification pitfall: inside the postgres pod the local socket is `trust`
   and `-h postgres` is now reset by ztunnel — only the pod's own IP reaches
   the scram line. A check that "passes" on the wrong path proves nothing.
