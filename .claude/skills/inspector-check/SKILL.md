@@ -64,7 +64,7 @@ source "$SCRIPT_DIR/../lib/local.sh"   # ../lib/remote.sh for <host>/, ../lib/ku
 
 - Output always goes through `emit_result <tier> <action> <target> <detail>`; `tier` is `auto`/`alert`, `action` is `flagged`/`deleted`/`would-delete`
 - Thresholds come from environment variables with defaults: `"${INSPECTOR_XXX:-900}"`
-- k3s-related checks use `${INSPECTOR_KUBECONFIG:-$INSPECTOR_STATE_DIR/kubeconfig}`; when the file is missing, raise an alert pointing to running `k3s/setup-kubeconfig.sh`
+- k3s-related checks use `${INSPECTOR_KUBECONFIG:-$INSPECTOR_STATE_DIR/kubeconfig}`; when the file is missing, raise an alert pointing to running `vps_oracle/host-native/inspector/kubeconfig/setup-kubeconfig.sh` (always that full path — a bare `k3s/...` is ambiguous with the repo-root `k3s/`)
 - Do **not** use `set -e` (`-uo pipefail` is enough) — a single item failing to process shouldn't abort the whole inspection round
 
 ## 4. Wire into the main inspection flow

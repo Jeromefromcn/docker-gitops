@@ -1,6 +1,6 @@
 # Cluster-side RBAC for the vps_oracle host inspector (phase 2 k3s
 # checks). Applied once — idempotently — by setup-kubeconfig.sh, NOT by
-# ArgoCD: deliberately outside k3s/manifests/ so selfHeal
+# ArgoCD: deliberately outside the repo-root k3s/manifests/ so selfHeal
 # never fights it (see k3s/README.md). Least privilege per
 # the spec's check table: delete rights only for the two auto-tier
 # cleanup actions (Failed pods, completed Jobs); everything else

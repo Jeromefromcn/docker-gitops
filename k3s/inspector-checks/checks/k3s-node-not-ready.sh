@@ -18,7 +18,7 @@ KUBECONFIG_FILE="${INSPECTOR_KUBECONFIG:-$INSPECTOR_STATE_DIR/kubeconfig}"
 
 if [ ! -f "$KUBECONFIG_FILE" ]; then
   emit_result "alert" "flagged" "check:k3s-node-not-ready.sh" \
-    "inspector kubeconfig missing at $KUBECONFIG_FILE — run k3s/setup-kubeconfig.sh once (see README)"
+    "inspector kubeconfig missing at $KUBECONFIG_FILE — run vps_oracle/host-native/inspector/kubeconfig/setup-kubeconfig.sh once (see the inspector README)"
   exit 0
 fi
 

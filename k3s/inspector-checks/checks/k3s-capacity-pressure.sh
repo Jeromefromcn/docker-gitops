@@ -32,7 +32,7 @@ CHECK="check:k3s-capacity-pressure.sh"
 
 if [ ! -f "$KUBECONFIG_FILE" ]; then
   emit_result "alert" "flagged" "$CHECK" \
-    "inspector kubeconfig missing at $KUBECONFIG_FILE — run k3s/setup-kubeconfig.sh once (see README)"
+    "inspector kubeconfig missing at $KUBECONFIG_FILE — run vps_oracle/host-native/inspector/kubeconfig/setup-kubeconfig.sh once (see the inspector README)"
   exit 0
 fi
 
@@ -108,7 +108,7 @@ if [ -z "$quotas_json" ] || [ -z "$rs_json" ] || [ -z "$pods_json" ]; then
   case "$FETCH_ERR" in
     *[Ff]orbidden*)
       emit_result "alert" "flagged" "$CHECK" \
-        "inspector RBAC does not permit reading a resource this check needs in namespace $NS — grant resourcequotas/replicasets get+list in k3s/rbac.yaml and re-run k3s/setup-kubeconfig.sh ($FETCH_ERR)"
+        "inspector RBAC does not permit reading a resource this check needs in namespace $NS — grant resourcequotas/replicasets get+list in vps_oracle/host-native/inspector/kubeconfig/rbac.yaml and re-run its setup-kubeconfig.sh ($FETCH_ERR)"
       ;;
     *)
       emit_result "alert" "flagged" "$CHECK" \

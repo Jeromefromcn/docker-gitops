@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# k3s/setup-kubeconfig.sh — one-time bootstrap for the inspector's k3s
+# kubeconfig/setup-kubeconfig.sh — one-time bootstrap for the inspector's k3s
 # access. Applies rbac.yaml with the admin kubeconfig, waits for the SA
 # token secret, and writes a least-privilege token kubeconfig to
 # state/kubeconfig (gitignored). Safe to re-run: apply is idempotent and

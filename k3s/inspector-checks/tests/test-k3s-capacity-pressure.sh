@@ -162,8 +162,8 @@ exit 1
 EOF
 chmod +x "$bin_dir/kubectl"
 out="$(env "${env_common[@]}" "$check")"
-assert_true "names the RBAC gap and points at k3s/rbac.yaml" \
-  "$(grep -q 'inspector RBAC does not permit' <<<"$out" && grep -q 'k3s/rbac.yaml' <<<"$out" && echo true || echo false)"
+assert_true "names the RBAC gap and points at the inspector's kubeconfig/rbac.yaml" \
+  "$(grep -q 'inspector RBAC does not permit' <<<"$out" && grep -q 'inspector/kubeconfig/rbac.yaml' <<<"$out" && echo true || echo false)"
 assert_true "does NOT claim the cluster is unreachable" \
   "$(grep -q 'not reachable' <<<"$out" && echo false || echo true)"
 

@@ -36,8 +36,8 @@ flowchart LR
 
 ## Requirements and gotchas
 
-- The checks use the least-privilege kubeconfig written by `vps_oracle/host-native/inspector/k3s/setup-kubeconfig.sh` (gitignored, mode 600). If it is missing they emit an alert naming that script rather than failing silently.
-- **RBAC is part of the check's contract.** A check that needs a verb the ServiceAccount lacks reports a `Forbidden` fetch and points at `k3s/rbac.yaml`; see that file's ClusterRole before adding a check that reads a new resource.
+- The checks use the least-privilege kubeconfig written by `vps_oracle/host-native/inspector/kubeconfig/setup-kubeconfig.sh` (gitignored, mode 600). If it is missing they emit an alert naming that script rather than failing silently.
+- **RBAC is part of the check's contract.** A check that needs a verb the ServiceAccount lacks reports a `Forbidden` fetch and points at `vps_oracle/host-native/inspector/kubeconfig/rbac.yaml`; see that file's ClusterRole before adding a check that reads a new resource. (Spelled out in full deliberately: this tree sits beside the repo-root `k3s/`, so a bare `k3s/rbac.yaml` would read as a root-level file that does not exist.)
 - Events are not a reliable signal: Kubernetes Events expire after 1h, so anything looking for a past incident must read durable state instead (`containerStatuses[].lastState`, node `dmesg`) — the OOM check's comment covers this.
 
 ## Adding a check
