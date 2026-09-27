@@ -45,6 +45,11 @@ The lab Prometheus scrapes the two Envoy gateways only through the
 Istio's `prometheus.io` annotations (before 2026-09-27 every `istio_*` series
 was counted twice).
 
+The lab Prometheus has no volume, so **its history ends at its last restart**
+— every `config-rev` bump or resources change to `prometheus.yaml` wipes it
+(2026-09-28: the per-pod numbers from the first 08 run were lost that way).
+Capture any measurement you need (`demo-evidence` does) before touching it.
+
 A PodDisruptionBudget exists only for the two multi-replica services
 (`customers-service` `minAvailable: 3`, `api-gateway` `minAvailable: 2`) —
 **vets-service and visits-service have none.** That is deliberate rather than
