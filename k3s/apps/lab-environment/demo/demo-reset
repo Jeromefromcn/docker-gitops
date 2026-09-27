@@ -1,0 +1,12 @@
+#!/bin/bash
+# demo-reset <scenario> — undoes the scenario and verifies the lab baseline
+# in the same command, so a reset is never left to "a later step".
+. "$(dirname "$(readlink -f "$0")")/lib.sh"
+[ $# -eq 1 ] || die "usage: demo-reset <scenario>"
+s=$1
+f=$(scenario_file "$s")
+# shellcheck disable=SC1090
+. "$f"
+fn="reset_$(fn_name "$s")"
+if declare -F "$fn" >/dev/null; then "$fn" || { echo "reset step for $s failed"; exit 1; }; fi
+wait_baseline

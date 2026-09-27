@@ -1,0 +1,24 @@
+#!/bin/bash
+# demo-window start|stop <scenario> — records the scenario's UTC window.
+. "$(dirname "$(readlink -f "$0")")/lib.sh"
+[ $# -eq 2 ] || die "usage: demo-window start|stop <scenario>"
+action=$1 s=$2
+f=$(scenario_file "$s")
+WINDOW_FILE=$(window_file "$s")
+case $action in
+  start)
+    t=$(now)
+    echo "WINDOW_START=$t" > "$WINDOW_FILE"
+    # shellcheck disable=SC1090
+    . "$f"
+    fn="start_$(fn_name "$s")"
+    if declare -F "$fn" >/dev/null; then "$fn"; fi
+    echo "window $s started $(iso "$t")" ;;
+  stop)
+    [ -f "$WINDOW_FILE" ] || die "no window started for '$s'"
+    t=$(now)
+    sed -i '/^WINDOW_END=/d' "$WINDOW_FILE"
+    echo "WINDOW_END=$t" >> "$WINDOW_FILE"
+    echo "window $s stopped $(iso "$t")" ;;
+  *) die "usage: demo-window start|stop <scenario>" ;;
+esac
