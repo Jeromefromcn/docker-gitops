@@ -32,8 +32,18 @@ spec:
     # filled the quota, the hook was rejected with FailedCreate, and the sync
     # stalled on "waiting for completion of hook" for 10 minutes.
     #
-    # Consequence of the CPU value below: requests.cpu 2 equals the whole node,
-    # so the quota never binds on CPU — the node's own 2 cores do. Peak CPU
-    # requests reach ~1825m/2000m once a release plus the ingress rolls.
-    requests.cpu: "2"
+    # CPU, derived the same way (2026-09-28). Requests sit at measured
+    # steady-state usage (JVMs 20m, Envoys 50m, infra 10-20m), so:
+    #   steady state                                                   550m
+    #   + surge: business x4 (20m) + ingress + waypoint (50m) + generator 200m
+    #   + db-init PreSync hook                                          20m
+    #                                        worst-case peak = 770m
+    # Upper bound: vps-oracle2's 2000m minus the node DaemonSets (250m) and
+    # a ztunnel surge pod (50m) = 1700m. Any value up to it means whatever
+    # the quota admits can also be scheduled — the quota rejects a pod
+    # (FailedCreate) before the node would leave it Pending. 1200m keeps
+    # ~430m above the peak for sub-project 2b's extra Deployments.
+    # The old value, 2, was the whole node, so the quota never bound on CPU
+    # and the node's cores did: a release peaked at ~1825m/2000m.
+    requests.cpu: 1200m
     requests.memory: 8Gi
