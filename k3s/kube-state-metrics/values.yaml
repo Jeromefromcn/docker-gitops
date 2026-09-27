@@ -1,0 +1,22 @@
+fullnameOverride: kube-state-metrics
+
+# vps_oracle, not vps-oracle2: oracle2's CPU requests are the lab's next
+# ceiling, and a metrics source should not share a failure domain with the
+# chaos node it reports on.
+nodeSelector:
+  kubernetes.io/hostname: instance-20260321-2043
+
+# 30115 is reserved for the vps_oracle compose Prometheus. It is not wired
+# yet: that container is on a Docker bridge and needs an npm-nodeport-relay
+# instance first (roadmap follow-up "Production monitoring consumes KSM").
+service:
+  type: NodePort
+  nodePort: 30115
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 48Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
