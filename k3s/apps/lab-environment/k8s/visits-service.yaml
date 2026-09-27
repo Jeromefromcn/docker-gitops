@@ -73,8 +73,10 @@ spec:
             # Request ~ observed RSS (270-340Mi) plus headroom, so the
             # scheduler doesn't reserve the full limit; the limit stays the
             # OOM ceiling. Heap is -Xms64m/-Xmx192m — non-heap drives RSS.
+            # CPU request ~ steady-state usage (4-7m measured); startup
+            # bursts into the limit instead of being reserved.
             requests:
-              cpu: 50m
+              cpu: 20m
               memory: 384Mi
             limits:
               cpu: 1000m
@@ -83,8 +85,11 @@ spec:
           # 61-98 s with ~half of all CFS periods throttled. The limit only
           # bites during startup; steady state sits far below it.
           # startupProbe holds readiness off until the app is actually up
-          # (up to 180 s); readinessProbe then uses Spring's own readiness
-          # group, so "Ready" means "serving", not "container started".
+          # (up to 300 s: CPU requests are at steady-state usage, so when
+          # every JVM starts at once they share 2 cores and start slowly —
+          # accepted, as long as none is killed mid-start); readinessProbe
+          # then uses Spring's own readiness group, so "Ready" means
+          # "serving", not "container started".
           # Keep serving while the endpoint removal reaches the waypoint:
           # without it the app exits on SIGTERM while the waypoint still
           # routes to the pod, and those requests fail 503 UF mid-rollout.
@@ -97,7 +102,7 @@ spec:
               path: /actuator/health/liveness
               port: 8082
             periodSeconds: 5
-            failureThreshold: 36
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness

@@ -27,7 +27,7 @@ data:
                 - name: TZ
                   value: "Asia/Hong_Kong"
               resources:
-                requests: {cpu: 100m, memory: 128Mi}
+                requests: {cpu: 50m, memory: 128Mi}
                 limits: {cpu: 500m, memory: 256Mi}
 ---
 apiVersion: gateway.networking.k8s.io/v1

@@ -116,7 +116,7 @@ spec:
             # page cache is charged to the same cgroup, so only ~120MiB of
             # the budget was ever available to the Go heap.
             requests:
-              cpu: 50m
+              cpu: 20m
               memory: 256Mi
             limits:
               cpu: 100m

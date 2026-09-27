@@ -27,7 +27,7 @@ spec:
               value: "Asia/Hong_Kong"
           resources:
             requests:
-              cpu: 25m
+              cpu: 10m
               memory: 16Mi
             limits:
               cpu: 25m

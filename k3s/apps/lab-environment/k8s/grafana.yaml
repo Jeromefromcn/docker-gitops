@@ -51,7 +51,7 @@ spec:
               mountPath: /etc/grafana/provisioning/dashboards/json
           resources:
             requests:
-              cpu: 25m
+              cpu: 10m
               memory: 96Mi
             limits:
               cpu: 100m

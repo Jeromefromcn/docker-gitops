@@ -170,7 +170,7 @@ spec:
             - name: sql
               mountPath: /sql
           resources:
-            requests: {cpu: 50m, memory: 64Mi}
+            requests: {cpu: 20m, memory: 64Mi}
             limits: {cpu: 200m, memory: 128Mi}
       volumes:
         - name: sql
