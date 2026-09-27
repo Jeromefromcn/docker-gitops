@@ -9,7 +9,11 @@ MANIFEST="$HERE/../k8s/db-init.yaml"
 FORK=${FORK_DIR:-/home/ubuntu/jerome/spring-petclinic-microservices}
 NAME=db-init-test-$$
 WORK=$(mktemp -d)
-trap 'docker rm -f $NAME >/dev/null 2>&1; rm -rf "$WORK"' EXIT
+# -v matters: the postgres image declares VOLUME /var/lib/postgresql/data, so
+# every `docker run` here creates an anonymous volume, and without -v each run
+# orphans a ~69MB copy of it. Six runs on 2026-09-25/26 left six of them, which
+# is what the inspector's docker-unused-volumes check then reported.
+trap 'docker rm -fv $NAME >/dev/null 2>&1; rm -rf "$WORK"' EXIT
 
 python3 - "$MANIFEST" "$WORK" <<'EOF'
 import sys, yaml
