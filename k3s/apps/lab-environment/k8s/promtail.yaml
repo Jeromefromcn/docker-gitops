@@ -33,6 +33,13 @@ spec:
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
+            # Same reasoning as prometheus: with the soft limit unset the
+            # GC pacer may overshoot the cgroup limit before collecting.
+            # This container sat exactly at its cap (memory.peak == limit,
+            # 99.2% of it in use) surviving only because ~26MiB of that
+            # was reclaimable page cache and slab.
+            - name: GOMEMLIMIT
+              value: "100MiB"
           volumeMounts:
             - name: config
               mountPath: /etc/promtail/promtail-config.yml
@@ -46,12 +53,16 @@ spec:
               mountPath: /var/log/pods
               readOnly: true
           resources:
+            # Raised 2026-09-27, from 32Mi/64Mi. The 64Mi limit was being
+            # reached exactly (memory.peak == the cap) against a file set
+            # that grows with pod churn, so this was the same failure
+            # waiting to happen as prometheus's.
             requests:
               cpu: 25m
-              memory: 32Mi
+              memory: 64Mi
             limits:
               cpu: 50m
-              memory: 64Mi
+              memory: 128Mi
       volumes:
         - name: config
           configMap:
