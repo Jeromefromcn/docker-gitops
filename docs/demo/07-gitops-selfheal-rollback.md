@@ -20,19 +20,25 @@ git show --stat $SHA
 git revert --no-edit $SHA
 git push
 argocd app get lab-environment --core --refresh >/dev/null
+until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do sleep 5; done
 kubectl -n lab-environment rollout status deploy/customers-service --timeout=6m
 demo-window stop gitops-selfheal-rollback
 demo-evidence gitops-selfheal-rollback
 ```
 
 ## Expected result
-The Deployment drops to 1 and ArgoCD scales it back to 5 within seconds.
-The revert rolls the pods again and restores the previous `rollout-rev`.
+ArgoCD sets `replicas` back to 5 within a second of the scale; READY climbs
+from 1/5 to 5/5 over ~70 s (JVM startup), with no generator errors — one
+pod carries the traffic meanwhile. The revert then rolls the pods again and
+restores the previous `rollout-rev`.
 
 ## Evidence
-- **Kubernetes:** `ScalingReplicaSet` events — down to 1, then up to 5.
+- **Kubernetes (kube-state-metrics):** available replicas dipped to 1 in the window.
+- **ArgoCD (controller log):** a sync limited to `Deployment/customers-service`
+  at the already-deployed revision — that is selfHeal; the app history does
+  not record it.
 - **ArgoCD:** the revert commit in the app history inside the window.
-- **Kubernetes:** live `rollout-rev` equals git's.
+- **Kubernetes:** live `rollout-rev` and ready count equal git's.
 
 ## Talking points
 - `selfHeal: true` makes git the source of truth for *runtime* state, not
