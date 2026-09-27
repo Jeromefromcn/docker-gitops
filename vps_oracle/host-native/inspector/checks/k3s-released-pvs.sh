@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-released-pvs.sh
 #
 # Flags PersistentVolumes in Released phase — unbound but still holding

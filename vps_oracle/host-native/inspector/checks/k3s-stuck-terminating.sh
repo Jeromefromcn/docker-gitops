@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-stuck-terminating.sh
 #
 # Flags pods stuck in Terminating (deletionTimestamp set longer than

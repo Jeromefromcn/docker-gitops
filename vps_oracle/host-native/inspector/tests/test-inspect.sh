@@ -30,6 +30,16 @@ source "$SCRIPT_DIR/../lib/common.sh"
 emit_result "alert" "flagged" "fake-target-2" "fake detail 2"
 exit 1
 EOF
+# A fake cluster-scoped check: it declares the instance it inspects, because
+# the directory rule ("which machine does this check belong to") has no true
+# answer for a check that reads the cluster API rather than one host.
+cat > "$work_dir/checks/ccc-declares-instance.sh" <<'EOF'
+#!/usr/bin/env bash
+# inspector-instance: fake_cluster — a trailing note must not become part of the name
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/common.sh"
+exit 0
+EOF
 # A fake remote-host check, to assert the per-instance summary lists it.
 mkdir -p "$work_dir/repo/vps_fake2/inspector-checks/checks"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$work_dir/repo/vps_fake2/inspector-checks/checks/quiet.sh"
@@ -69,6 +79,8 @@ assert_true "payload body uses English section headers" \
   "$(grep -q "Auto-handled" "$work_dir/captured_payload.json" && grep -q "Needs manual review" "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "report header shows the local instance's counts" \
   "$(grep -q 'vps_oracle — 2 checks, 2 need review, 1 auto-handled' "$work_dir/captured_payload.json" && echo true || echo false)"
+assert_true "a check that declares its instance is grouped under it, not under vps_oracle" \
+  "$(grep -q 'fake_cluster — 1 check, all clear' "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "report lists the remote instance even though it flagged nothing" \
   "$(grep -q 'vps_fake2 — 1 check, all clear' "$work_dir/captured_payload.json" && echo true || echo false)"
 assert_true "payload contains no CJK characters" \

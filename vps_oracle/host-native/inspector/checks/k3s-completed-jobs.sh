@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-completed-jobs.sh
 #
 # Deletes completed Jobs older than INSPECTOR_COMPLETED_JOB_MAX_AGE_

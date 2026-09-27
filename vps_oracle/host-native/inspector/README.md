@@ -5,17 +5,22 @@ Host-level inspection script, not managed by docker compose (like `vps_oracle/ho
 
 **Notification language**: the Telegram report title and body are English only (2026-08-16 user request; the repo docs remain Chinese). `tests/test-inspect.sh` has a corresponding assertion (title, section headers, no CJK characters). The title carries no host name: a report is one logical inspection, and the `Inspected` section names the instances covered.
 
-**Report layout**: one logical inspection, grouped by instance (`vps_oracle` for `checks/`, `<host>` for `<host>/inspector-checks/`); it never says which machine ran the scripts. Every instance always gets a header — `✅ … all clear`, `✅ … N auto-handled` or `⚠️ … N need review` — so a healthy run visibly covers remote hosts too, and any auto/alert lines sit under their instance's header. The test-only override `INSPECTOR_REPO_ROOT` points the remote-check glob at a fake tree.
+**Report layout**: one logical inspection, grouped by instance — `vps_oracle` for `checks/`, `<host>` for `<host>/inspector-checks/`, unless the check declares its own with a `# inspector-instance: <name>` line; it never says which machine ran the scripts.
+
+The declaration is for checks that read the cluster API (`kubectl … -A`) rather than this host. The directory rule answers "which machine does this check belong to", and such a check inspects both nodes at once, so any host label misattributes its findings — the 2026-09-27 lab OOM was reported under `vps_oracle` while every `lab-environment` pod runs on vps-oracle2, and only the pod's own `nodeName` showed it. Naming cannot decide it either: `k3s-containerd-images.sh` is genuinely node-local (it reads this host's containerd via `crictl`), so the prefix proves nothing. Only the first whitespace-delimited token of the declaration is the instance name; anything after it is a note for the reader.
+
+Every instance always gets a header — `✅ … all clear`, `✅ … N auto-handled` or `⚠️ … N need review` — so a healthy run visibly covers remote hosts too, and any auto/alert lines sit under their instance's header. The test-only override `INSPECTOR_REPO_ROOT` points the remote-check glob at a fake tree.
 
 **Sizes and ages in detail lines**: a check never prints a raw byte count or a raw second count — `human_bytes` / `human_duration` in `lib/common.sh` turn them into `57.2 MiB` and `7d 1h` (two units at most). Both are covered by `tests/test-common.sh`; use them for any new size/age a check reports.
 
 ```
-🔍 Inspection report · 2026-09-19 21:00
+🔍 Inspection report · 2026-09-27 21:00
 
-⚠️ vps_oracle — 18 checks, 1 need review
+⚠️ vps_oracle — 14 checks, 1 need review
    Needs manual review
    ⚠️ docker container foo
       restart count 12, state running …
+✅ k3s — 7 checks, all clear
 ✅ vps_oracle2 — 1 check, all clear
 
 Run took 6.7s
@@ -45,7 +50,7 @@ Implemented (phase 2, k3s layer):
 - `checks/k3s-released-pvs.sh` (alert) — Released PVs
 - `checks/k3s-stuck-terminating.sh` (alert) — Terminating pods stuck for more than 15 minutes
 - `checks/k3s-node-not-ready.sh` (alert) — any Node whose Ready condition isn't True (added with the vps-oracle2 agent node; needs `nodes` get/list in `k3s/rbac.yaml`)
-- `checks/k3s-oom-killed-containers.sh` (alert) — `lastState.terminated.reason=OOMKilled` within the last 24 hours; `k3s-evicted-pods.sh` can't catch this case (the pod stays `Running` the whole time, only the container is killed and restarted), added after the 2026-08-17 io_pressure_critical incident (jaeger/trivy were both OOM-killed because their limits were too tight)
+- `checks/k3s-oom-killed-containers.sh` (alert) — `lastState.terminated.reason=OOMKilled` within the last 24 hours; the finding names the pod's `nodeName`, since this reads the whole cluster and the report's instance header is `k3s`, not a host. `k3s-evicted-pods.sh` can't catch this case (the pod stays `Running` the whole time, only the container is killed and restarted), added after the 2026-08-17 io_pressure_critical incident (jaeger/trivy were both OOM-killed because their limits were too tight)
 - `checks/k3s-capacity-pressure.sh` (alert) — the three ways a workload stops being able to run in the lab namespace: a ResourceQuota used at or above `INSPECTOR_QUOTA_USED_PCT` (default 90) of a hard limit, a ReplicaSet whose pods were refused at admission (`FailedCreate`), or a pod Pending past `INSPECTOR_PENDING_MINUTES` (default 5). Needs `resourcequotas` and `replicasets` get+list in `k3s/rbac.yaml` — and needs them *necessarily*, not conveniently: quota usage is invisible on a pod object, and a pod refused at admission never exists as one, so neither signal can be derived from the `pods` grant. Scoped to `lab-environment` deliberately (`INSPECTOR_LAB_NAMESPACE`) — the same signals cluster-wide would flag PR lanes legitimately waiting for capacity, and a check that cries wolf twice a day stops being read. Added after the 2026-09-25 incident where the quota could not admit a release plus its PreSync hook: every signal above was present for ~10 minutes before anyone noticed, and it was noticed only because pods began `CrashLoopBackOff`.
 
 Implemented (NPM reverse proxy layer):

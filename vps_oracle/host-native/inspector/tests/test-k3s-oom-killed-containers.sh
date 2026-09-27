@@ -15,6 +15,7 @@ stale="$(date -u -d '-2 days' +%Y-%m-%dT%H:%M:%SZ)"
 cat > "$work_dir/pods.json" <<EOF
 {"items":[
  {"metadata":{"name":"jaeger-abc","namespace":"lab-environment"},
+  "spec":{"nodeName":"vps-oracle2"},
   "status":{"containerStatuses":[
     {"name":"jaeger","restartCount":1,
      "lastState":{"terminated":{"reason":"OOMKilled","finishedAt":"$recent"}}}
@@ -50,8 +51,8 @@ env_common=(PATH="$bin_dir:$PATH" INSPECTOR_KUBECONFIG="$work_dir/fake-kubeconfi
 
 echo "== recent OOMKilled within lookback: flagged =="
 out="$(env "${env_common[@]}" "$check")"
-assert_true "flags lab-environment/jaeger-abc container jaeger" \
-  "$(grep -q '"target":"pod lab-environment/jaeger-abc container jaeger"' <<<"$out" && grep -q 'restartCount=1' <<<"$out" && echo true || echo false)"
+assert_true "flags lab-environment/jaeger-abc container jaeger, naming the node it runs on" \
+  "$(grep -q '"target":"pod lab-environment/jaeger-abc container jaeger on node vps-oracle2"' <<<"$out" && grep -q 'restartCount=1' <<<"$out" && echo true || echo false)"
 assert_true "flagged as alert tier, not auto" \
   "$(grep -q '"tier":"alert"' <<<"$out" && echo true || echo false)"
 

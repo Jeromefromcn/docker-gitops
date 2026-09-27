@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-node-not-ready.sh
 #
 # Flags any k3s Node whose Ready condition is not True. Added 2026-09-24 when

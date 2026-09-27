@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# inspector-instance: k3s — reads the cluster API (kubectl), not this host; see inspect.sh
 # checks/k3s-oom-killed-containers.sh
 #
 # Flags containers whose last termination was OOMKilled within the
@@ -36,6 +37,7 @@ while read -r line; do
   [ -n "$line" ] || continue
   ns="$(jq -r '.ns' <<<"$line")"
   pod="$(jq -r '.pod' <<<"$line")"
+  node="$(jq -r '.node' <<<"$line")"
   container="$(jq -r '.container' <<<"$line")"
   finished_at="$(jq -r '.finishedAt' <<<"$line")"
   restart_count="$(jq -r '.restartCount' <<<"$line")"
@@ -44,11 +46,15 @@ while read -r line; do
   age=$((now_epoch - finished_epoch))
   [ "$age" -ge 0 ] && [ "$age" -le "$LOOKBACK_SECONDS" ] || continue
 
-  emit_result "alert" "flagged" "pod $ns/$pod container $container" \
+  # The node is named because this check reads the whole cluster, so its
+  # findings have no host of their own: without it, an agent-node OOM is
+  # indistinguishable from a server-node one.
+  emit_result "alert" "flagged" "pod $ns/$pod container $container on node $node" \
     "OOMKilled $(human_duration "$age") ago (restartCount=${restart_count}) — container's memory limit was hit, review resources.limits.memory or the workload"
 done < <(jq -c '
   .items[] | .metadata.namespace as $ns | .metadata.name as $pod |
+  .spec.nodeName as $node |
   (.status.containerStatuses // [])[] |
   select(.lastState.terminated.reason? == "OOMKilled") |
-  {ns: $ns, pod: $pod, container: .name, finishedAt: .lastState.terminated.finishedAt, restartCount: .restartCount}
+  {ns: $ns, pod: $pod, node: $node, container: .name, finishedAt: .lastState.terminated.finishedAt, restartCount: .restartCount}
 ' <<<"$pods_json")
