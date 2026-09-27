@@ -132,10 +132,17 @@ Two different jobs that used to be one:
 
 The database password is **not** in either place. It lives in the
 `lab-db-credentials` SealedSecret and reaches the pods as `DATA_DB_PASSWORD`;
-the old plaintext value was rotated out and no longer authenticates (verify
-over the scram path — `psql -h postgres` — because the same pod's local socket
-matches a `trust` line in `pg_hba.conf` and will accept anything). To rotate:
-update the secret, reseal, `ALTER USER`, then roll the three services.
+the old plaintext value was rotated out and no longer authenticates.
+
+To rotate: reseal the new password and push it (the Secret changes, nothing
+restarts), `ALTER USER` to the new password, then bump `lab.jerome/rollout-rev`
+on customers/vets/visits and push — in that order, because the `db-init`
+PreSync hook authenticates with the Secret on every sync. Step by step:
+[docs/demo/06-secret-rotation.md](../../../docs/demo/06-secret-rotation.md).
+Verify against the pod's own IP (`psql -h $(hostname -i)` inside the postgres
+pod): that path hits the scram line. `psql -h postgres` from the same pod is
+now reset by ztunnel (postgres' `sa/default` is not an allowed client) and
+the local socket matches `trust`, so neither proves anything.
 
 ## Schema
 
