@@ -62,9 +62,11 @@ up to 3 s for a connection while the node still had CPU to spare (peak
   planning starts.
 - What the lab cannot show yet: overload protection (rate limiting, outlier
   ejection shielding `/api/vet/vets`) is sub-project 2c; horizontal
-  autoscaling is blocked because the node's CPU requests are already near
-  its 2 cores — though this run says more vets replicas or a larger pool,
-  not more CPU, is the first lever.
+  autoscaling is not built yet — this run says more vets replicas or a
+  larger pool, not more CPU, is the first lever.
+- Envoy is cheap: at ~68 req/s the waypoint peaked at ~80m and the
+  ingress at ~36m, unthrottled (measured 2026-09-28, after CPU requests
+  were cut to steady-state usage).
 - A 15 s scrape never caught `hikaricp_connections_pending` above 0; the
   acquire-time maximum did. Pick metrics that keep the peak.
 

@@ -58,21 +58,40 @@ A `lab.jerome/rollout-rev` annotation on `customers-service` is the repeatable
 trigger for demonstrating a rolling restart without changing the image.
 
 The four Spring Boot services have a 1000m CPU limit (was 250m: startup took
-61-98 s, half of it CFS-throttled; now ~40-55 s with all four starting at
-once on the 2-core node) and startup + readiness probes on the actuator
-`liveness`/`readiness` groups, so Ready means serving. If Consul isn't up yet
-they exit 1 and retry — they settle on their own once it is.
+61-98 s, half of it CFS-throttled) and startup + readiness probes on the
+actuator `liveness`/`readiness` groups, so Ready means serving. If Consul
+isn't up yet they exit 1 and retry — they settle on their own once it is.
 
-**Quota.** `lab-environment-quota` caps **requests only** (`requests.cpu: 2`,
+**CPU requests sit at measured steady-state usage, not at startup** (sized
+2026-09-28): JVMs 20m (they idle at 4-7m), Envoys (ingress, waypoint) 50m,
+infra 10-20m. The node is a trial ground: overcommit, slow concurrent starts
+and latency spikes are accepted in exchange for every pod always being
+admitted and scheduled. Startup bursts into the 1000m limit instead of being
+reserved, so when many JVMs start at once they share the two cores — measured
+24-84 s for a full rolling release and 107-152 s with all ten JVMs deleted at
+once. The startup probe allows 300 s so none is killed mid-start.
+
+**Quota.** `lab-environment-quota` caps **requests only** (`requests.cpu: 1200m`,
 `requests.memory: 8Gi`); limits are deliberately uncapped, and each container's
 own memory limit is its OOM ceiling. The 8Gi is derived, not arbitrary: ~70% of
 the node's allocatable, and it covers a release peak — 5200 Mi steady state
 plus one surge pod per rolling Deployment plus the `db-init` PreSync hook
 (≈7.1 Gi). The previous 6Gi was the old `limits.memory` value carried over and
 deadlocked a release on 2026-09-25 (the surge filled the quota, the hook was
-refused with `FailedCreate`, and the sync stalled for 10 minutes). Note the
-quota never binds on CPU — `requests.cpu: 2` equals the whole node, so the
-node's own 2 cores do.
+refused with `FailedCreate`, and the sync stalled for 10 minutes). CPU is
+derived the same way: 550m steady + 200m surge + 20m hook = 770m peak, capped
+at 1200m, below the 1400m that vps-oracle2 can place after its kubelet
+reservations and DaemonSets (see the derivation in `k8s/namespace.yaml`). So
+the quota, not the node, is what refuses a pod — nothing sits `Pending`.
+Until 2026-09-28 it was `requests.cpu: 2`, the whole node, and a release
+peaked at ~1825m of the node's 2000m.
+
+Deleting many pods at once is the one case that still hits the quota: pods
+in their 10 s `preStop` keep their requests counted, so their replacements
+get `FailedCreate` for ~10 s and the ReplicaSet retries on its own (all ten
+JVMs deleted together: 10 refusals, none left behind). Releases roll one
+surge pod at a time and never see this — restart through the
+`rollout-rev` annotation, not `kubectl delete pod`.
 
 **Mesh.** The namespace is enrolled in Istio ambient (`istio.io/dataplane-mode:
 ambient`), so every pod gets L4 mTLS from ztunnel with no sidecar. Services
