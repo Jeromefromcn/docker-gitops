@@ -77,12 +77,13 @@ reserved, so when many JVMs start at once they share the two cores — measured
 once. The startup probe allows 300 s so none is killed mid-start.
 
 **Quota.** `lab-environment-quota` caps **requests only** (`requests.cpu: 1200m`,
-`requests.memory: 8Gi`); limits are deliberately uncapped, and each container's
-own memory limit is its OOM ceiling. The 8Gi is derived, not arbitrary: ~70% of
-the node's allocatable, and it covers a release peak — 5200 Mi steady state
-plus one surge pod per rolling Deployment plus the `db-init` PreSync hook
-(≈7.1 Gi). The previous 6Gi was the old `limits.memory` value carried over and
-deadlocked a release on 2026-09-25 (the surge filled the quota, the hook was
+`requests.memory: 9.25Gi`); limits are deliberately uncapped, and each container's
+own memory limit is its OOM ceiling. The 9.25Gi is derived, not arbitrary: 5424Mi
+steady state + a 5-replica blue-green green (1920Mi) + one surge pod per rolling
+Deployment (1824Mi) + the `db-init` PreSync hook (64Mi) = 9232Mi, and 9472Mi plus
+~640Mi of DaemonSets fits vps-oracle2's 10263Mi allocatable. It was 8Gi until
+2026-09-28, when dify was decommissioned to make room for the green. The 6Gi
+before that was the old `limits.memory` value carried over and deadlocked a release on 2026-09-25 (the surge filled the quota, the hook was
 refused with `FailedCreate`, and the sync stalled for 10 minutes). CPU is
 derived the same way: 550m steady + 200m surge + 20m hook = 770m peak, capped
 at 1200m, below the 1400m that vps-oracle2 can place after its kubelet
