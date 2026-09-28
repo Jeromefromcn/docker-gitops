@@ -1,12 +1,19 @@
+# The "next version" slot for customers-service (sub-project 2b). It sits at
+# replicas: 0; a routing demo scales it and points the VirtualService at the
+# canary subset in one demo: commit, and git revert puts both back.
+# Same ServiceAccount, env, probes, resources and preStop as the stable
+# Deployment, so every AuthorizationPolicy and postgres' L4 policy already
+# cover it. Pods carry app: customers-service (so the Service selects them)
+# plus track: canary (so the DestinationRule can tell them apart).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: customers-service
+  name: customers-service-canary
   namespace: lab-environment
   labels:
     app: customers-service
 spec:
-  replicas: 5
+  replicas: 0
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -17,28 +24,25 @@ spec:
   selector:
     matchLabels:
       app: customers-service
+      track: canary
   template:
     metadata:
       labels:
         trivy-operator.skip: "true"
         app: customers-service
-        # DestinationRule subsets select on track (stable | canary); the
-        # Deployment selector stays app-only because selectors are immutable.
-        track: stable
-        version: v1
+        # The DestinationRule's canary subset selects on track.
+        track: canary
+        version: v2
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8081"
         prometheus.io/path: /actuator/prometheus
-        # Bump to trigger a rolling restart without changing the image — used
-        # to demo zero-downtime rollout, and by the acceptance run.
-        lab.jerome/rollout-rev: "4"
     spec:
       serviceAccountName: customers-service
       enableServiceLinks: false
       containers:
         - name: customers-service
-          image: ops-lab/customers-service:8839b4c7fa57
+          image: ops-lab/customers-service:ce942c9e7124
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
@@ -115,17 +119,3 @@ spec:
               port: 8081
             periodSeconds: 10
             failureThreshold: 3
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: customers-service
-  namespace: lab-environment
-  labels:
-    istio.io/use-waypoint: waypoint
-spec:
-  selector:
-    app: customers-service
-  ports:
-    - port: 8081
-      targetPort: 8081
