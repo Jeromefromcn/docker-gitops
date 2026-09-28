@@ -1,0 +1,7 @@
+== blue-green  window 2026-09-28T07:23:54Z → 2026-09-28T07:28:32Z (278s)
+  [argocd        ] PASS  ArgoCD deployed the switch 26e3b6f and its rollback 8e29d5e inside the window
+      before: 51 stable | green: 52 canary | after: 44 stable 
+  [envoy         ] PASS  waypoint subsets: all blue before the switch, all green after it, all blue after the rollback
+  [app           ] PASS  generator over the whole window: 0 non-200 of 523 (want 0 of > 0)
+  [note          ]       green P99 over its first 60 s: 642 ms (cold JVMs)
+== OK: 3 passed (2 infrastructure-layer)

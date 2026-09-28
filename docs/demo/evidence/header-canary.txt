@@ -1,0 +1,4 @@
+== header-canary  window 2026-09-28T07:07:41Z → 2026-09-28T07:07:53Z (12s)
+  [envoy         ] PASS  waypoint routed 40 requests to the canary (want exactly 40, the marked ones) and 47 to stable (want > 0)
+  [app           ] PASS  the canary pod counted 40 requests itself (want 40)
+== OK: 2 passed (1 infrastructure-layer)

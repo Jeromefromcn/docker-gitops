@@ -105,3 +105,41 @@ Real RAM during blue-green: ~7069 − 1400 + 5 × 330 ≈ **7.3G of 11.9G**, wit
 - HPA (roadmap's elastic-scaling row).
 - 2a's deferred minors, except that the new pages use the correct sync-wait form from the start; the old pages are not changed here.
 - Deleting dify's data volumes.
+
+## Implementation results (2026-09-28)
+
+Implemented from [the plan](../plans/2026-09-28-lab-routing-scenarios.md), executed inline on `main`.
+
+| # | Criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | Rehearsal 09 → 10 → 11 → 13 → 12, every `demo-evidence` passes | **PASS**, with reruns | 09, 10 and 13 passed first time. 11 needed three page fixes (runs 2-4) and 12 one (run 2) — each a real platform behaviour, below. Output in `docs/demo/evidence/` |
+| 2 | `demo-reset` → `baseline OK` incl. the routing baseline; `demo:` commits paired with reverts | **PASS** | every page ended `baseline OK`; `main` carries each scenario's `demo:` commits and their reverts |
+| 3 | No `Pending` / `FailedCreate` during the rehearsal | **PASS** | 0 FailedCreate, 0 FailedScheduling since the rehearsal start (06:49Z); `Lab Pod Pending` and `Lab Quota Near Limit` inactive; quota peaked at 7344Mi / 9472Mi (77 %) with green at 5/5 |
+| 4 | The `track: stable` rollout has zero generator errors | **PASS** | 416 requests, 0 non-200 |
+| 5 | README, demo index, roadmap, agent reservation comment, dify references updated | **PASS** | this commit series |
+
+### Measured
+
+- **09 instance ratio:** 18 of 120 page requests answered by v2; waypoint 26/172 = 15 %, the canary pod's own count 30/202 = 14 %.
+- **10 weight + bad build:** page 175 × 200, 25 × 500; canary 10 % of customers-service requests; 5xx canary 28, stable 0 (Spring: 30 and 0); the revert deployed.
+- **11 header / cookie:** exactly 40 marked requests on the canary subset (Envoy and the pod's own count); unmarked 20 × v1; the aggregation path with the header 10 × 200 on stable.
+- **13 mirroring:** 60 × 200 for users; the canary cluster answered 102 mirrored requests with 5xx; user requests: stable 103, canary 0; generator 0/60 errors.
+- **12 blue-green:** before 51 stable, green 52 canary, after the rollback 44 stable; generator 0/523 errors; green P99 over its first minute 642 ms (495 ms on run 1).
+- **Capacity:** dify's nine containers freed 1.3Gi (oracle2 used 7267 → 5964Mi). Measured outside pods: k3s-agent 312Mi, everything else 702Mi anon. Allocatable 9623 → 10263Mi.
+- **Slot rollout:** 0 generator errors while the stable pods took `track: stable`; 1 of 240 (503) during push 2, attributed to the waypoint rolling (below).
+
+### Deviations from the plan, and why
+
+- **Quota 9.25Gi, not 9.5Gi.** The plan's reservation formula (all non-pod anon + 512Mi) left allocatable at 10135Mi, below the 10368Mi that 9.5Gi needs. The owner chose honest reservations — kube-reserved 256 → 384Mi (k3s-agent already used 312Mi), system-reserved 1280Mi — and a 9.25Gi quota, still above the 9232Mi derived peak.
+- **dify had no shared postgres/redis pools** on vps_oracle (it bundled its own), so there were none to drop.
+- **v2-bad passes the fork's unit tests on purpose.** v2-good's tests cover 0 and 1 pet; the "simplification" breaks owners 3, 6 and 10 (two pets) and only the canary catches it. Proven live by the probe (Task 5), not by a unit test.
+- **Mirrored requests are not in the waypoint's access log.** 13's infrastructure evidence reads `envoy_cluster_upstream_rq{response_code_class="5xx"}` on the canary cluster, exported by a new waypoint stats-inclusion regex (the plan assumed an `_xx` metric name; the probe measured the real one).
+- **Page 11: warm-up and quiet gaps.** Three platform behaviours broke an exact count, one per rehearsal run: (1) `rollout status` returns before the waypoint has the new endpoint — the first marked requests got `503 UH`; (2) the two waypoint replicas learn endpoints independently, so one success is not enough — the page now waits for 10 in a row; (3) access-log lines land in Loki 1-2 s after the request and Prometheus samples every 15 s — the page keeps a 20 s gap before the window and 10 s before closing it.
+- **Page 12: the switch is not atomic per connection.** The waypoint's routes are inline in its listener; a listener update leaves existing keep-alive connections on the old route until Envoy's 45 s drain ends (`drain_time` from `server_info`). Run 1 saw a request reach green 28 s after the rollback synced. Evidence now judges each side from 50 s after its sync, and the page waits long enough to have traffic there.
+- **Page 12's final revert** finds the green-up commit by subject, not `HEAD~2` (other sessions may commit to `main`).
+
+### Open findings (not fixed in 2b)
+
+- **Rolling the waypoint drops api-gateway's pooled connections:** one 503 in 240 while the waypoint rolled for the stats change — api-gateway logged "connection observed an error" and answered 503 itself. Resilience territory: gateway retry on connection reset, or waypoint drain behaviour (2c).
+- **Ready is not routable:** a route to a freshly Ready pod's subset can fail `503 UH` for up to a second or two, per waypoint replica. Any future scenario that routes to a just-started subset needs the same warm-up as page 11.
+- **The dify inner API key is still in git history** (the stack is gone, the repo is public).
