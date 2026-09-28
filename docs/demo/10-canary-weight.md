@@ -15,7 +15,7 @@ throws — and its unit tests passed, because none had two pets.
 ```bash
 git pull --ff-only
 git apply k3s/apps/lab-environment/demo/patches/canary-weight.patch
-git diff
+git --no-pager diff
 git commit -m "demo: canary customers-service v2-bad at 10%" -- k3s/apps/lab-environment/k8s
 git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null
@@ -52,8 +52,9 @@ stable, the rollback commit deployed, and the same split in the pods' own
   the canary's bug would disappear from the user-facing numbers. Not
   retrying 500 is what makes a canary observable.
 - Outlier detection will not save you here: with one canary pod,
-  `maxEjectionPercent: 50` floors to 0, and Envoy never ejects the last
-  host of a cluster. The decision to roll back is a human's (or, later,
+  `maxEjectionPercent: 50` of one host floors to 0 ejectable hosts. Envoy
+  ejects at least one host regardless only when `always_eject_one_host` is
+  enabled, and it is off here. The decision to roll back is a human's (or, later,
   Argo Rollouts' analysis — sub-project 4).
 - The generator's `/api/customer/owners` list also serialises owners 3, 6
   and 10, so ~10 % of its list calls fail too — the blast radius is the

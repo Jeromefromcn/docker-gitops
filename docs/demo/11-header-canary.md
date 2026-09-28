@@ -12,7 +12,7 @@ Preflight passed; 10 reset.
 ```bash
 git pull --ff-only
 git apply k3s/apps/lab-environment/demo/patches/header-canary.patch
-git diff
+git --no-pager diff
 git commit -m "demo: route marked requests to the customers-service canary" -- k3s/apps/lab-environment/k8s
 git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null

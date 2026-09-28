@@ -12,7 +12,7 @@ Preflight passed; 11 reset.
 ```bash
 git pull --ff-only
 git apply k3s/apps/lab-environment/demo/patches/mirror.patch
-git diff
+git --no-pager diff
 git commit -m "demo: mirror customers-service GETs to v2-bad" -- k3s/apps/lab-environment/k8s
 git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null

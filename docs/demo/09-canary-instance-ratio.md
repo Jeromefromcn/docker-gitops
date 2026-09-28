@@ -12,7 +12,7 @@ Preflight passed (`demo-reset preflight` → `baseline OK`; the canary slot is e
 ```bash
 git pull --ff-only
 git apply k3s/apps/lab-environment/demo/patches/canary-instance-ratio.patch
-git diff
+git --no-pager diff
 git commit -m "demo: canary customers-service by instance ratio (5 + 1)" -- k3s/apps/lab-environment/k8s
 git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null

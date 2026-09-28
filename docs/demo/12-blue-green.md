@@ -14,7 +14,7 @@ vps-oracle2 to make room.
 ```bash
 git pull --ff-only
 git apply k3s/apps/lab-environment/demo/patches/blue-green-up.patch
-git diff
+git --no-pager diff
 git commit -m "demo: bring up green customers-service (5 x v2)" -- k3s/apps/lab-environment/k8s
 git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null
@@ -24,8 +24,10 @@ kubectl -n lab-environment get pods -l app=customers-service -L track
 kubectl -n lab-environment describe resourcequota lab-environment-quota | grep requests.memory
 demo-window start blue-green
 sleep 30
-git apply k3s/apps/lab-environment/demo/patches/blue-green-switch.patch
-git diff
+# Switch only onto a full green: if an earlier push failed, the slot is still
+# at 0 and rollout status succeeds anyway - routing to it would fail every request.
+[ "$(kubectl -n lab-environment get deploy customers-service-canary -o jsonpath='{.status.readyReplicas}')" = 5 ] && git apply k3s/apps/lab-environment/demo/patches/blue-green-switch.patch || echo "GREEN NOT 5/5 READY - stop here"
+git --no-pager diff
 git commit -m "demo: switch customers-service to green" -- k3s/apps/lab-environment/k8s
 git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null

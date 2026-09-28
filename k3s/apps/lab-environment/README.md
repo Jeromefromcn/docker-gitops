@@ -47,7 +47,10 @@ carry `app: customers-service` (so the Service selects them) and
 DestinationRule defines `stable` / `canary` subsets on `track`, and the
 VirtualService pins every route to `stable` — the baseline the routing demos
 (docs/demo/09-13) return to and `demo-reset` checks. A routing demo is one
-patch from `demo/patches/`, committed and later reverted. Adding the pin
+patch from `demo/patches/`, committed and later reverted; editing
+`resilience.yaml` or the canary manifest can break a patch, which
+`tests/test-demo-helpers.sh` (CI job `lab-demo-helpers`) catches with
+`git apply --check`. Adding the pin
 took two pushes: the labels first, the pin only once all five stable pods
 carried `track: stable` — pinned to an empty subset, every
 customers-service request would fail. The waypoint does not access-log
