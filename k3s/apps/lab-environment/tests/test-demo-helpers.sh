@@ -215,6 +215,39 @@ check "07 evidence runs on a full sync" 1 "$DEMO/demo-evidence" gitops-selfheal-
 has "$WORK/out" "[argocd        ] FAIL  selfHeal"
 unset FAKE_CTRL_LOG
 
+# --- 2b routing scenarios: evidence against hook-driven stubs -------------
+# A hook gets the stubbed command's arguments as one string in $1; it prints
+# a response and exits 0, or exits 1 to fall through to the stub's defaults.
+cl() { printf '{"metric":{"upstream_cluster":"inbound-vip|8081|http/%s|customers-service.lab-environment.svc.cluster.local;"},"value":[0,"%s"]}' "$1" "$2"; }
+res() { printf '{"data":{"result":[%s]}}' "$1"; }
+val() { printf '{"data":{"result":[{"metric":{},"value":[0,"%s"]}]}}' "$1"; }
+win() { printf 'WINDOW_START=%s\nWINDOW_END=%s\n' "$2" "$3" > "$DEMO_STATE_DIR/$1.window"; }
+export -f cl res val
+
+# 09: one canary pod of six gets ~1/6 of the waypoint's requests.
+cp "$DEMO/scenarios/canary-instance-ratio.sh" "$DEMO_SCENARIO_DIR/"
+win canary-instance-ratio 1000 1300
+cat > "$WORK/hook09" <<'EOF'
+#!/bin/bash
+c=${C09:-20}
+case "$1" in
+  *"track=canary"*"podIP"*) echo "10.42.1.99" ;;
+  *"sum by (upstream_host)"*)
+    res "{\"metric\":{\"upstream_host\":\"envoy://connect_originate/10.42.1.99:8081\"},\"value\":[0,\"$c\"]},{\"metric\":{\"upstream_host\":\"envoy://connect_originate/10.42.1.40:8081\"},\"value\":[0,\"100\"]}" ;;
+  *"customers-service-canary"*"time=1000"*) val 10 ;;
+  *"customers-service-canary"*"time=1320"*) val $((10 + c)) ;;
+  *"time=1000"*) val 500 ;;
+  *"time=1320"*) val $((500 + 100 + c)) ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook09"
+FAKE_CURL_HOOK=$WORK/hook09 FAKE_KUBECTL_HOOK=$WORK/hook09 check "09 passes at 1 of 6" 0 "$DEMO/demo-evidence" canary-instance-ratio
+has "$WORK/out" "sent 20 of 120 customers-service requests to the canary pod: 16%"
+has "$WORK/out" "canary pod's own count: 20 of 120 requests, 16%"
+C09=0 FAKE_CURL_HOOK=$WORK/hook09 FAKE_KUBECTL_HOOK=$WORK/hook09 check "09 fails when the canary got nothing" 1 "$DEMO/demo-evidence" canary-instance-ratio
+C09=100 FAKE_CURL_HOOK=$WORK/hook09 FAKE_KUBECTL_HOOK=$WORK/hook09 check "09 fails at a 50% share" 1 "$DEMO/demo-evidence" canary-instance-ratio
+
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
   echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))
