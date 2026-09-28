@@ -4,7 +4,7 @@
 # Featherless, ...) is configured entirely from the UI, and the keys live in
 # /etc/sillytavern/data on oracle2, not in this repo. See README.md.
 #
-# Exposure follows the dify model (see ../dify/README.md): there is no shared
+# Exposure: there is no shared
 # docker `proxy` network between the two hosts, so the port is published bound
 # to oracle2's tailscale IP only, and NPM on vps_oracle forwards to it over the
 # tailscale mesh.

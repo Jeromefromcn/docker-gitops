@@ -32,10 +32,6 @@ PORT_EXCEPTIONS = {
         "docker `proxy` network is possible)",
     ("glances", "glances"): "bound to gcp's/oracle2's tailscale IP only; homepage on oracle polls it "
         "over the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
-    ("dify", "web"): "bound to oracle2's tailscale IP only; NPM on oracle forwards to it over "
-        "the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
-    ("dify", "api"): "same as dify/web",
-    ("dify", "plugin_daemon"): "same as dify/web",
     ("sillytavern", "sillytavern"): "bound to oracle2's tailscale IP only; NPM on oracle forwards "
         "to it over the tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
 }
@@ -48,11 +44,6 @@ SECRET_EXCEPTIONS = {}
 # instead of failing the build, so the debt stays visible and greppable rather
 # than being silently allowlisted. Empty this dict, don't grow it.
 KNOWN_VIOLATIONS = {
-    ("dify", "plugin_daemon", "DIFY_INNER_API_KEY"):
-        "live credential committed in plain text; rotating it means restarting the "
-        "whole dify stack — move to .env when dify is next touched",
-    ("dify", "api", "INNER_API_KEY_FOR_PLUGIN"): "same credential as dify/plugin_daemon",
-    ("dify", "worker", "INNER_API_KEY_FOR_PLUGIN"): "same credential as dify/plugin_daemon",
 }
 
 SECRETY = re.compile(r"(password|passwd|secret|token|api_?key|access_?key)", re.I)

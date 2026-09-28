@@ -1,6 +1,6 @@
 # vps_oracle2
 
-A second Oracle Cloud instance in a **separate OCI tenancy** (`ap-singapore-1`, Always Free A1.Flex, 2 OCPU / 12 GB). Its role is to offload workloads from vps_oracle — dify (compose) and, since 2026-09-24, lab-environment as a **k3s agent node** of vps_oracle's cluster — and to serve as a remotely managed node.
+A second Oracle Cloud instance in a **separate OCI tenancy** (`ap-singapore-1`, Always Free A1.Flex, 2 OCPU / 12 GB). Its role is to offload workloads from vps_oracle — sillytavern (compose) and, since 2026-09-24, lab-environment as a **k3s agent node** of vps_oracle's cluster — and to serve as a remotely managed node.
 
 The repo lives only on vps_oracle; this host has no clone. Everything is driven from vps_oracle over SSH (`ssh vps-oracle2`, dedicated key `~/.ssh/id_oracle2`). The public IP is ephemeral — see [../CLAUDE.local.md](../CLAUDE.local.md) for how to refresh it.
 
@@ -25,14 +25,12 @@ flowchart LR
     INS[inspector]
   end
   subgraph o2[vps-oracle2 · 100.100.140.33]
-    DIFY[dify web/api/plugin-daemon]
     ST[sillytavern :8000]
     NE[node-exporter :9100]
     GL[glances :61208]
     PA[portainer-agent :9001]
     AG[k3s-agent + lab-environment]
   end
-  NPM -- tailscale --> DIFY
   NPM -- tailscale --> ST
   AG -- "tailscale: 6443, 8472/udp, 4240 (only exception)" --> oracle
   PROM -- tailscale --> NE
@@ -43,7 +41,7 @@ flowchart LR
 - **Reachable over tailscale only.** The OCI security list allows just 22/TCP + ICMP, host iptables rejects the rest, and `rpcbind` is disabled. Every published port is bound to oracle2's tailscale IP `100.100.140.33`, never `0.0.0.0`.
 - **One-directional ACL:** `tag:oracle-hub` → `tag:oracle2`. oracle2 cannot initiate anything toward oracle or gcp — **except** the k3s node ports toward oracle-hub (tcp 6443, udp 8472, tcp 4240, icmp) that the agent needs. The ACL is GitOps-managed in [`../tailscale/policy.hujson`](../tailscale/policy.hujson), whose `tests` pin exactly this. Never put oracle2 in `tag:oracle-hub`, or it inherits oracle-hub's access to gcp-lab.
 - There is no shared docker `proxy` network with vps_oracle. Cross-host reverse proxying goes through NPM on vps_oracle, forwarding to the tailscale IP.
-- If oracle2 re-registers on tailscale (e.g. after `tofu destroy`/`apply`), its tailscale IP changes: update every compose `ports:` binding here, the Glances/prometheus/blackbox references on vps_oracle, the dify NPM host (see [compose/dify/README.md](compose/dify/README.md)), and `node-ip` in [`k3s/install/agent-vps-oracle2/config.yaml`](../k3s/install/agent-vps-oracle2/config.yaml) (then rerun its `install.sh`).
+- If oracle2 re-registers on tailscale (e.g. after `tofu destroy`/`apply`), its tailscale IP changes: update every compose `ports:` binding here, the Glances/prometheus/blackbox references on vps_oracle, the sillytavern NPM host, and `node-ip` in [`k3s/install/agent-vps-oracle2/config.yaml`](../k3s/install/agent-vps-oracle2/config.yaml) (then rerun its `install.sh`).
 
 ## Compose stacks
 
@@ -61,8 +59,9 @@ Bind-mount paths and relative `file:` configs resolve on **oracle2's** filesyste
 | `node-exporter` | scraped by vps_oracle's prometheus under the existing `node_oracle` job (`instance: vps-oracle2`), so it appears in the `node-exporter-full-oracle` dashboard | 9100 |
 | `glances` | feeds the three "oracle2" cards (CPU/Memory/Disk) on vps_oracle's homepage | 61208 |
 | `portainer-agent` | agent endpoint for the portainer on vps_oracle | 9001 |
-| `dify` | self-hosted Dify, moved from vps_oracle on 2026-09-19 | 3000 / 5001 / 5002 |
 | `sillytavern` | SillyTavern LLM roleplay frontend — no LLM backend: the model API is configured from its UI | 8000 |
+
+dify was decommissioned on 2026-09-28 to free memory for the lab (sub-project 2b); its data stays in `/etc/dify` on the host.
 
 ## Monitoring
 

@@ -10,7 +10,7 @@ docker --context oracle2 compose -f vps_oracle2/compose/sillytavern/docker-compo
 
 ## Hosting model (cross-host)
 
-Same as [dify](../dify/README.md): there is no shared docker `proxy` network between the two hosts. `sillytavern` publishes `100.100.140.33:8000` — oracle2's tailscale IP, never `0.0.0.0` — and NPM on vps_oracle forwards to that IP over the tailscale mesh. If oracle2 re-registers on tailscale (e.g. after `tofu destroy`/`apply`), update the IP in this compose file and in the NPM proxy host.
+There is no shared docker `proxy` network between the two hosts. `sillytavern` publishes `100.100.140.33:8000` — oracle2's tailscale IP, never `0.0.0.0` — and NPM on vps_oracle forwards to that IP over the tailscale mesh. If oracle2 re-registers on tailscale (e.g. after `tofu destroy`/`apply`), update the IP in this compose file and in the NPM proxy host.
 
 The forward host is a literal IP, so nginx has no name to resolve at config load: a stopped SillyTavern returns 502 for this one site rather than breaking NPM's startup.
 
