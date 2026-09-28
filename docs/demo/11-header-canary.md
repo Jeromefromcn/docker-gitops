@@ -19,6 +19,8 @@ argocd app get lab-environment --core --refresh >/dev/null
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
 kubectl -n lab-environment rollout status deploy/customers-service-canary --timeout=6m
 U=http://10.0.0.95:30097
+# Ready is not yet routable: wait until the waypoint actually has the canary endpoint.
+until curl -s -o /dev/null -D- -H 'x-canary: true' $U/api/customer/owners/1 | grep -qi '^x-app-version'; do sleep 1; done
 demo-window start header-canary
 echo "header:";   for i in $(seq 1 20); do curl -s -o /dev/null -D- -H 'x-canary: true' $U/api/customer/owners/1 | tr -d '\r' | awk -F': ' 'tolower($1)=="x-app-version"{v=$2} END{print (v ? v : "none (v1)")}'; done | sort | uniq -c
 echo "cookie:";   for i in $(seq 1 20); do curl -s -o /dev/null -D- -b 'canary=1' $U/api/customer/owners/1 | tr -d '\r' | awk -F': ' 'tolower($1)=="x-app-version"{v=$2} END{print (v ? v : "none (v1)")}'; done | sort | uniq -c
@@ -54,6 +56,12 @@ requests on the canary subset and 40 counted by the canary pod.
   is sub-project 3's lane work (Micrometer baggage).
 - Cookie-based routing is how an A/B cohort sticks to one variant across
   requests; the header is how a tester opts in.
+- **Ready is not routable yet.** `rollout status` returns when the pod is
+  Ready; the waypoint learns the new endpoint a moment later. In the first
+  rehearsal (2026-09-28) the three marked requests sent in that gap got
+  `503 UH` (no healthy upstream in the canary subset) — hence the wait
+  loop before the window. A header route to a subset with no endpoints
+  fails; it does not fall back to stable.
 
 ## Reset
 The page's revert undoes it. `demo-reset header-canary` waits for the
