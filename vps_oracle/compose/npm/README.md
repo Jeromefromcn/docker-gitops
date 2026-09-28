@@ -2,7 +2,7 @@
 
 ## Security architecture: using access lists to lock NPM-reverse-proxied services into the "internal network"
 
-Most of the services behind NPM (grafana, homepage, dify, trilium, vikunja, apprise, portainer, and NPM's own admin panel) are **not open to the public**, but are deliberately locked down via NPM's Access List to sources that are "the server itself" or "IPs within the `proxy` docker network" — ordinary public visitors just get a 403 when they connect.
+Most of the services behind NPM (grafana, homepage, trilium, vikunja, apprise, portainer, and NPM's own admin panel) are **not open to the public**, but are deliberately locked down via NPM's Access List to sources that are "the server itself" or "IPs within the `proxy` docker network" — ordinary public visitors just get a 403 when they connect.
 
 **3x-ui is the only exception**, deliberately not restricted by an access list, because it's the key for getting in: 3x-ui's own xray config (`dns.hosts` in `/app/bin/config.json`) has an override rule `"domain:jerome.cloudns.asia": "172.19.0.3"` — whenever any `*.jerome.cloudns.asia` domain is accessed through the 3x-ui proxy, xray **doesn't do a public DNS resolution**, but instead directly sends the traffic to `172.19.0.3` (that is, npm) inside the `proxy` docker network. Because this path never leaves the host machine and isn't rewritten by Docker's SNAT, the source nginx sees is **3x-ui's own real container IP** — which is exactly why the access list allows `172.19.0.2`. This is a "connect through the proxy first, then you can reach the internal services" model that disguises a public-machine host as a private intranet you can only enter through that proxy.
 
@@ -95,7 +95,7 @@ For about 90 seconds on 443 there was no process listening at all — not a sing
 
 ### dify's reverse proxy (resolved 2026-09-19)
 
-Dify moved to vps_oracle2 (see [`vps_oracle2/compose/dify/README.md`](../../../vps_oracle2/compose/dify/README.md)). Host 24's upstreams are now the literal tailscale IP `100.100.140.33` (ports 3000/5001/5002) instead of container names, so nginx no longer has to resolve a Docker DNS name at config load — the "host not found in upstream" landmine described above can no longer be triggered by dify being down (a down backend now only 502s that site). `24.conf` is back on disk and consistent with the DB, and the `.disabled-2026-08-21` leftover was removed. The `trust_forwarded_proto` log noise below therefore stays for the other hosts only until their configs are regenerated.
+Dify moved to vps_oracle2. Host 24's upstreams are now the literal tailscale IP `100.100.140.33` (ports 3000/5001/5002) instead of container names, so nginx no longer has to resolve a Docker DNS name at config load — the "host not found in upstream" landmine described above can no longer be triggered by dify being down (a down backend now only 502s that site). `24.conf` is back on disk and consistent with the DB, and the `.disabled-2026-08-21` leftover was removed. The `trust_forwarded_proto` log noise below therefore stays for the other hosts only until their configs are regenerated. Host 24 was disabled on 2026-09-28 when dify was decommissioned.
 
 ### A known piece of log noise
 
