@@ -293,6 +293,28 @@ chmod +x "$WORK/hook11"
 FAKE_CURL_HOOK=$WORK/hook11 check "11 passes: exactly the 40 marked requests hit the canary" 0 "$DEMO/demo-evidence" header-canary
 C11=41 FAKE_CURL_HOOK=$WORK/hook11 check "11 fails when an unmarked request reached the canary" 1 "$DEMO/demo-evidence" header-canary
 
+# 13: the shadow failed on the canary cluster; users were all served by stable.
+cp "$DEMO/scenarios/mirror.sh" "$DEMO_SCENARIO_DIR/"
+win mirror 1000 1300
+export J13_STABLE="$(cl stable 150)"
+cat > "$WORK/hook13" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"envoy_cluster_upstream_rq{"*"time=1000"*) val 0 ;;
+  *"envoy_cluster_upstream_rq{"*"time=1320"*) val 25 ;;
+  *"sum by (upstream_cluster)"*) res "$J13_STABLE" ;;
+  *"traffic-generator"*'!~'*) val "${G13:-0}" ;;
+  *"traffic-generator"*) val 300 ;;
+  *'status="500"'*"time=1000"*) res "" ;;
+  *'status="500"'*"time=1320"*) val 25 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook13"
+FAKE_CURL_HOOK=$WORK/hook13 check "13 passes: shadow failed, users all 200" 0 "$DEMO/demo-evidence" mirror
+has "$WORK/out" "answered 25 mirrored requests with 5xx"
+G13=2 FAKE_CURL_HOOK=$WORK/hook13 check "13 fails when a user saw an error" 1 "$DEMO/demo-evidence" mirror
+
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
   echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))
