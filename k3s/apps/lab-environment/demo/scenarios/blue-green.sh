@@ -1,7 +1,11 @@
 # 12 — blue-green: a full-size green (the canary slot at 5 replicas) takes
 # 100 % at the switch's sync and gives it back at the rollback's.
 SWITCH_SUBJECT='demo: switch customers-service to green'
-TRANSITION=15   # s after a sync finishes before the waypoint must be on the new route
+# s after a sync finishes before every request must be on the new route. The
+# waypoint's routes live in its listener (LDS); an update leaves existing
+# keep-alive connections on the old route until Envoy's 45 s drain ends
+# (measured 2026-09-28: a canary hit 28 s after the rollback finished).
+TRANSITION=50
 
 evidence_blue_green() {
   local sw back t a b c ok s1 e1 s2 e2 gtotal gbad

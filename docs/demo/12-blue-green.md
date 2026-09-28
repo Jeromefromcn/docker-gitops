@@ -31,12 +31,12 @@ git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
 for i in $(seq 1 20); do curl -s -o /dev/null -D- http://10.0.0.95:30097/api/customer/owners/1 | tr -d '\r' | awk -F': ' 'tolower($1)=="x-app-version"{v=$2} END{print (v ? v : "none (v1)")}'; sleep 1; done | sort | uniq -c
-sleep 30
+sleep 60   # past the 45 s listener drain, so the evidence has a green-only stretch
 git revert --no-edit HEAD
 git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
-sleep 45
+sleep 75   # past the drain again, for a blue-only stretch after the rollback
 demo-window stop blue-green
 demo-evidence blue-green
 git revert --no-edit "$(git log -1 --grep='^demo: bring up green customers-service' --format=%H)"
@@ -54,16 +54,21 @@ noted.
 
 ## Evidence
 - **Envoy (waypoint access log):** subset per request in three segments
-  cut at the two syncs — the seconds while a route change propagates are
-  excluded.
+  cut at the two syncs — the 50 s after each sync, while old connections
+  drain, are excluded.
 - **ArgoCD:** the switch and its revert in the deploy history, with their
   start/end times — the segment boundaries.
 - **App:** the traffic generator all 200 across both switches.
 
 ## Talking points
-- The switch is one field in git (`subset: stable` → `canary`), atomic at
-  the waypoint: no mixed period like a rolling update, and the rollback is
-  the same size.
+- The switch is one field in git (`subset: stable` → `canary`), and the
+  rollback is the same size. **It is not instantaneous per connection:**
+  the waypoint's routes live in its listener, so an update reaches new
+  connections at once, while existing keep-alive connections (the
+  gateway's pool) finish on the old route until Envoy's 45 s drain ends.
+  Measured in the first rehearsal (2026-09-28): one request still reached
+  green 28 s after the rollback had synced. The evidence therefore judges
+  each side only from 50 s after its sync.
 - **Cost:** double capacity for the duration — five more JVMs, 1920Mi of
   requests. On this node that meant decommissioning dify and resizing the
   quota (derivation in `namespace.yaml`).

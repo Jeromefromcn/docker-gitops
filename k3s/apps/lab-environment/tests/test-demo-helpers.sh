@@ -340,7 +340,10 @@ chmod +x "$WORK/hook12"
 : > "$FAKE_LOG"
 FAKE_HISTORY=$H12 FAKE_CURL_HOOK=$WORK/hook12 check "12 passes: blue, then green, then blue" 0 "$DEMO/demo-evidence" blue-green
 has "$FAKE_LOG" "[200s]"
-grep -q '\[375s\].*time=1600000000000' "$FAKE_LOG" && echo "PASS 12 green segment starts at deployedAt + 15" || { echo "FAIL 12 green segment range"; fails=$((fails+1)); }
+# Existing connections keep the old route until Envoy's 45 s listener drain
+# ends, so each judged segment starts 50 s after its sync finished.
+grep -q '\[340s\].*time=1600000000000' "$FAKE_LOG" && echo "PASS 12 green segment starts at deployedAt + 50" || { echo "FAIL 12 green segment range"; fails=$((fails+1)); }
+grep -q '\[340s\].*time=2000000000000' "$FAKE_LOG" && echo "PASS 12 after segment starts at deployedAt + 50" || { echo "FAIL 12 after segment range"; fails=$((fails+1)); }
 A12=1 FAKE_HISTORY=$H12 FAKE_CURL_HOOK=$WORK/hook12 check "12 fails on green traffic before the switch" 1 "$DEMO/demo-evidence" blue-green
 FAKE_CURL_HOOK=$WORK/hook12 check "12 fails without the switch in ArgoCD history" 1 "$DEMO/demo-evidence" blue-green
 unset DEMO_REPO_ROOT
