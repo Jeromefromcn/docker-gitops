@@ -4,7 +4,7 @@
 set -euo pipefail
 
 DEMO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-REPO_ROOT=$(cd "$DEMO_DIR/../../../.." && pwd)
+REPO_ROOT=${DEMO_REPO_ROOT:-$(cd "$DEMO_DIR/../../../.." && pwd)}
 LAB_K8S=$DEMO_DIR/../k8s
 STATE_DIR=${DEMO_STATE_DIR:-$HOME/.local/state/lab-demo}
 SCENARIO_DIR=${DEMO_SCENARIO_DIR:-$DEMO_DIR/scenarios}
@@ -16,6 +16,7 @@ CONSUL=http://$NODE:30092
 INGRESS=http://$NODE:30097
 NS=lab-environment
 BUSINESS="api-gateway customers-service vets-service visits-service"
+CANARY=customers-service-canary
 # Evidence from these layers is the platform's own record, not the app's.
 INFRA_LAYERS=" envoy ztunnel argocd kyverno sealed-secrets cadvisor kubernetes "
 mkdir -p "$STATE_DIR"
@@ -96,6 +97,50 @@ jaeger_spans() {
 # Local socket inside the postgres pod (pg_hba trust) — for reading data only.
 pg() { kubectl -n "$NS" exec deploy/postgres -- psql -U petclinic -d "$1" -tAc "$2"; }
 git_replicas() { grep -m1 -E '^\s+replicas:' "$LAB_K8S/$1.yaml" | awk '{print $2}'; }
+git_image() { grep -m1 -oP 'image: \K\S+' "$LAB_K8S/$1.yaml"; }
+
+# --- routing (2b) -----------------------------------------------------------
+# The waypoint logs upstream_cluster as "inbound-vip|8081|http/<subset>|<host>;"
+# (no "/<subset>" when the route names none).
+CUST_SEL='{service="istio-proxy"} | json | __error__="" | authority=~"customers-service.*"'
+by_subset() {
+  awk '{ split($2, f, "|"); n = split(f[3], a, "/"); s = (n > 1 ? a[2] : "none"); c[s] += $1 }
+       END { for (k in c) print c[k], k }'
+}
+count_of() { awk -v k="$1" '$2 == k { s += $1 } END { print s + 0 }'; }
+pct() { if [ "$2" -gt 0 ]; then echo $(( 100 * $1 / $2 )); else echo 0; fi; }
+in_band() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
+subsets_between() { loki_by upstream_cluster "$CUST_SEL${3:-}" "$1" "$2" | by_subset; }
+# A counter's exact growth over the window: increase() extrapolates, and a
+# series born inside the window loses its first increments.
+prom_delta() {
+  local a b
+  a=$(prom "sum($1)" "$WINDOW_START"); b=$(prom "sum($1)" "$SETTLED_AT")
+  [ "$a" = none ] && a=0; [ "$b" = none ] && b=0
+  awk -v a="$a" -v b="$b" 'BEGIN { printf "%d", b - a }'
+}
+argocd_sync_times() {
+  argocd app get lab-environment --core -o json | jq -r --arg s "$1" \
+    '[.status.history[] | select(.revision == $s)] | first // empty | "\(.deployStartedAt) \(.deployedAt)"' \
+    | while read -r a b; do echo "$(date -u -d "$a" +%s) $(date -u -d "$b" +%s)"; done
+}
+# Every routing demo returns here: slot empty and on git's image, every
+# VirtualService route pinned to stable - no weights, mirror or header rule.
+routing_baseline() {
+  local bad=0 got want pods off
+  got=$(kubectl -n "$NS" get deploy "$CANARY" -o jsonpath='{.spec.replicas}')
+  [ "$got" = 0 ] || { echo "$CANARY spec.replicas '$got', want 0"; bad=1; }
+  pods=$(kubectl -n "$NS" get pods -l app=customers-service,track=canary -o name)
+  [ -z "$pods" ] || { echo "canary pods still present: $(tr "\n" " " <<< "$pods")"; bad=1; }
+  got=$(kubectl -n "$NS" get deploy "$CANARY" -o jsonpath='{.spec.template.spec.containers[0].image}')
+  want=$(git_image "$CANARY")
+  [ "$got" = "$want" ] || { echo "$CANARY image '$got', git wants $want"; bad=1; }
+  off=$(kubectl -n "$NS" get virtualservice customers-service -o json | jq -r '
+    [.spec.http[] | select(.mirror or .mirrors or ((.route | length) != 1)
+      or .route[0].destination.subset != "stable" or any(.match[]?; .headers))] | length')
+  [ "$off" = 0 ] || { echo "customers-service VirtualService has ${off:-?} route(s) off the stable pin"; bad=1; }
+  return $bad
+}
 
 # --- baseline ---------------------------------------------------------------
 baseline_check() {
@@ -118,6 +163,7 @@ baseline_check() {
   total=$(echo "$lines" | grep -c . || true)
   non200=$(echo "$lines" | awk 'NF && $2 != "200"' | grep -c . || true)
   { [ "$total" -gt 0 ] && [ "$non200" -eq 0 ]; } || { echo "generator last 30s: $total requests, $non200 non-200"; bad=1; }
+  routing_baseline || bad=1
   return $bad
 }
 wait_baseline() {

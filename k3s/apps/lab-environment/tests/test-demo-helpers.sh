@@ -14,6 +14,7 @@ export PATH=$WORK/bin:$PATH
 cat > "$WORK/bin/curl" <<'EOF'
 #!/bin/bash
 echo "curl $*" >> "$FAKE_LOG"
+if [ -n "${FAKE_CURL_HOOK:-}" ] && out=$("$FAKE_CURL_HOOK" "$*"); then printf '%s\n' "$out"; exit 0; fi
 case "$*" in
   *FAILME*) exit 22 ;;
   *"/v1/kv/chaos/"*) [ -z "${FAKE_CONSUL_DOWN:-}" ] || exit 7 ;;&
@@ -28,7 +29,12 @@ EOF
 cat > "$WORK/bin/kubectl" <<'EOF'
 #!/bin/bash
 echo "kubectl $*" >> "$FAKE_LOG"
+if [ -n "${FAKE_KUBECTL_HOOK:-}" ] && out=$("$FAKE_KUBECTL_HOOK" "$*"); then printf '%s\n' "$out"; exit 0; fi
 case "$*" in
+  *"get deploy customers-service-canary"*"spec.replicas"*) echo "${FAKE_CANARY_REPLICAS:-0}" ;;
+  *"get deploy customers-service-canary"*"image"*) echo "${FAKE_CANARY_IMAGE:-$(grep -m1 -oP 'image: \K\S+' "$FAKE_LAB_K8S/customers-service-canary.yaml")}" ;;
+  *"get pods -l app=customers-service,track=canary -o name"*) printf '%s' "${FAKE_CANARY_PODS:-}" ;;
+  *"get virtualservice customers-service -o json"*) cat "${FAKE_VS:-$FAKE_VS_PINNED}" ;;
   *" get deploy "*) d=$(sed -E 's/.* get deploy ([^ ]+).*/\1/' <<< "$*"); grep "^$d " "$FAKE_DEPLOYS" | cut -d' ' -f2- ;;
   *"logs statefulset/argocd-application-controller"*) printf '%s\n' "${FAKE_CTRL_LOG:-}" ;;
   *"logs deploy/traffic-generator"*) for i in 1 2 3; do echo "2026-09-27T00:00:0${i}+00:00 ${FAKE_GEN_CODE:-200} /api/vet/vets"; done ;;
@@ -36,9 +42,22 @@ esac
 EOF
 cat > "$WORK/bin/argocd" <<'EOF'
 #!/bin/bash
-echo "{\"status\":{\"sync\":{\"status\":\"${FAKE_SYNC:-Synced}\"},\"health\":{\"status\":\"Healthy\"},\"history\":[]}}"
+echo "{\"status\":{\"sync\":{\"status\":\"${FAKE_SYNC:-Synced}\"},\"health\":{\"status\":\"Healthy\"},\"history\":${FAKE_HISTORY:-[]}}}"
 EOF
 chmod +x "$WORK/bin/"*
+
+export FAKE_LAB_K8S=$HERE/../k8s
+export FAKE_VS_PINNED=$WORK/vs-pinned.json
+cat > "$FAKE_VS_PINNED" <<'EOF'
+{"spec":{"http":[
+ {"match":[{"method":{"exact":"GET"}}],"route":[{"destination":{"host":"customers-service.lab-environment.svc.cluster.local","subset":"stable"}}]},
+ {"route":[{"destination":{"host":"customers-service.lab-environment.svc.cluster.local","subset":"stable"}}]}]}}
+EOF
+jq '.spec.http[1].route = [{"destination":{"subset":"stable"},"weight":90},{"destination":{"subset":"canary"},"weight":10}]' "$FAKE_VS_PINNED" > "$WORK/vs-weights.json"
+jq '.spec.http[0].mirror = {"subset":"canary"}' "$FAKE_VS_PINNED" > "$WORK/vs-mirror.json"
+jq '.spec.http = [{"match":[{"headers":{"x-canary":{"exact":"true"}}}],"route":[{"destination":{"subset":"canary"}}]}] + .spec.http' "$FAKE_VS_PINNED" > "$WORK/vs-header.json"
+jq '.spec.http[0].route[0].destination.subset = "canary"' "$FAKE_VS_PINNED" > "$WORK/vs-switched.json"
+jq 'del(.spec.http[0].route[0].destination.subset)' "$FAKE_VS_PINNED" > "$WORK/vs-unpinned.json"
 
 # Fixture: every business Deployment ready at the replica count git declares.
 : > "$FAKE_DEPLOYS"
@@ -140,6 +159,43 @@ FAKE_GEN_CODE=503 check "reset fails on generator errors" 1 "$DEMO/demo-reset" p
 FAKE_SYNC=OutOfSync check "reset fails when ArgoCD is not synced" 1 "$DEMO/demo-reset" preflight
 FAKE_CONSUL_DOWN=1 check "reset fails when Consul is unreachable" 1 "$DEMO/demo-reset" preflight
 has "$WORK/out" "Consul unreachable"
+
+# --- routing baseline (2b) ------------------------------------------------
+for v in weights mirror header switched unpinned; do
+  FAKE_VS=$WORK/vs-$v.json check "reset fails on a VirtualService left $v" 1 "$DEMO/demo-reset" preflight
+  has "$WORK/out" "off the stable pin"
+done
+FAKE_CANARY_REPLICAS=1 check "reset fails while the canary is scaled up" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "customers-service-canary spec.replicas '1'"
+FAKE_CANARY_PODS='pod/customers-service-canary-abc' check "reset waits for terminating canary pods" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "canary pods still present"
+FAKE_CANARY_IMAGE=ops-lab/customers-service:badbadbadbad check "reset fails on a canary image off git" 1 "$DEMO/demo-reset" preflight
+check "reset passes at the routing baseline" 0 "$DEMO/demo-reset" preflight
+
+# --- routing primitives (in a subshell: lib.sh sets -e and its own state) --
+prims=$( (
+  . "$DEMO/lib.sh"
+  got=$(printf '%s\n' '7 inbound-vip|8081|http/canary|customers-service.lab-environment.svc.cluster.local;' \
+                      '30 inbound-vip|8081|http/stable|customers-service.lab-environment.svc.cluster.local;' \
+                      '5 inbound-vip|8081|http/stable|customers-service.lab-environment.svc.cluster.local;' \
+                      '2 inbound-vip|8081|http|customers-service.lab-environment.svc.cluster.local;' | by_subset | sort -k2)
+  [ "$got" = "$(printf '7 canary\n2 none\n35 stable')" ] && echo "PASS by_subset" || echo "FAIL by_subset: $got"
+  { [ "$(printf '7 canary\n35 stable\n' | count_of stable)" = 35 ] && [ "$(printf '7 canary\n' | count_of stable)" = 0 ]; } \
+    && echo "PASS count_of" || echo "FAIL count_of"
+  { [ "$(pct 1 6)" = 16 ] && [ "$(pct 3 0)" = 0 ]; } && echo "PASS pct" || echo "FAIL pct"
+  { in_band 8 8 30 && in_band 30 8 30 && ! in_band 7 8 30 && ! in_band 31 8 30; } && echo "PASS in_band edges" || echo "FAIL in_band"
+) 2>&1 ) || true
+echo "$prims"
+fails=$((fails + $(echo "$prims" | grep -c '^FAIL' || true)))
+echo "$prims" | grep -q '^PASS in_band' || { echo "FAIL routing primitives did not all run"; fails=$((fails+1)); }
+
+# --- demo patches still apply to the tree ---------------------------------
+shopt -s nullglob
+for p in "$DEMO"/patches/*.patch; do
+  if git -C "$HERE/../../../.." apply --check "$p" 2>"$WORK/apply.err"; then echo "PASS patch applies: $(basename "$p")"
+  else echo "FAIL patch no longer applies: $(basename "$p")"; sed 's/^/    /' "$WORK/apply.err"; fails=$((fails+1)); fi
+done
+shopt -u nullglob
 
 # --- scenario evidence (real scenario files) ---------------------------
 cp "$DEMO/scenarios/rolling-update.sh" "$DEMO_SCENARIO_DIR/"
