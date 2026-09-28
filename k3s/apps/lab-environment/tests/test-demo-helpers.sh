@@ -276,6 +276,23 @@ E10="$(cl canary 12),$(cl stable 3)" FAKE_HISTORY=$H10 FAKE_CURL_HOOK=$WORK/hook
 FAKE_CURL_HOOK=$WORK/hook10 check "10 fails when the rollback never deployed" 1 "$DEMO/demo-evidence" canary-weight
 unset DEMO_REPO_ROOT
 
+# 11: exactly the marked requests reach the canary.
+cp "$DEMO/scenarios/header-canary.sh" "$DEMO_SCENARIO_DIR/"
+win header-canary 1000 1300
+export J11_STABLE="$(cl stable 90)"
+cat > "$WORK/hook11" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"sum by (upstream_cluster)"*) res "$(cl canary "${C11:-40}"),$J11_STABLE" ;;
+  *"customers-service-canary"*"time=1000"*) val 3 ;;
+  *"customers-service-canary"*"time=1320"*) val 43 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook11"
+FAKE_CURL_HOOK=$WORK/hook11 check "11 passes: exactly the 40 marked requests hit the canary" 0 "$DEMO/demo-evidence" header-canary
+C11=41 FAKE_CURL_HOOK=$WORK/hook11 check "11 fails when an unmarked request reached the canary" 1 "$DEMO/demo-evidence" header-canary
+
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
   echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))
