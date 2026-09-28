@@ -8,6 +8,7 @@ on:
       - 'vps_oracle/host-native/inspector/**'
       - '*/inspector-checks/**'
       - '*/tofu/**'
+      - 'k3s/apps/lab-environment/**'
       - '.github/scripts/**'
       - '.github/workflows/repo-conventions.yml'
   pull_request:
@@ -16,6 +17,7 @@ on:
       - 'vps_oracle/host-native/inspector/**'
       - '*/inspector-checks/**'
       - '*/tofu/**'
+      - 'k3s/apps/lab-environment/**'
       - '.github/scripts/**'
   workflow_dispatch: {}
 
@@ -87,6 +89,22 @@ jobs:
             ./"$t" || { echo "::error::$t failed"; failed=1; }
           done
           exit $failed
+
+  # The lab demo helpers, against stubbed kubectl/curl/argocd - no cluster.
+  # Among other things it runs `git apply --check` on every demo patch, so an
+  # edit to resilience.yaml or the canary manifest that breaks a runbook page
+  # (docs/demo/09-13) fails here instead of live in front of an interviewer.
+  lab-demo-helpers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
+
+      - name: Run demo helper tests
+        run: bash k3s/apps/lab-environment/tests/test-demo-helpers.sh
 
   # Static checks only — tofu fmt + validate never touch live cloud resources.
   # `tofu init -backend=false` only downloads provider plugins from the
