@@ -52,6 +52,8 @@ meshConfig:
             response_flags: "%RESPONSE_FLAGS%"
             duration_ms: "%DURATION%"
             upstream_service_time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+            # Which build answered (customers-service v2 builds set it).
+            app_version: "%RESP(X-APP-VERSION)%"
             upstream_cluster: "%UPSTREAM_CLUSTER%"
             upstream_host: "%UPSTREAM_HOST%"
             attempts: "%UPSTREAM_REQUEST_ATTEMPT_COUNT%"
