@@ -52,7 +52,7 @@ spec:
       route:
         - destination:
             host: customers-service.lab-environment.svc.cluster.local
-            subset: stable
+            subset: canary
       timeout: 3s
       retries:
         attempts: 2
@@ -62,7 +62,7 @@ spec:
     - route:
         - destination:
             host: customers-service.lab-environment.svc.cluster.local
-            subset: stable
+            subset: canary
       timeout: 5s
       retries:
         attempts: 0
