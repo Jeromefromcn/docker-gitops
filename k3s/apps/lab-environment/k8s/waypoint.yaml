@@ -20,6 +20,9 @@ data:
                   - ".*outlier_detection.*"
                   - ".*upstream_rq_retry.*"
                   - ".*rbac.*"
+                  # per-cluster response classes: the only Envoy record of
+                  # mirrored (shadow) requests
+                  - ".*upstream_rq_[1-5]xx"
         spec:
           containers:
             - name: istio-proxy
