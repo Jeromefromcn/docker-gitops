@@ -315,6 +315,36 @@ FAKE_CURL_HOOK=$WORK/hook13 check "13 passes: shadow failed, users all 200" 0 "$
 has "$WORK/out" "answered 25 mirrored requests with 5xx"
 G13=2 FAKE_CURL_HOOK=$WORK/hook13 check "13 fails when a user saw an error" 1 "$DEMO/demo-evidence" mirror
 
+# 12: blue before the switch, green after it, blue after the rollback; the
+# seconds while each sync propagates are never judged.
+cp "$DEMO/scenarios/blue-green.sh" "$DEMO_SCENARIO_DIR/"
+export DEMO_REPO_ROOT=$WORK/repo12; git init -q "$DEMO_REPO_ROOT"
+git -C "$DEMO_REPO_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m 'demo: switch customers-service to green'; SW12=$(git -C "$DEMO_REPO_ROOT" rev-parse HEAD)
+git -C "$DEMO_REPO_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m 'Revert "demo: switch customers-service to green"'; BK12=$(git -C "$DEMO_REPO_ROOT" rev-parse HEAD)
+win blue-green 1000 2000
+H12='[{"revision":"'$SW12'","deployStartedAt":"1970-01-01T00:20:00Z","deployedAt":"1970-01-01T00:20:10Z"},{"revision":"'$BK12'","deployStartedAt":"1970-01-01T00:26:40Z","deployedAt":"1970-01-01T00:26:50Z"}]'
+export J12_STABLE="$(cl stable 200)" J12_GREEN="$(cl canary 350)" J12_BACK="$(cl stable 350)" J12_LEAK="$(cl canary 3)"
+cat > "$WORK/hook12" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"sum by (upstream_cluster)"*"time=1200000000000"*) res "$J12_STABLE${A12:+,$J12_LEAK}" ;;
+  *"sum by (upstream_cluster)"*"time=1600000000000"*) res "$J12_GREEN" ;;
+  *"sum by (upstream_cluster)"*"time=2000000000000"*) res "$J12_BACK" ;;
+  *"traffic-generator"*'!~'*) val 0 ;;
+  *"traffic-generator"*) val 1000 ;;
+  *"quantile_over_time"*) val 412 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook12"
+: > "$FAKE_LOG"
+FAKE_HISTORY=$H12 FAKE_CURL_HOOK=$WORK/hook12 check "12 passes: blue, then green, then blue" 0 "$DEMO/demo-evidence" blue-green
+has "$FAKE_LOG" "[200s]"
+grep -q '\[375s\].*time=1600000000000' "$FAKE_LOG" && echo "PASS 12 green segment starts at deployedAt + 15" || { echo "FAIL 12 green segment range"; fails=$((fails+1)); }
+A12=1 FAKE_HISTORY=$H12 FAKE_CURL_HOOK=$WORK/hook12 check "12 fails on green traffic before the switch" 1 "$DEMO/demo-evidence" blue-green
+FAKE_CURL_HOOK=$WORK/hook12 check "12 fails without the switch in ArgoCD history" 1 "$DEMO/demo-evidence" blue-green
+unset DEMO_REPO_ROOT
+
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
   echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))

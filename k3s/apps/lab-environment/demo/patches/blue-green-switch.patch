@@ -1,0 +1,22 @@
+diff --git a/k3s/apps/lab-environment/k8s/resilience.yaml b/k3s/apps/lab-environment/k8s/resilience.yaml
+index fa464e0..1af830b 100644
+--- a/k3s/apps/lab-environment/k8s/resilience.yaml
++++ b/k3s/apps/lab-environment/k8s/resilience.yaml
+@@ -52,7 +52,7 @@ spec:
+       route:
+         - destination:
+             host: customers-service.lab-environment.svc.cluster.local
+-            subset: stable
++            subset: canary
+       timeout: 3s
+       retries:
+         attempts: 2
+@@ -62,7 +62,7 @@ spec:
+     - route:
+         - destination:
+             host: customers-service.lab-environment.svc.cluster.local
+-            subset: stable
++            subset: canary
+       timeout: 5s
+       retries:
+         attempts: 0
