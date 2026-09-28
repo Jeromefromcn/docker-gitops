@@ -37,6 +37,11 @@ anyway, which scenario 07 demonstrates.
 | 02 | [Zero-downtime rolling update](02-rolling-update.md) | Makes the commit 03 and 07 use |
 | 03 | [Schema migration as a PreSync hook](03-schema-migration.md) | Reads 02's sync |
 | 07 | [GitOps self-heal and rollback](07-gitops-selfheal-rollback.md) | Reverts 02's commit |
+| 09 | [Canary by instance ratio](09-canary-instance-ratio.md) | Routing before resilience; 09-13 each leave the canary slot empty |
+| 10 | [Canary by weight: catch a bad build](10-canary-weight.md) | |
+| 11 | [Header / cookie gray release](11-header-canary.md) | |
+| 13 | [Traffic mirroring](13-mirror.md) | Same bad build as 10, zero user impact |
+| 12 | [Blue-green switch](12-blue-green.md) | Five extra JVMs — heaviest routing step |
 | 04 | [Zero trust: mTLS, identity authz, actuator lockdown](04-zero-trust.md) | |
 | 05 | [App-level vs mesh-level resilience](05-app-vs-mesh-resilience.md) | |
 | 06 | [Secret rotation](06-secret-rotation.md) | Riskiest mutation |

@@ -40,6 +40,21 @@ pod keeps serving until its endpoint removal has reached the waypoint.
 Without the sleep the app exited on SIGTERM while the waypoint still routed
 to it: a customers rollout measured 2/304 requests failing `503` (`UF`).
 
+**Canary slot.** `customers-service-canary` sits at `replicas: 0` next to
+`customers-service`, on a v2 build of the fork's `lab-v2` branch. Its pods
+carry `app: customers-service` (so the Service selects them) and
+`track: canary`; stable pods carry `track: stable`. The customers-service
+DestinationRule defines `stable` / `canary` subsets on `track`, and the
+VirtualService pins every route to `stable` — the baseline the routing demos
+(docs/demo/09-13) return to and `demo-reset` checks. A routing demo is one
+patch from `demo/patches/`, committed and later reverted. Adding the pin
+took two pushes: the labels first, the pin only once all five stable pods
+carried `track: stable` — pinned to an empty subset, every
+customers-service request would fail. The waypoint does not access-log
+mirrored (shadow) requests; it exports per-cluster response classes
+(`envoy_cluster_upstream_rq{response_code_class}`) so they are still
+counted.
+
 The lab Prometheus scrapes the two Envoy gateways only through the
 `envoy-stats` job; `spring-boot-services` drops them even though they carry
 Istio's `prometheus.io` annotations (before 2026-09-27 every `istio_*` series
