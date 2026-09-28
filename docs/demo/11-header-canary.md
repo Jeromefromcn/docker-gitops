@@ -22,6 +22,7 @@ U=http://10.0.0.95:30097
 # Ready is not yet routable: wait until both waypoint replicas have the canary
 # endpoint - 10 marked requests in a row answered by v2.
 ok=0; until [ $ok -ge 10 ]; do if curl -s -o /dev/null -D- -H 'x-canary: true' $U/api/customer/owners/1 | grep -qi '^x-app-version'; then ok=$((ok + 1)); else ok=0; fi; sleep 0.5; done
+sleep 20   # quiet gap: keeps the warm-up out of the window's log lines and its first metrics sample
 demo-window start header-canary
 echo "header:";   for i in $(seq 1 20); do curl -s -o /dev/null -D- -H 'x-canary: true' $U/api/customer/owners/1 | tr -d '\r' | awk -F': ' 'tolower($1)=="x-app-version"{v=$2} END{print (v ? v : "none (v1)")}'; done | sort | uniq -c
 echo "cookie:";   for i in $(seq 1 20); do curl -s -o /dev/null -D- -b 'canary=1' $U/api/customer/owners/1 | tr -d '\r' | awk -F': ' 'tolower($1)=="x-app-version"{v=$2} END{print (v ? v : "none (v1)")}'; done | sort | uniq -c
@@ -63,7 +64,9 @@ requests on the canary subset and 40 counted by the canary pod.
   rehearsal (2026-09-28) the three marked requests sent in that gap got
   `503 UH` (no healthy upstream in the canary subset), and the second
   rehearsal showed the two waypoint replicas learn it independently — hence
-  "10 in a row" before the window. A header route to a subset with no
+  "10 in a row" before the window. The quiet gaps on both sides of the
+  window are what make an *exact* count possible: access-log lines land
+  1-2 s after the request, and Prometheus samples every 15 s. A header route to a subset with no
   endpoints fails; it does not fall back to stable.
 
 ## Reset
