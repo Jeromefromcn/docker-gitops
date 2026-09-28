@@ -43,6 +43,8 @@ metadata:
 spec:
   hosts:
     - customers-service.lab-environment.svc.cluster.local
+  # Pinned to the stable subset: this pin is the routing baseline every
+  # routing demo (docs/demo/09-13) returns to, and demo-reset checks it.
   http:
     - match:
         - method:
@@ -50,6 +52,7 @@ spec:
       route:
         - destination:
             host: customers-service.lab-environment.svc.cluster.local
+            subset: stable
       timeout: 3s
       retries:
         attempts: 2
@@ -59,6 +62,7 @@ spec:
     - route:
         - destination:
             host: customers-service.lab-environment.svc.cluster.local
+            subset: stable
       timeout: 5s
       retries:
         attempts: 0
@@ -148,6 +152,16 @@ metadata:
   namespace: lab-environment
 spec:
   host: customers-service.lab-environment.svc.cluster.local
+  # Subsets for the canary slot (customers-service-canary.yaml). Traffic
+  # policy stays at the top level, so both subsets get the same outlier
+  # detection and pool.
+  subsets:
+    - name: stable
+      labels:
+        track: stable
+    - name: canary
+      labels:
+        track: canary
   trafficPolicy:
     connectionPool:
       tcp:
