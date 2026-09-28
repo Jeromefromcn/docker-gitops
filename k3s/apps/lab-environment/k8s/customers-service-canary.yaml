@@ -13,7 +13,7 @@ metadata:
   labels:
     app: customers-service
 spec:
-  replicas: 1
+  replicas: 0
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -42,7 +42,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: customers-service
-          image: ops-lab/customers-service:16b18ebc7230
+          image: ops-lab/customers-service:ce942c9e7124
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
