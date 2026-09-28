@@ -248,6 +248,34 @@ has "$WORK/out" "canary pod's own count: 20 of 120 requests, 16%"
 C09=0 FAKE_CURL_HOOK=$WORK/hook09 FAKE_KUBECTL_HOOK=$WORK/hook09 check "09 fails when the canary got nothing" 1 "$DEMO/demo-evidence" canary-instance-ratio
 C09=100 FAKE_CURL_HOOK=$WORK/hook09 FAKE_KUBECTL_HOOK=$WORK/hook09 check "09 fails at a 50% share" 1 "$DEMO/demo-evidence" canary-instance-ratio
 
+# 10: every 5xx on the canary subset, the rollback deployed.
+cp "$DEMO/scenarios/canary-weight.sh" "$DEMO_SCENARIO_DIR/"
+export DEMO_REPO_ROOT=$WORK/repo10; git init -q "$DEMO_REPO_ROOT"
+git -C "$DEMO_REPO_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m 'demo: canary customers-service v2-bad at 10%'
+git -C "$DEMO_REPO_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m 'Revert "demo: canary customers-service v2-bad at 10%"'
+REVERT10=$(git -C "$DEMO_REPO_ROOT" rev-parse HEAD)
+win canary-weight 1000 1300
+export J10_ALL="$(cl canary 12),$(cl stable 100)" J10_ERR="$(cl canary 12)"
+cat > "$WORK/hook10" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *'response_code=~'*) res "${E10:-$J10_ERR}" ;;
+  *"sum by (upstream_cluster)"*) res "$J10_ALL" ;;
+  *'customers-service-canary'*'status="500"'*"time=1320"*) val 12 ;;
+  *'status="500"'*"time=1320"*) val 12 ;;
+  *'status="500"'*) res "" ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook10"
+H10='[{"revision":"'$REVERT10'","deployStartedAt":"1970-01-01T00:22:00Z","deployedAt":"1970-01-01T00:22:10Z"}]'
+FAKE_HISTORY=$H10 FAKE_CURL_HOOK=$WORK/hook10 check "10 passes: 5xx only on the canary, rollback deployed" 0 "$DEMO/demo-evidence" canary-weight
+has "$WORK/out" "canary took 10% of customers-service requests"
+has "$WORK/out" "5xx: canary 12, stable 0"
+E10="$(cl canary 12),$(cl stable 3)" FAKE_HISTORY=$H10 FAKE_CURL_HOOK=$WORK/hook10 check "10 fails when stable also returned 5xx" 1 "$DEMO/demo-evidence" canary-weight
+FAKE_CURL_HOOK=$WORK/hook10 check "10 fails when the rollback never deployed" 1 "$DEMO/demo-evidence" canary-weight
+unset DEMO_REPO_ROOT
+
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
   echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))

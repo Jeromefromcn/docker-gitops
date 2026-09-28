@@ -1,0 +1,50 @@
+diff --git a/k3s/apps/lab-environment/k8s/customers-service-canary.yaml b/k3s/apps/lab-environment/k8s/customers-service-canary.yaml
+index 859af36..bd94b8d 100644
+--- a/k3s/apps/lab-environment/k8s/customers-service-canary.yaml
++++ b/k3s/apps/lab-environment/k8s/customers-service-canary.yaml
+@@ -13,7 +13,7 @@ metadata:
+   labels:
+     app: customers-service
+ spec:
+-  replicas: 0
++  replicas: 1
+   strategy:
+     type: RollingUpdate
+     rollingUpdate:
+@@ -42,7 +42,7 @@ spec:
+       enableServiceLinks: false
+       containers:
+         - name: customers-service
+-          image: ops-lab/customers-service:ce942c9e7124
++          image: ops-lab/customers-service:16b18ebc7230
+           env:
+             - name: TZ
+               value: "Asia/Hong_Kong"
+diff --git a/k3s/apps/lab-environment/k8s/resilience.yaml b/k3s/apps/lab-environment/k8s/resilience.yaml
+index fa464e0..c1eda4c 100644
+--- a/k3s/apps/lab-environment/k8s/resilience.yaml
++++ b/k3s/apps/lab-environment/k8s/resilience.yaml
+@@ -53,6 +53,11 @@ spec:
+         - destination:
+             host: customers-service.lab-environment.svc.cluster.local
+             subset: stable
++          weight: 90
++        - destination:
++            host: customers-service.lab-environment.svc.cluster.local
++            subset: canary
++          weight: 10
+       timeout: 3s
+       retries:
+         attempts: 2
+@@ -63,6 +68,11 @@ spec:
+         - destination:
+             host: customers-service.lab-environment.svc.cluster.local
+             subset: stable
++          weight: 90
++        - destination:
++            host: customers-service.lab-environment.svc.cluster.local
++            subset: canary
++          weight: 10
+       timeout: 5s
+       retries:
+         attempts: 0
