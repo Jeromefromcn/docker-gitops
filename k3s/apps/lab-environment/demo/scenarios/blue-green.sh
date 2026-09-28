@@ -36,5 +36,5 @@ evidence_blue_green() {
 }
 
 reset_blue_green() {
-  kubectl -n "$NS" wait --for=delete pod -l app=customers-service,track=canary --timeout=4m
+  wait_canary_gone 4m
 }

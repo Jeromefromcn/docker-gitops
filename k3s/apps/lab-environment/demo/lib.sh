@@ -135,11 +135,27 @@ routing_baseline() {
   got=$(kubectl -n "$NS" get deploy "$CANARY" -o jsonpath='{.spec.template.spec.containers[0].image}')
   want=$(git_image "$CANARY")
   [ "$got" = "$want" ] || { echo "$CANARY image '$got', git wants $want"; bad=1; }
-  off=$(kubectl -n "$NS" get virtualservice customers-service -o json | jq -r '
-    [.spec.http[] | select(.mirror or .mirrors or ((.route | length) != 1)
-      or .route[0].destination.subset != "stable" or any(.match[]?; .headers))] | length')
-  [ "$off" = 0 ] || { echo "customers-service VirtualService has ${off:-?} route(s) off the stable pin"; bad=1; }
+  if ! off=$(kubectl -n "$NS" get virtualservice customers-service -o json | jq -r '
+      [.spec.http[] | [ (if .mirror or .mirrors then "mirror" else empty end),
+                        (if (.route | length) != 1 then "weights" else empty end),
+                        (if (.route | length) == 1 and .route[0].destination.subset != "stable"
+                           then "subset \(.route[0].destination.subset // "none")" else empty end),
+                        (if any(.match[]?; .headers) then "header match" else empty end) ]
+                      | select(length > 0) | join("+")] | join(", ")'); then
+    echo "customers-service VirtualService not read"; bad=1
+  elif [ -n "$off" ]; then
+    echo "customers-service VirtualService routes off the stable pin: $off"; bad=1
+  fi
   return $bad
+}
+# Reset step shared by the routing scenarios: waits for the canary pods to go,
+# but refuses at once while the slot is still scaled - that means the page's
+# git revert was not pushed, and waiting would only burn the timeout.
+wait_canary_gone() {
+  local r
+  r=$(kubectl -n "$NS" get deploy "$CANARY" -o jsonpath='{.spec.replicas}')
+  [ "$r" = 0 ] || { echo "$CANARY is still scaled to '$r' - was the page's git revert pushed?"; return 1; }
+  kubectl -n "$NS" wait --for=delete pod -l app=customers-service,track=canary --timeout="${1:-3m}"
 }
 
 # --- baseline ---------------------------------------------------------------

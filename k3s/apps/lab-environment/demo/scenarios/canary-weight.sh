@@ -22,5 +22,5 @@ evidence_canary_weight() {
 }
 
 reset_canary_weight() {
-  kubectl -n "$NS" wait --for=delete pod -l app=customers-service,track=canary --timeout=3m
+  wait_canary_gone 3m
 }

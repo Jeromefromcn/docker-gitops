@@ -13,5 +13,5 @@ evidence_header_canary() {
 }
 
 reset_header_canary() {
-  kubectl -n "$NS" wait --for=delete pod -l app=customers-service,track=canary --timeout=3m
+  wait_canary_gone 3m
 }

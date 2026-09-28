@@ -274,6 +274,15 @@ has "$WORK/out" "canary took 10% of customers-service requests"
 has "$WORK/out" "5xx: canary 12, stable 0"
 E10="$(cl canary 12),$(cl stable 3)" FAKE_HISTORY=$H10 FAKE_CURL_HOOK=$WORK/hook10 check "10 fails when stable also returned 5xx" 1 "$DEMO/demo-evidence" canary-weight
 FAKE_CURL_HOOK=$WORK/hook10 check "10 fails when the rollback never deployed" 1 "$DEMO/demo-evidence" canary-weight
+# A forgotten revert: reset refuses at once (no 3-minute wait for pods that
+# cannot go) and still names what is left.
+: > "$FAKE_LOG"
+FAKE_CANARY_REPLICAS=1 FAKE_VS=$WORK/vs-weights.json check "reset after a forgotten revert fails fast" 1 "$DEMO/demo-reset" canary-weight
+has "$WORK/out" "still scaled to '1'"
+has "$WORK/out" "off the stable pin: weights"
+if grep -q "wait --for=delete" "$FAKE_LOG"; then echo "FAIL reset waited for canary pods that cannot go"; fails=$((fails+1)); else echo "PASS reset did not wait"; fi
+FAKE_VS=$WORK/vs-header.json check "reset names a leftover header rule" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "off the stable pin: subset canary+header match"
 unset DEMO_REPO_ROOT
 
 # 11: exactly the marked requests reach the canary.
