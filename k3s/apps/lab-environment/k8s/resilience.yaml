@@ -53,6 +53,14 @@ spec:
         - destination:
             host: customers-service.lab-environment.svc.cluster.local
             subset: stable
+      # Shadow every GET to the canary; its responses are discarded. GET
+      # only: both versions share one database, so a mirrored POST would
+      # write twice.
+      mirror:
+        host: customers-service.lab-environment.svc.cluster.local
+        subset: canary
+      mirrorPercentage:
+        value: 100
       timeout: 3s
       retries:
         attempts: 2
