@@ -25,13 +25,19 @@ node-label:
   - dedicated=lab
 
 # Reserve room for what runs here outside pods, which the scheduler cannot
-# see: the docker compose stacks under vps_oracle2/compose/ (dify,
-# sillytavern, glances, ...: ~1.7Gi RSS, near-zero CPU) plus the OS
-# (system-reserved), and k3s-agent + containerd (~90m, kube-reserved).
-# Without it allocatable equalled capacity, so pods could be scheduled into
-# memory those processes already use. Allocatable becomes 1700m / ~9.4Gi;
-# the lab quota (k3s/apps/lab-environment/k8s/namespace.yaml) is sized
-# against that. Stopping dify would let system-reserved memory shrink.
+# see. Sized from measured anon memory (cgroup memory.stat) on 2026-09-28,
+# after dify was decommissioned to give its ~1.4Gi to the lab:
+#   system-reserved: everything in system/user/init slices except k3s-agent
+#     (docker compose stacks under vps_oracle2/compose/ - sillytavern,
+#     glances, portainer-agent, node-exporter - plus docker, containerd,
+#     tailscaled and the OCI agents) = 702Mi, + 512Mi for kernel and page
+#     cache -> 1280Mi; CPU near zero, 200m kept.
+#   kube-reserved: k3s-agent itself, measured 312Mi -> 384Mi (the old 256Mi
+#     was already exceeded); ~90m CPU -> 100m.
+# Without a reservation allocatable equalled capacity, so pods could be
+# scheduled into memory these processes already use. Allocatable becomes
+# 1700m / ~10.0Gi; the lab quota (k3s/apps/lab-environment/k8s/namespace.yaml)
+# is sized against it - change both files together.
 kubelet-arg:
-  - "system-reserved=cpu=200m,memory=2Gi"
-  - "kube-reserved=cpu=100m,memory=256Mi"
+  - "system-reserved=cpu=200m,memory=1280Mi"
+  - "kube-reserved=cpu=100m,memory=384Mi"
