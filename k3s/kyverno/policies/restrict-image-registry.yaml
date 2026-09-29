@@ -27,8 +27,14 @@ spec:
                   - key: lab.jerome/lane
                     operator: Exists
       verifyImages:
+        # Two signers, each confined to its own images: this repo's workflows
+        # sign everything under ghcr.io/jeromefromcn/ except the lab's
+        # petclinic-* images, which only the lab fork's lab-images workflow
+        # signs. A fork workflow run can therefore never vouch for hello.
         - imageReferences:
             - "ghcr.io/jeromefromcn/*"
+          skipImageReferences:
+            - "ghcr.io/jeromefromcn/petclinic-*"
           # CI signs with cosign v3 keyless, which stores signatures as
           # Sigstore bundles in OCI referrers (no legacy sha256-<digest>.sig
           # tag). The default type "Cosign" only reads the legacy tag and
@@ -40,7 +46,18 @@ spec:
                 - keyless:
                     # keyless.subject is an exact match (no wildcards); use
                     # subjectRegExp to cover every repo workflow.
-                    subjectRegExp: "^https://github\\.com/Jeromefromcn/(docker-gitops/\\.github/workflows/[^/]+\\.yml@refs/heads/main|spring-petclinic-microservices/\\.github/workflows/lab-images\\.yml@refs/heads/(main|lab-v2))$"
+                    subjectRegExp: "^https://github\\.com/Jeromefromcn/docker-gitops/\\.github/workflows/[^/]+\\.yml@refs/heads/main$"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+        - imageReferences:
+            - "ghcr.io/jeromefromcn/petclinic-*"
+          type: SigstoreBundle
+          mutateDigest: false
+          attestors:
+            - entries:
+                - keyless:
+                    subjectRegExp: "^https://github\\.com/Jeromefromcn/spring-petclinic-microservices/\\.github/workflows/lab-images\\.yml@refs/heads/(main|lab-v2)$"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev

@@ -42,3 +42,10 @@ spec:
           spec:
             containers:
               - image: "ghcr.io/jeromefromcn/*"
+            # =(...): checked only when present. Without these an ops-lab/*
+            # image in an init or ephemeral container would slip through,
+            # since verifyImages ignores references it does not match.
+            =(initContainers):
+              - image: "ghcr.io/jeromefromcn/*"
+            =(ephemeralContainers):
+              - image: "ghcr.io/jeromefromcn/*"
