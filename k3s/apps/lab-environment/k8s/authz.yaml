@@ -212,7 +212,8 @@ spec:
 # (config/<svc>/data/db.host=postgres, redis.host=redis for visits only) and
 # pod env: mcp-toolkit holds only consul/prometheus/loki/jaeger URLs, Grafana
 # only its three datasources, and toxiproxy has zero proxies configured so it
-# is not in the data path. db-init must be here or a future sync's PreSync
+# is not in the data path - except during docs/demo/17, whose patch adds
+# sa/toxiproxy to both policies below until its revert. db-init must be here or a future sync's PreSync
 # hook could not reach the database.
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy

@@ -101,3 +101,43 @@ No new helper commands. Four new `scenarios/*.sh` (14–17) and a rewritten `loa
 - Automated promotion and analysis (sub-project 4); HPA (roadmap's elastic-scaling row).
 - 2a deferred minors groups A and C.
 - Deleting the dify key from git history.
+
+## Implementation results (2026-09-29)
+
+Implemented from [the plan](../plans/2026-09-28-lab-resilience-scenarios.md), executed inline on `main`.
+
+| # | Criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | Rehearsal 14 → 15 → 17 → 16 → 08, every `demo-evidence` passes | **PASS**, with reruns | 14, 15 and 08 passed first time. 17 needed a page fix (a cold visits pod 504'd before any toxic; run 3 clean) and 16 an evidence fix (the shared bucket also limited a generator call; run 2). Output in `docs/demo/evidence/` |
+| 2 | `demo-reset` → `baseline OK` incl. the four new checks; `demo:` commits paired with reverts | **PASS** | every page ended `baseline OK`; `main` carries each `demo:` commit and its revert |
+| 3 | 08: excess fails fast, admitted P99 flat above the knee, vets' Hikari acquire max < 0.5 s | **PASS** | 1590 shed (all `429`, no `UO` needed); admitted P99 95 ms over the run, per-minute P99 ≤ 99 ms at 71 req/s (2a: 842 ms at 70); vets acquire max 0.04 s (2a: 2.99 s); node peak 0.98 of 2 cores |
+| 4 | Ledger C has a measured attempt count | **PASS** | 3 attempts at visits per external GET on both paths — no compounding, so no `maxRetries` cap |
+| 5 | Each open finding fixed or accepted in writing; generator zero errors while the waypoint rolls | **PASS** (accepted) | waypoint rolled twice: 0 of 2800 client errors, 0 generator errors; "Ready but not routable" quantified (below); both recorded in the lab README |
+| 6 | No `Pending` / `FailedCreate` during the rehearsal | **PASS** | 0 FailedCreate, 0 FailedScheduling since the rehearsal start (03:52Z); all six Lab Capacity alerts inactive |
+| 7 | README, demo index, page 08, roadmap, `resilience.yaml` comments updated | **PASS** | this commit series |
+
+### Measured
+
+- **14 bad pod:** 120 × 200 for users while one of five pods answered 503; `ejections_active` 1 on the stable cluster in both waypoint replicas; 10 requests retried onto another pod, 0 failed; the bad pod counted 10 × 503 itself and stayed Ready.
+- **15 fault injection:** the 2 s delay is **not** cut by the 1 s `perTryTimeout` (every delayed request 200 at 2.02 s, logged `DI` alone, `attempts=1`); the abort 503 is **not** retried (`FI`, `attempts=0`, ~7 ms); the customers cluster's upstream 5xx counter did not move; generator 0 errors.
+- **17 Toxiproxy:** Redis +1.5 s and a Postgres black hole both give `504 UT` at 1.01 s; visits kept working for up to 6.5 s behind it (ending `200` for a client long gone); after the black hole is removed Hikari discards the stalled connections and the next request is `200` — no rollout needed; ztunnel shows `sa/toxiproxy` → postgres while the grant is in place.
+- **16 rate limit:** waypoint concurrency 1, so 3 per window × 1 × 2 replicas = 6 req/s; a 60-request burst gives 6 × 200 / 54 × 429 in one second (11 / 49 when it spills into a second); the per-replica split is uneven (17 / 37); steady traffic alone 0 × 429 over 10 minutes after the limiter landed.
+- **Ledger C:** customers turns visits' 503 into a 502 (not in `retryOn`); api-gateway calls visits itself behind its fallback.
+- **Ledger D:** vets' peak working set 332Mi of 512Mi (api-gateway 307Mi) — headroom ≥ 100Mi, no change.
+- **KSM Down:** Alerting 3 min 10 s after KSM reached 0; Normal 54 s after the revert.
+
+### Deviations from the plan, and why
+
+- **Toxiproxy's ServiceAccount is resident, not in the patch.** The first probe's revert left toxiproxy unable to start pods: setting `serviceAccountName` makes the API server fill in the deprecated `serviceAccount`, the revert removed only the former, and the leftover re-defaulted it to the pruned ServiceAccount (`FailedCreate`, lab `Progressing` until the SA was restored). A new helper test fails any demo patch that touches a service account.
+- **17's Postgres black hole targets owners 3, 5 and 7**, which the generator never reads: owner 6's visits are always in the 60 s Redis cache, so the black hole never showed there. The page also warms visits (on owners 6 and 9) before the window.
+- **16's generator check excludes `/api/vet/vets`.** The spec's "generator never limited" holds at steady state only; during a burst the shared bucket limits every caller. The page says so, and the evidence notes the count.
+- **Ledger C read from the access log, not a Prometheus delta.** The generator does call visits (its `/api/gateway/owners/*` aggregations), which inflated the delta to "9"; the per-request `attempts` field is exact.
+- **KSM Down fired through git**, not by disabling selfHeal: `kube-state-metrics` is an Application under `root`, which restored its `selfHeal: true` within seconds. `replicas: 0` in its Helm values, pushed and reverted, needed no selfHeal change at all.
+- **08's midnight test gained a gap case.** With identical minutes in both series the old `HH:MM` join happened to work; a minute missing from one series is what dropped every later row.
+- **The fork's MVC slice tests needed `@MockitoBean ChaosToggles`** — a servlet filter is loaded by `@WebMvcTest`.
+
+### Open findings
+
+- **Ready is not warm.** Readiness probes only `/actuator`; a JVM's first business requests after start took up to 1.8 s when three services restarted together, so the first 1-3 s after Ready can yield `504 UT` (1 in 6208 measured). Accepted; mitigation candidates if it matters: Envoy slow start on the DestinationRules, or a warm-up request before the pod reports Ready.
+- **The rate limit has no caller key.** A burst from one client limits every other caller of vets, the `Lab API Down` probe included.
+- **Rolling the waypoint** dropped nothing in two tries; 2b's single 503 stays unexplained beyond "a pooled connection through the terminating waypoint". `terminationDrainDuration` is the first candidate if it recurs.

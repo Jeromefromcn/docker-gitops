@@ -157,8 +157,50 @@ connect-failure,refused-stream,unavailable,503}` for GET, and no retries with
 cannot multiply across hops. 500 is deliberately *not* retried. A
 `DestinationRule` per service adds `outlierDetection {consecutive5xxErrors: 5,
 interval: 10s, baseEjectionTime: 30s, maxEjectionPercent: 50}` and a generous
-connection pool. With one replica (vets, visits) the 50% ejection floors to 0 —
-Envoy never ejects the last healthy host, which is protection, not a fault.
+connection pool. With one replica (vets, visits) 50 % of one host rounds down
+to 0, so a single-replica service is never ejected — protection, not a fault.
+
+Measured (2c, 2026-09-29): retries do **not** compound across hops. With
+visits answering 503 to everything, one external GET made exactly 3 attempts
+at visits on both paths that reach it — customers turns visits' 503 into a
+502 (not in `retryOn`), and api-gateway calls visits itself behind its
+Resilience4j fallback. The count is in `resilience.yaml`'s comment.
+
+**Overload protection (resident, `ratelimit.yaml`).** vets-service — the
+measured bottleneck: one replica, a 5-connection Hikari pool — sits behind a
+`TrafficExtension` Lua token bucket on the waypoint: 3 requests per 1 s window
+per Envoy worker, per waypoint replica, i.e. 3 × 1 worker × 2 replicas =
+6 req/s, below where vets starts to queue (2a's knee, ~30 req/s at the edge,
+a quarter to vets). Over the limit the client gets `429` with
+`x-envoy-ratelimited: true` (it survives api-gateway). The bucket is local and
+keyed on nothing: a burst spends it for every caller, including the traffic
+generator and the `Lab API Down` probe, both of which read `/api/vet/vets`;
+steady traffic alone (0.48 req/s) measured 0 × 429 over 10 minutes. Behind the
+limiter, vets' `DestinationRule` has a tight pool (`maxConnections: 10`,
+`http1MaxPendingRequests: 5`, `http2MaxRequests: 10`): past that Envoy fails
+fast with `503 UO` instead of queueing for a DB connection. Under 08's load
+(5 → 80 req/s) the admitted P99 stayed under 100-165 ms, vets' longest
+connection wait 0.04 s (2a unprotected: 2.99 s), node peak ~1 of 2 cores.
+vets' peak working set under that load was 332Mi of 512Mi, so it keeps its
+limits (ledger D: no `MALLOC_ARENA_MAX` / 768Mi change needed below 100Mi
+headroom).
+
+**Chaos toggles.** Besides 05's on/off keys, customers and visits honour
+`chaos/<svc>/fail-instance` = a pod name: that pod answers 503 to every
+non-actuator request (it stays Ready), giving outlier detection a real bad
+upstream (docs/demo/14). The baseline check flags any `chaos/` value other
+than `false`.
+
+**Known windows (2c investigations, accepted).** A freshly Ready pod is
+routable but not warm: readiness probes only `/actuator`, and the first
+business requests after a JVM start took up to 1.8 s when three services
+restarted together (≤ 0.6 s alone), so a request landing there in the first
+1-3 s gets `504 UT` from the 1 s per-try timeout — measured 1 client error in
+6208 over a three-service concurrent restart. The earlier `UF,URX` (2a) and
+`503 UH` (2b) did not recur; `503 UH` is structural to a subset going from 0
+to N endpoints (page 11's warm-up covers it). Rolling the waypoint twice
+under continuous requests dropped nothing (0 of 2800), against 2b's single
+503; `terminationDrainDuration` is the first candidate if it recurs.
 
 Every workload carries `trivy-operator.skip: "true"` on its pod template: the
 five `ops-lab/*` images can't be pulled for scanning, and nothing consumes the
@@ -380,9 +422,12 @@ find the missing principal.
 
 ## Capacity alerts
 
-Five Grafana-managed rules (folder *Lab Capacity*, `configmaps.yaml` →
+Six Grafana-managed rules (folder *Lab Capacity*, `configmaps.yaml` →
 `alerting.yml`): Pod Pending 3m, Quota Near Limit >90% 2m, CPU Throttling
->50% 10m, Container Restarts, OOMKilled. They have **no contact point** —
+>50% 10m, Container Restarts, OOMKilled, and KSM Down 3m. The first five read
+kube-state-metrics with `noDataState: OK`, so a KSM outage would silence them
+all; KSM Down alerts on exactly that (`noDataState: Alerting`; fired for real
+once on 2026-09-29 by scaling KSM to 0 through git). They have **no contact point** —
 they are visible in this Grafana only; the inspector is what pages. They
 exist because the quota sizes requests only and limits are overcommitted,
 so these are how a capacity problem surfaces. The Lab Mesh Overview's

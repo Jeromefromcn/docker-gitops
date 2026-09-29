@@ -1,17 +1,17 @@
-== load-test  window 2026-09-27T14:19:44Z → 2026-09-27T14:25:45Z (361s)
+== load-test  window 2026-09-29T04:27:59Z → 2026-09-29T04:33:59Z (360s)
       minute  rps   p99(ms)
-      14:19     1  57
-      14:20     6  68
-      14:21     9  70
-      14:22    16  76
-      14:23    31  188
-      14:24    51  145
-      14:25    70  842
+      04:27     3  45
+      04:28     6  47
+      04:29     9  57
+      04:30    16  46
+      04:31    31  76
+      04:32    51  88
+      04:33    71  99
   [envoy         ] PASS  waypoint RPS and P99 per minute over the run: 7 points (want >= 5)
-      89 inbound-vip|8083|http|vets-service.lab-environment.svc.cluster.local;
-      3 inbound-vip|8081|http|customers-service.lab-environment.svc.cluster.local;
-  [envoy         ] PASS  upstream timeouts (UT, 1 s per-try) during the run: 92 — the hop that gave out first is the top line
-  [cadvisor      ] PASS  peak node CPU 1.2945738262373523 of 2 cores; peak container throttling 0.3875 (jaeger-d55f4f869-7wxn6)
-  [app           ] PASS  saturated resource: vets-service DB connection pool (waited up to 2.985353827s for a connection)
+  [envoy         ] PASS  vets-service requests shed fast (429 limiter / UO pool overflow): 1590 (want > 0)
+  [envoy         ] PASS  admitted (200) requests' P99 over the whole run: 94.63753581661906 ms (want <= 400)
+  [cadvisor      ] PASS  peak node CPU 0.9845127950999729 of 2 cores (want < 1.6: protection kept the node out of saturation); most throttled: 0.24879227053140096 promtail-74596bb597-pht9p
+  [app           ] PASS  longest wait for a DB connection: 0.09815821s (customers-service) (want < 0.5 - 2a measured 2.99 unprotected)
+  [note          ]       vets-service peak working set: 332Mi of its 512Mi limit (ledger D)
   [note          ]       Lab CPU Throttling alert state: Normal (needs 10 min sustained)
-== OK: 4 passed (3 infrastructure-layer)
+== OK: 5 passed (4 infrastructure-layer)

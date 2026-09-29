@@ -1,0 +1,5 @@
+== bad-pod  window 2026-09-29T03:52:24Z → 2026-09-29T03:53:03Z (39s)
+  [envoy         ] PASS  customers-service hosts ejected at once, peak: 1 (want >= 1)
+  [envoy         ] PASS  requests retried onto another pod: 10 (want > 0); customers requests that still failed: 0 (want 0)
+  [app           ] PASS  the bad pod (customers-service-568d8bb8b4-hlw9k) answered 10 requests with 503 itself (want >= 5)
+== OK: 3 passed (2 infrastructure-layer)

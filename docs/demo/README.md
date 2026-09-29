@@ -42,10 +42,14 @@ anyway, which scenario 07 demonstrates.
 | 11 | [Header / cookie gray release](11-header-canary.md) | |
 | 13 | [Traffic mirroring](13-mirror.md) | Same bad build as 10, zero user impact |
 | 12 | [Blue-green switch](12-blue-green.md) | Five extra JVMs — heaviest routing step |
+| 14 | [One bad pod is ejected](14-bad-pod.md) | Resilience after routing; an ejection lasts 30 s |
+| 15 | [Header-triggered fault injection](15-fault-injection.md) | |
+| 17 | [Network faults through Toxiproxy](17-toxiproxy.md) | Two visits rollouts |
 | 04 | [Zero trust: mTLS, identity authz, actuator lockdown](04-zero-trust.md) | |
 | 05 | [App-level vs mesh-level resilience](05-app-vs-mesh-resilience.md) | |
 | 06 | [Secret rotation](06-secret-rotation.md) | Riskiest mutation |
-| 08 | [Load test: capacity baseline and bottleneck](08-load-test.md) | Overloads the node — always last |
+| 16 | [Rate limiting at the waypoint](16-rate-limit.md) | Rate limiting last; 08 relies on it |
+| 08 | [Load test: capacity and overload protection](08-load-test.md) | Overloads the node — always last |
 
 `evidence/` holds the last rehearsal's `demo-evidence` output for every
 scenario — the fallback if the live cluster misbehaves mid-interview.
