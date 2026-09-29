@@ -68,10 +68,10 @@ generator's traffic.
   signed by the fork's CI for this PR (`refs/pull/<N>/merge`); a local build
   is refused outright — `verifyImages` alone would have let it through,
   since it only checks images that match its pattern.
-- **Scanned, not gated.** CI's Trivy step reports CRITICAL CVEs but does not
-  fail the build: the lab's Spring Boot 4.0.1 dependencies carry fixable
-  ones, accepted for the demo. Bumping to Boot 4.0.8 + Spring Cloud 2025.1.3
-  + tomcat 11.0.26 clears them — the gate could be switched back on.
+- **Scanned before signed.** CI's Trivy step fails the build on a fixable
+  CRITICAL CVE, so nothing known-vulnerable gets a signature. Getting there
+  took a Spring Boot 4.0.1 -> 4.0.8 upgrade plus a tomcat pin (Boot's managed
+  11.0.24 still had them) - the gate found real CVEs on its first run.
 - **Pushing to a labelled PR takes the lane down.** The generator picks up
   the new head SHA within 30 s, the lane Deployment (Recreate) drops its
   pod, and the new one is refused (`FailedCreate`) until CI has signed that

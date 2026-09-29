@@ -28,7 +28,7 @@ spec:
         # Fixed value for the lane-direct L4 policy: Istio selectors match
         # label values, not label presence.
         lab.jerome/lane-pod: "true"
-        # Short-lived; CI's Trivy report is a lane's vulnerability record.
+        # Short-lived; CI's Trivy gate is a lane's vulnerability gate.
         trivy-operator.skip: "true"
       annotations:
         prometheus.io/scrape: "true"

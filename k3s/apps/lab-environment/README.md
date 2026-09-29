@@ -219,12 +219,14 @@ CI's `build-scan-sign` has passed: the generator follows the new head SHA
 within 30 s, long before its image is signed, and the lane pod would be
 refused (`FailedCreate`).
 
-Every workload carries `trivy-operator.skip: "true"` on its pod template, and
-nothing consumes the namespace's reports. The business images now come from
-GHCR and could be scanned, but they carry fixable CRITICAL CVEs (Spring Boot
-4.0.1's dependencies, accepted for the demo): adding the lab to
-`require-vuln-scan-clean` would refuse the next pod of a ReplicaSet once its
-report exists. CI's Trivy step reports them instead (see Images).
+The four baseline business Deployments are scanned by Trivy Operator and
+gated by `require-vuln-scan-clean` (since 2026-09-29): a pod whose
+ReplicaSet's report finds a fixable CRITICAL CVE is refused. Every other
+workload, `customers-service-canary` and PR lane pods carry
+`trivy-operator.skip: "true"` - third-party images the lab does not gate, or
+images CI's Trivy gate already covers. A CVE published later against a
+running image blocks that ReplicaSet's next pod (eviction, scale-up, demo pod
+deletion): fix it in the fork and release new digests, as for hello.
 
 ## Service discovery and config
 
@@ -359,10 +361,10 @@ them with the ingress handover.
 The four business services and the canary slot run digest-pinned images the
 fork's `lab-images` workflow
 (`Jeromefromcn/spring-petclinic-microservices`, `.github/workflows/lab-images.yml`)
-built on a native arm64 runner, scanned with Trivy (report-only: the fixable
-CRITICAL CVEs of Spring Boot 4.0.1's dependencies are accepted for the demo;
-Boot 4.0.8 + Spring Cloud 2025.1.3 + tomcat 11.0.26 clears them) and signed
-with Cosign keyless. Kyverno admits only those
+built on a native arm64 runner, gated by Trivy (a fixable CRITICAL CVE fails
+the build) and signed with Cosign keyless. The fork runs Spring Boot 4.0.8 /
+Spring Cloud 2025.1.3 with tomcat pinned to 11.0.26 for that gate; its
+pre-upgrade `lab-v2` is kept as tag `lab-v2-boot-4.0.1`. Kyverno admits only those
 (`restrict-image-registry`, `restrict-image-registry-lab-lanes`,
 `lab-business-images-from-ghcr` in `k3s/kyverno/policies/`). The packages are
 public, so no pull secret.
@@ -373,8 +375,8 @@ because `restrict-image-registry` keeps Kyverno's default `verifyDigest: true`;
 the comment names the fork commit. A release is still a git commit here that
 changes the digest (no Image Updater). A push to the fork's `main` or `lab-v2`
 builds all four services; `gh workflow run lab-images.yml --ref lab-v2 -f
-sha=<commit>` builds an older commit (the canary patches pin `ce942c9` v2 and
-`16b18eb` v2-bad), and `-f unsigned=true` republishes the negative-test image
+sha=<commit>` builds an older commit (the canary patches pin `c44d332` v2 and
+`77962ea` v2-bad), and `-f unsigned=true` republishes the negative-test image
 `ghcr.io/jeromefromcn/petclinic-unsigned:demo`. Each run's summary lists the
 digests.
 
