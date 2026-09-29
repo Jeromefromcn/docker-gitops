@@ -35,6 +35,8 @@ case "$*" in
   *"get deploy customers-service-canary"*"image"*) echo "${FAKE_CANARY_IMAGE:-$(grep -m1 -oP 'image: \K\S+' "$FAKE_LAB_K8S/customers-service-canary.yaml")}" ;;
   *"get pods -l app=customers-service,track=canary -o name"*) printf '%s' "${FAKE_CANARY_PODS:-}" ;;
   *"get virtualservice customers-service -o json"*) cat "${FAKE_VS:-$FAKE_VS_PINNED}" ;;
+  *"get deploy visits-service -o jsonpath"*"env"*) echo "${FAKE_VISITS_ENV:-TZ SPRING_CLOUD_CONSUL_HOST SPRING_CLOUD_CONSUL_PORT DATA_DB_PASSWORD}" ;;
+  *"get authorizationpolicy postgres-clients redis-clients"*) echo "{\"items\":[{\"spec\":{\"rules\":[{\"from\":[{\"source\":{\"principals\":[\"cluster.local/ns/lab-environment/sa/visits-service\"${FAKE_TOXI_PRINCIPAL:+,\"cluster.local/ns/lab-environment/sa/toxiproxy\"}]}}]}]}}]}" ;;
   *" get deploy "*) d=$(sed -E 's/.* get deploy ([^ ]+).*/\1/' <<< "$*"); grep "^$d " "$FAKE_DEPLOYS" | cut -d' ' -f2- ;;
   *"logs statefulset/argocd-application-controller"*) printf '%s\n' "${FAKE_CTRL_LOG:-}" ;;
   *"logs deploy/traffic-generator"*) for i in 1 2 3; do echo "2026-09-27T00:00:0${i}+00:00 ${FAKE_GEN_CODE:-200} /api/vet/vets"; done ;;
@@ -199,6 +201,12 @@ for p in "$DEMO"/patches/*.patch; do
   if git -C "$HERE/../../../.." apply --check "$p" 2>"$WORK/apply.err"; then echo "PASS patch applies: $(basename "$p")"
   else echo "FAIL patch no longer applies: $(basename "$p")"; sed 's/^/    /' "$WORK/apply.err"; fails=$((fails+1)); fi
 done
+# A reverted serviceAccountName does not revert: the API server backfills the
+# deprecated serviceAccount field, which then re-defaults the name (17, 2026-09-29).
+for p in "$DEMO"/patches/*.patch; do
+  if grep -qE '^[-+][[:space:]]+serviceAccount(Name)?:' "$p"; then echo "FAIL patch changes a pod's service account: $(basename "$p")"; fails=$((fails+1))
+  else echo "PASS patch leaves service accounts alone: $(basename "$p")"; fi
+done
 shopt -u nullglob
 
 # --- scenario evidence (real scenario files) ---------------------------
@@ -289,6 +297,10 @@ FAKE_VS=$WORK/vs-header.json check "reset names a leftover header rule" 1 "$DEMO
 has "$WORK/out" "off the stable pin: subset canary+header match"
 FAKE_VS=$WORK/vs-fault.json check "reset names a leftover fault rule" 1 "$DEMO/demo-reset" preflight
 has "$WORK/out" "off the stable pin: header match+fault"
+FAKE_VISITS_ENV="TZ DATA_DB_HOST DATA_REDIS_HOST" check "reset fails while visits still points at toxiproxy" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "visits-service still points at toxiproxy"
+FAKE_TOXI_PRINCIPAL=1 check "reset fails while postgres/redis still admit toxiproxy" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "still admit sa/toxiproxy"
 unset DEMO_REPO_ROOT
 
 # 11: exactly the marked requests reach the canary.
@@ -404,6 +416,21 @@ chmod +x "$WORK/hook15"
 FAKE_CURL_HOOK=$WORK/hook15 check "15 passes: 10 delayed, 10 aborted locally" 0 "$DEMO/demo-evidence" fault-injection
 A15=11 FAKE_CURL_HOOK=$WORK/hook15 check "15 fails when an unmarked request was aborted" 1 "$DEMO/demo-evidence" fault-injection
 U15=9 FAKE_CURL_HOOK=$WORK/hook15 check "15 fails when an abort reached a pod" 1 "$DEMO/demo-evidence" fault-injection
+
+# 17: the mesh's 1 s per-try timeout cut the toxic's latency on visits.
+cp "$DEMO/scenarios/toxiproxy.sh" "$DEMO_SCENARIO_DIR/"
+win toxiproxy 1000 1300
+cat > "$WORK/hook17" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *'response_flags="UT"'*) res "{\"metric\":{\"upstream_cluster\":\"inbound-vip|8082|http|visits-service.lab-environment.svc.cluster.local;\"},\"value\":[0,\"${T17:-6}\"]}" ;;
+  *"http_server_requests_seconds_max"*) val 2.01 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook17"
+FAKE_CURL_HOOK=$WORK/hook17 check "17 passes: visits timed out at the mesh" 0 "$DEMO/demo-evidence" toxiproxy
+T17=0 FAKE_CURL_HOOK=$WORK/hook17 check "17 fails without an upstream timeout on visits" 1 "$DEMO/demo-evidence" toxiproxy
 
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then

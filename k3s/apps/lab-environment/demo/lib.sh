@@ -159,6 +159,23 @@ wait_canary_gone() {
   kubectl -n "$NS" wait --for=delete pod -l app=customers-service,track=canary --timeout="${1:-3m}"
 }
 
+# --- dependency chaos (2c) ---------------------------------------------------
+# 17 routes visits' postgres/redis through toxiproxy and lets postgres/redis
+# admit toxiproxy's identity - both must be gone after the page's revert.
+toxiproxy_baseline() {
+  local bad=0 envs n
+  envs=$(kubectl -n "$NS" get deploy visits-service -o jsonpath='{.spec.template.spec.containers[0].env[*].name}')
+  case " $envs " in *" DATA_DB_HOST "*|*" DATA_REDIS_HOST "*)
+    echo "visits-service still points at toxiproxy (env: $envs)"; bad=1 ;; esac
+  if ! n=$(kubectl -n "$NS" get authorizationpolicy postgres-clients redis-clients -o json \
+      | jq '[.items[].spec.rules[].from[].source.principals[]? | select(endswith("/sa/toxiproxy"))] | length'); then
+    echo "postgres/redis authorization policies not read"; bad=1
+  elif [ "$n" != 0 ]; then
+    echo "postgres/redis still admit sa/toxiproxy"; bad=1
+  fi
+  return $bad
+}
+
 # --- baseline ---------------------------------------------------------------
 baseline_check() {
   local bad=0 on d got want st lines total non200
@@ -181,6 +198,7 @@ baseline_check() {
   non200=$(echo "$lines" | awk 'NF && $2 != "200"' | grep -c . || true)
   { [ "$total" -gt 0 ] && [ "$non200" -eq 0 ]; } || { echo "generator last 30s: $total requests, $non200 non-200"; bad=1; }
   routing_baseline || bad=1
+  toxiproxy_baseline || bad=1
   return $bad
 }
 wait_baseline() {
