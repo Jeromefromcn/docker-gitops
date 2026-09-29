@@ -41,6 +41,13 @@ spec:
               value: "consul"
             - name: SPRING_CLOUD_CONSUL_PORT
               value: "8500"
+            # Demo-only (docs/demo/17): route postgres and redis through
+            # toxiproxy. Env beats the Consul KV values (data.db.host,
+            # data.redis.host), which stay untouched.
+            - name: DATA_DB_HOST
+              value: "toxiproxy"
+            - name: DATA_REDIS_HOST
+              value: "toxiproxy"
             # Overrides nothing: the Consul KV key config/<svc>/data/db.password
             # is deleted; the password lives only in this SealedSecret.
             - name: DATA_DB_PASSWORD
