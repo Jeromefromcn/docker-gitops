@@ -198,10 +198,48 @@ echo "$prims" | grep -q '^PASS in_band' || { echo "FAIL routing primitives did n
 
 # --- demo patches still apply to the tree ---------------------------------
 shopt -s nullglob
-for p in "$DEMO"/patches/*.patch; do
-  if git -C "$HERE/../../../.." apply --check "$p" 2>"$WORK/apply.err"; then echo "PASS patch applies: $(basename "$p")"
-  else echo "FAIL patch no longer applies: $(basename "$p")"; sed 's/^/    /' "$WORK/apply.err"; fails=$((fails+1)); fi
-done
+# drift_check <root>: every demo patch applies to <root>'s lab manifests. Works
+# on a copy, where any patch already applied (a live demo in progress) is
+# reversed first. GIT_CEILING_DIRECTORIES keeps git apply from treating an
+# enclosing repository as the root for the copy's paths.
+# unapply_demos <dir>: reverse, in <dir>, every demo patch that is applied there.
+unapply_demos() {
+  local p
+  for p in "$DEMO"/patches/*.patch; do
+    if (cd "$1" && GIT_CEILING_DIRECTORIES="$1" git apply --check -R "$p" 2>/dev/null && GIT_CEILING_DIRECTORIES="$1" git apply -R "$p"); then
+      echo "note $(basename "$p") is applied (a demo in progress) - checked against its revert"
+    fi
+  done
+}
+drift_check() {
+  local t p bad=0
+  t=$(mktemp -d "$WORK/drift.XXXX")
+  mkdir -p "$t/k3s/apps/lab-environment" && cp -r "$1/k3s/apps/lab-environment/k8s" "$t/k3s/apps/lab-environment/"
+  unapply_demos "$t"
+  for p in "$DEMO"/patches/*.patch; do
+    if (cd "$t" && GIT_CEILING_DIRECTORIES="$t" git apply --check "$p" 2>"$WORK/apply.err"); then echo "PASS patch applies: $(basename "$p")"
+    else echo "FAIL patch no longer applies: $(basename "$p")"; sed 's/^/    /' "$WORK/apply.err"; bad=1; fi
+  done
+  return $bad
+}
+out=$(drift_check "$HERE/../../../.." || true)
+echo "$out"
+fails=$((fails + $(grep -c '^FAIL' <<< "$out" || true)))
+# While a live demo is in progress its patch is applied on main, so that patch
+# (and any other touching the same lines) cannot apply again. The check must
+# pass then, and still catch real drift.
+# Fixtures start from the at-rest manifests, even if this run itself happens mid-demo.
+fx_tree() { mkdir -p "$1/k3s/apps/lab-environment" && cp -r "$HERE/../k8s" "$1/k3s/apps/lab-environment/" && unapply_demos "$1" >/dev/null; }
+fx_tree "$WORK/fx-demo"
+(cd "$WORK/fx-demo" && GIT_CEILING_DIRECTORIES="$WORK" git apply "$DEMO/patches/fault-injection.patch")
+out=$(drift_check "$WORK/fx-demo" 2>&1 || true)
+if grep -q '^FAIL' <<< "$out"; then echo "FAIL drift check fails while a demo patch is applied"; sed 's/^/    /' <<< "$out" | grep FAIL; fails=$((fails+1))
+else echo "PASS drift check passes while a demo patch is applied"; fi
+grep -q 'fault-injection.patch is applied' <<< "$out" && echo "PASS drift check names the applied demo patch" || { echo "FAIL drift check did not name the applied patch"; fails=$((fails+1)); }
+fx_tree "$WORK/fx-drift"
+sed -i 's/# Pinned to the stable subset: this pin is the routing baseline every/# Pinned (edited) to the stable subset/' "$WORK/fx-drift/k3s/apps/lab-environment/k8s/resilience.yaml"
+out=$(drift_check "$WORK/fx-drift" 2>&1 || true)
+grep -q '^FAIL patch no longer applies: fault-injection.patch' <<< "$out" && echo "PASS drift check still catches real drift" || { echo "FAIL drift check missed real drift"; fails=$((fails+1)); }
 # A reverted serviceAccountName does not revert: the API server backfills the
 # deprecated serviceAccount field, which then re-defaults the name (17, 2026-09-29).
 for p in "$DEMO"/patches/*.patch; do
