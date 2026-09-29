@@ -29,7 +29,7 @@ end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq
 ```
 
 ## Expected result
-Roughly 100 `none (v1)` and 20 `ce942c9e7124` (the v2-good build) — about
+Roughly 100 `none (v1)` and 20 `c44d33230743` (the v2-good build) — about
 1 in 6. The evidence shows the canary pod's share at 8-30 % in both the
 waypoint's log and the pod's own request count.
 

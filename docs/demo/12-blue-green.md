@@ -48,7 +48,7 @@ end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq
 ```
 
 ## Expected result
-After the switch every response carries `ce942c9e7124` (v2-good). The
+After the switch every response carries `c44d33230743` (v2-good). The
 evidence shows all traffic on blue before the switch, all on green after
 it, all on blue after the rollback, both syncs deployed, and zero
 generator errors over the whole window; green's P99 in its first minute is

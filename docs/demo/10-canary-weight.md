@@ -7,7 +7,7 @@ app, pins every error on the canary, that 90 % of users never see it, and
 that rolling back is one `git revert`.
 
 ## Preconditions
-Preflight passed; 09 reset. The v2-bad build (`16b18ebc7230`) fails on
+Preflight passed; 09 reset. The v2-bad build (`77962eada66c`) fails on
 owners with two pets (3, 6 and 10): its "simplified" `primaryPetName`
 throws — and its unit tests passed, because none had two pets.
 

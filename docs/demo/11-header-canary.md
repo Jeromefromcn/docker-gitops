@@ -38,7 +38,7 @@ end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq
 ```
 
 ## Expected result
-header: `20 ce942c9e7124`; cookie: `20 ce942c9e7124`; unmarked:
+header: `20 c44d33230743`; cookie: `20 c44d33230743`; unmarked:
 `20 none (v1)`; aggregation path: `10 200`. The evidence shows exactly 40
 requests on the canary subset and 40 counted by the canary pod.
 
