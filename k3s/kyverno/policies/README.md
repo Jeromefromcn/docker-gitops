@@ -28,5 +28,5 @@
 
 The phase E validate policies are `validationFailureAction: Enforce` (flipped from `Audit` on
 2026-08-18 — see `k3s/README.md`'s Kyverno section for the
-cutover details). `lab-business-images-from-ghcr` is `Audit` until the lab's
-baseline runs GHCR images.
+cutover details). `lab-business-images-from-ghcr` has been `Enforce` since the lab's
+baseline moved to GHCR (2026-09-29).

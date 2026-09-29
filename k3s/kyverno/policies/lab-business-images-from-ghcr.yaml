@@ -3,14 +3,13 @@
 # unverified. This closes that: the lab's business services (and their PR
 # lanes) run only CI-built GHCR images, which the restrict-image-registry*
 # policies then verify.
-# Audit while the baseline still runs ops-lab/* images; Enforce once every
-# business Deployment is on GHCR (lab PR lanes plan, Task 5).
+# Enforced since the baseline moved to GHCR (2026-09-29).
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: lab-business-images-from-ghcr
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: business-images-from-ghcr
