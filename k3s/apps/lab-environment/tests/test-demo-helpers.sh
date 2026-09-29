@@ -19,7 +19,7 @@ case "$*" in
   *FAILME*) exit 22 ;;
   *"/v1/kv/chaos/"*) [ -z "${FAKE_CONSUL_DOWN:-}" ] || exit 7 ;;&
   *"/v1/kv/chaos/"*)
-    if [ -n "${FAKE_CHAOS_ON:-}" ]; then v=dHJ1ZQ==; else v=ZmFsc2U=; fi
+    if [ -n "${FAKE_CHAOS_ON:-}" ]; then v=${FAKE_CHAOS_VALUE:-dHJ1ZQ==}; else v=ZmFsc2U=; fi
     echo "[{\"Key\":\"${FAKE_CHAOS_ON:-chaos/visits-service/redis-timeout}\",\"Value\":\"$v\"}]" ;;
   *"/loki/api/v1/query"*)
     if [ -n "${FAKE_LOKI_EMPTY:-}" ]; then echo '{"data":{"result":[]}}'; else echo '{"data":{"result":[{"metric":{},"value":[0,"7"]}]}}'; fi ;;
@@ -152,6 +152,9 @@ check "reset at baseline" 0 "$DEMO/demo-reset" t1
 [ -f "$DEMO_STATE_DIR/reset-called" ] && echo "PASS reset hook ran" || { echo "FAIL reset hook ran"; fails=$((fails+1)); }
 FAKE_CHAOS_ON=chaos/customers-service/slow-query-enabled check "reset fails on any chaos key" 1 "$DEMO/demo-reset" preflight
 has "$WORK/out" "chaos/customers-service/slow-query-enabled"
+FAKE_CHAOS_ON=chaos/customers-service/fail-instance FAKE_CHAOS_VALUE=$(printf customers-service-abc | base64) \
+  check "reset fails while fail-instance names a pod" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "chaos/customers-service/fail-instance"
 sed -i 's/^customers-service .*/customers-service 4 5/' "$FAKE_DEPLOYS"
 check "reset fails on replica mismatch" 1 "$DEMO/demo-reset" preflight
 sed -i 's/^customers-service .*/customers-service 5 5/' "$FAKE_DEPLOYS"
@@ -356,6 +359,27 @@ grep -q '\[340s\].*time=2000000000000' "$FAKE_LOG" && echo "PASS 12 after segmen
 A12=1 FAKE_HISTORY=$H12 FAKE_CURL_HOOK=$WORK/hook12 check "12 fails on green traffic before the switch" 1 "$DEMO/demo-evidence" blue-green
 FAKE_CURL_HOOK=$WORK/hook12 check "12 fails without the switch in ArgoCD history" 1 "$DEMO/demo-evidence" blue-green
 unset DEMO_REPO_ROOT
+
+# 14: the bad pod was ejected; retries hid it from every user.
+cp "$DEMO/scenarios/bad-pod.sh" "$DEMO_SCENARIO_DIR/"
+win bad-pod 1000 1300
+echo customers-service-abc > "$DEMO_STATE_DIR/bad-pod.name"
+cat > "$WORK/hook14" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"ejections_active"*) val "${E14:-1}" ;;
+  *"attempts > 1"*) val "${R14:-9}" ;;
+  *"response_code != "*) val "${F14:-0}" ;;
+  *"customers-service-abc"*"time=1000"*) val 0 ;;
+  *"customers-service-abc"*"time=1320"*) val 10 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook14"
+FAKE_CURL_HOOK=$WORK/hook14 check "14 passes: ejected, retried, no user error" 0 "$DEMO/demo-evidence" bad-pod
+has "$WORK/out" "answered 10 requests with 503 itself"
+E14=0 FAKE_CURL_HOOK=$WORK/hook14 check "14 fails when nothing was ejected" 1 "$DEMO/demo-evidence" bad-pod
+F14=2 FAKE_CURL_HOOK=$WORK/hook14 check "14 fails when a user saw an error" 1 "$DEMO/demo-evidence" bad-pod
 
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
