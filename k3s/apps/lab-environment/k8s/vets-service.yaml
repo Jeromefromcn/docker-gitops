@@ -27,7 +27,7 @@ spec:
         prometheus.io/port: "8083"
         prometheus.io/path: /actuator/prometheus
         # Bump to roll the pods without a new image (e.g. after a secret rotation).
-        lab.jerome/rollout-rev: "4"
+        lab.jerome/rollout-rev: "5"
     spec:
       serviceAccountName: vets-service
       enableServiceLinks: false
