@@ -92,3 +92,26 @@ Input: `docs/demo/`. Output: `build/docs/` (a copy of every page) and `build/mkd
 - A custom domain, a mirror on own infrastructure, mainland-China reachability.
 - Migrating to Zensical: only when Material stops building or a needed fix lands only there.
 - Restyling or rewriting runbook content.
+
+## Implementation results
+
+Implemented 2026-09-29 in commits `d7bd2a4`..`3495fc3`. CI run `36579234598`: build job green (25 unit tests, `prepare.py: 19 pages`, `mkdocs build --strict`, `check_site.py: OK`); deploy job failed with "Ensure GitHub Pages has been enabled" — **Pages is not enabled yet**. The CLI's token is refused `POST /repos/.../pages` (403, "Resource not accessible by personal access token"), so enabling it is a manual step: Settings → Pages → Source: *GitHub Actions*, then `gh workflow run demo-runbook.yml`.
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Push republishes; PR builds only | Build on push verified (run above). Deploy gated by `if: github.event_name != 'pull_request'`; the PR path is not yet exercised |
+| 2 | Evidence on 01–18, collapsed, titled with its window; none on 00 | Verified locally and in CI by `check_site.py` (a page stripped of its block makes it fail: `14-bad-pod/index.html: no rehearsal evidence block`) |
+| 3 | Nav and prev/next follow README's Order table | `check_site.py` walks the next-link chain from the home page and compares it with the table; locally 03 → 07 |
+| 4 | Build fails on broken link / page not in table / row without page / scenario without evidence / orphan evidence | Broken link: `mkdocs build --strict` rc=1 (tried). The other four: unit tests, each also naming the file |
+| 5 | `docs/demo/*.md` unchanged except one README link | Confirmed by the final review; the link is an absolute GitHub URL because a relative one leaves `docs_dir` |
+| 6 | `noindex` on every page | `check_site.py` checks every generated HTML file, including `404.html` |
+| 7 | No request to vps_oracle/oracle2 at page load | Static site on GitHub; runbook text mentions internal URLs only inside code blocks. To confirm on the live URL once published |
+
+Deviations from the design:
+
+- The post-build check is `check_site.py`, a script with its own tests, instead of inline shell in the workflow, so it also runs locally.
+- `mkdocs.base.yml` uses `custom_dir: ../overrides`, relative to the generated `build/mkdocs.yml`.
+- From the final review: `prepare.py` refuses **any** `*.md` other than README that does not match `NN-slug.md` (the copy would otherwise publish a stray or misnamed page with no nav entry and no evidence check); the workflow's `concurrency` covers the whole run, not only the deploy job, so an older push's slower build cannot deploy after a newer one.
+
+Deferred minors from the final review: `evidence/preflight.txt` would be dropped silently instead of refused; the `window` regex accepts the word anywhere on the first line; the deploy guard does not also require `refs/heads/main` (the `github-pages` environment's branch policy covers it); no explicit `encoding="utf-8"`; nav titles would show literal markdown markup if a title ever contained it.
+
