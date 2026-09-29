@@ -213,7 +213,11 @@ or the baseline Service would select them), the baseline's ServiceAccount and
 data, and `lab.jerome/lane-pod: "true"` for the `lane-direct` L4 policy.
 `tests/test-lanes.sh` renders every lane and checks it against its baseline.
 At most 2 lane pods, never alongside page 12's green (see the quota);
-`demo-reset` refuses a leftover lane pod. Runbook: docs/demo/18.
+`demo-reset` refuses a leftover lane pod or Deployment. Runbook: docs/demo/18.
+To push to a labelled PR, remove its `lane:` label first and relabel once
+CI's `build-scan-sign` has passed: the generator follows the new head SHA
+within 30 s, long before its image is signed, and the lane pod would be
+refused (`FailedCreate`).
 
 Every workload carries `trivy-operator.skip: "true"` on its pod template, and
 nothing consumes the namespace's reports. The business images now come from

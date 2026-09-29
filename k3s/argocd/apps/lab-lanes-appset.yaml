@@ -1,7 +1,9 @@
 # Lab PR lanes (docs/superpowers/specs/2026-09-29-lab-pr-lanes-design.md):
 # one Application per (fork PR, service) whose PR carries lane:<service>.
 # The fork's lab-images workflow builds and signs a PR's changed services on
-# every push, so by the time the label is added the image exists. At most 2
+# every push, so by the time the label is added the image exists - but a
+# push to an already-labelled PR moves head_sha before CI signs it, so the
+# lane pod is refused (FailedCreate) until then: unlabel, push, relabel. At most 2
 # lane pods at once, never alongside page 12's 5-replica green (capacity).
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet

@@ -72,6 +72,11 @@ generator's traffic.
   fail the build: the lab's Spring Boot 4.0.1 dependencies carry fixable
   ones, accepted for the demo. Bumping to Boot 4.0.8 + Spring Cloud 2025.1.3
   + tomcat 11.0.26 clears them — the gate could be switched back on.
+- **Pushing to a labelled PR takes the lane down.** The generator picks up
+  the new head SHA within 30 s, the lane Deployment (Recreate) drops its
+  pod, and the new one is refused (`FailedCreate`) until CI has signed that
+  SHA - minutes later, then ReplicaSet backoff. To update a lane: remove
+  the `lane:` label, push, wait for `build-scan-sign`, label again.
 - **Head SHA, not merge SHA.** The image is tagged with the PR's head commit;
   the signature's subject is the merge ref GitHub builds PRs on.
 - **Capacity is shared in time.** Lanes use the headroom page 12's green
