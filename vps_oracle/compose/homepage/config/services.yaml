@@ -144,6 +144,11 @@
         href: https://plans.jerome.cloudns.asia
         description: Personal trip and activity plans
 
+    - DOS Games:
+        icon: si-dosbox
+        href: https://dosgame.jerome.cloudns.asia
+        description: Classic DOS games in the browser
+
 - Dev:
     - BOSS (dev):
         icon: si-mariadb

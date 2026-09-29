@@ -1,0 +1,37 @@
+services:
+  dosgame:
+    # Upstream publishes only :latest (arm64, last built 2020-06), so pin by digest.
+    image: lstcml/dosgame@sha256:5e8fde5eed2f213303298d0a0463fcda95e5828da8304bf558a2f6e81eec8083
+    container_name: dosgame
+    hostname: dosgame
+    restart: unless-stopped
+    # Bypass the upstream entrypoint.sh: it copies the 600 MB app from /usr/src/dos_app
+    # into a root-owned /app on every fresh container. Serving straight from the image
+    # path lets the container run as nobody with a read-only root filesystem.
+    user: "65534:65534"
+    working_dir: /usr/src/dos_app
+    entrypoint: ["python3", "/usr/bin/gunicorn", "-w", "2", "-b", "0.0.0.0:6000", "app:app"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      # Alpine image ships no tzdata
+      - /usr/share/zoneinfo/Asia/Hong_Kong:/usr/share/zoneinfo/Asia/Hong_Kong:ro
+    networks:
+      - proxy
+    # NPM reverse proxy: Forward Hostname/IP = dosgame, Forward Port = 6000 (container name direct, over the proxy network)
+
+networks:
+  proxy:
+    external: true
