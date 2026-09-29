@@ -140,7 +140,8 @@ routing_baseline() {
                         (if (.route | length) != 1 then "weights" else empty end),
                         (if (.route | length) == 1 and .route[0].destination.subset != "stable"
                            then "subset \(.route[0].destination.subset // "none")" else empty end),
-                        (if any(.match[]?; .headers) then "header match" else empty end) ]
+                        (if any(.match[]?; .headers) then "header match" else empty end),
+                        (if .fault then "fault" else empty end) ]
                       | select(length > 0) | join("+")] | join(", ")'); then
     echo "customers-service VirtualService not read"; bad=1
   elif [ -n "$off" ]; then

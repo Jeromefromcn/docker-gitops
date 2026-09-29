@@ -1,0 +1,49 @@
+diff --git a/k3s/apps/lab-environment/k8s/resilience.yaml b/k3s/apps/lab-environment/k8s/resilience.yaml
+index 9960aa2..ad9673f 100644
+--- a/k3s/apps/lab-environment/k8s/resilience.yaml
++++ b/k3s/apps/lab-environment/k8s/resilience.yaml
+@@ -47,6 +47,44 @@ spec:
+   # Pinned to the stable subset: this pin is the routing baseline every
+   # routing demo (docs/demo/09-13) returns to, and demo-reset checks it.
+   http:
++    # Demo-only fault injection (docs/demo/15): requests carrying x-fault get
++    # a delay or an abort; everything else falls through to the stable pin.
++    - match:
++        - headers:
++            x-fault:
++              exact: delay
++      fault:
++        delay:
++          percentage:
++            value: 100
++          fixedDelay: 2s
++      route:
++        - destination:
++            host: customers-service.lab-environment.svc.cluster.local
++            subset: stable
++      timeout: 3s
++      retries:
++        attempts: 2
++        perTryTimeout: 1s
++        retryOn: connect-failure,refused-stream,unavailable,503
++    - match:
++        - headers:
++            x-fault:
++              exact: abort
++      fault:
++        abort:
++          percentage:
++            value: 100
++          httpStatus: 503
++      route:
++        - destination:
++            host: customers-service.lab-environment.svc.cluster.local
++            subset: stable
++      timeout: 3s
++      retries:
++        attempts: 2
++        perTryTimeout: 1s
++        retryOn: connect-failure,refused-stream,unavailable,503
+     - match:
+         - method:
+             exact: GET

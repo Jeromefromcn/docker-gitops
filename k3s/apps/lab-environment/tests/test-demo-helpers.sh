@@ -58,6 +58,7 @@ jq '.spec.http[0].mirror = {"subset":"canary"}' "$FAKE_VS_PINNED" > "$WORK/vs-mi
 jq '.spec.http = [{"match":[{"headers":{"x-canary":{"exact":"true"}}}],"route":[{"destination":{"subset":"canary"}}]}] + .spec.http' "$FAKE_VS_PINNED" > "$WORK/vs-header.json"
 jq '.spec.http[0].route[0].destination.subset = "canary"' "$FAKE_VS_PINNED" > "$WORK/vs-switched.json"
 jq 'del(.spec.http[0].route[0].destination.subset)' "$FAKE_VS_PINNED" > "$WORK/vs-unpinned.json"
+jq '.spec.http = [{"match":[{"headers":{"x-fault":{"exact":"abort"}}}],"fault":{"abort":{"httpStatus":503}},"route":[{"destination":{"subset":"stable"}}]}] + .spec.http' "$FAKE_VS_PINNED" > "$WORK/vs-fault.json"
 
 # Fixture: every business Deployment ready at the replica count git declares.
 : > "$FAKE_DEPLOYS"
@@ -286,6 +287,8 @@ has "$WORK/out" "off the stable pin: weights"
 if grep -q "wait --for=delete" "$FAKE_LOG"; then echo "FAIL reset waited for canary pods that cannot go"; fails=$((fails+1)); else echo "PASS reset did not wait"; fi
 FAKE_VS=$WORK/vs-header.json check "reset names a leftover header rule" 1 "$DEMO/demo-reset" preflight
 has "$WORK/out" "off the stable pin: subset canary+header match"
+FAKE_VS=$WORK/vs-fault.json check "reset names a leftover fault rule" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "off the stable pin: header match+fault"
 unset DEMO_REPO_ROOT
 
 # 11: exactly the marked requests reach the canary.
@@ -380,6 +383,27 @@ FAKE_CURL_HOOK=$WORK/hook14 check "14 passes: ejected, retried, no user error" 0
 has "$WORK/out" "answered 10 requests with 503 itself"
 E14=0 FAKE_CURL_HOOK=$WORK/hook14 check "14 fails when nothing was ejected" 1 "$DEMO/demo-evidence" bad-pod
 F14=2 FAKE_CURL_HOOK=$WORK/hook14 check "14 fails when a user saw an error" 1 "$DEMO/demo-evidence" bad-pod
+
+# 15: exactly the marked requests were delayed / aborted; aborts never
+# reached a pod; the generator never noticed.
+cp "$DEMO/scenarios/fault-injection.sh" "$DEMO_SCENARIO_DIR/"
+win fault-injection 1000 1300
+cat > "$WORK/hook15" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *".*DI.*"*) val "${D15:-10}" ;;
+  *".*FI.*"*) val "${A15:-10}" ;;
+  *"envoy_cluster_upstream_rq{"*"time=1000"*) val 4 ;;
+  *"envoy_cluster_upstream_rq{"*"time=1320"*) val "${U15:-4}" ;;
+  *"traffic-generator"*'!~'*) val 0 ;;
+  *"traffic-generator"*) val 300 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook15"
+FAKE_CURL_HOOK=$WORK/hook15 check "15 passes: 10 delayed, 10 aborted locally" 0 "$DEMO/demo-evidence" fault-injection
+A15=11 FAKE_CURL_HOOK=$WORK/hook15 check "15 fails when an unmarked request was aborted" 1 "$DEMO/demo-evidence" fault-injection
+U15=9 FAKE_CURL_HOOK=$WORK/hook15 check "15 fails when an abort reached a pod" 1 "$DEMO/demo-evidence" fault-injection
 
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
