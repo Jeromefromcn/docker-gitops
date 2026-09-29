@@ -117,6 +117,9 @@ check "evidence refuses open window" 2 "$DEMO/demo-evidence" t1
 DEMO_NOW=1300 check "stop" 0 "$DEMO/demo-window" stop t1
 has "$DEMO_STATE_DIR/t1.window" "WINDOW_START=1000"
 has "$DEMO_STATE_DIR/t1.window" "WINDOW_END=1300"
+DEMO_NOW=1350 check "second stop" 0 "$DEMO/demo-window" stop t1
+has "$WORK/out" "already stopped"
+has "$DEMO_STATE_DIR/t1.window" "WINDOW_END=1300"
 DEMO_NOW=1400 check "restart" 0 "$DEMO/demo-window" start one
 DEMO_NOW=1500 "$DEMO/demo-window" stop one >/dev/null
 DEMO_NOW=2000 "$DEMO/demo-window" start one >/dev/null

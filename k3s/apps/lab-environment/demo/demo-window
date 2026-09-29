@@ -16,8 +16,12 @@ case $action in
     echo "window $s started $(iso "$t")" ;;
   stop)
     [ -f "$WINDOW_FILE" ] || die "no window started for '$s'"
+    # A second stop would silently stretch the window past the scenario.
+    if e=$(grep -oP '^WINDOW_END=\K.*' "$WINDOW_FILE"); then
+      echo "demo: window $s already stopped $(iso "$e") — kept; run 'demo-window start $s' to redo it" >&2
+      exit 0
+    fi
     t=$(now)
-    sed -i '/^WINDOW_END=/d' "$WINDOW_FILE"
     echo "WINDOW_END=$t" >> "$WINDOW_FILE"
     echo "window $s stopped $(iso "$t")" ;;
   *) die "usage: demo-window start|stop <scenario>" ;;
