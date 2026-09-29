@@ -13,7 +13,7 @@ Built on [2a's framework](2026-09-27-lab-demo-runbook-framework-design.md) (fixe
 | 3 and 4 together? | No. Designed jointly (§5 of this spec), implemented separately, 3 first | 3 alone spans two repos and four mechanisms. 4 builds on 3's image source — doing 4 first on local images would be reworked once 3 lands. 4 is still not agreed |
 | What a lane deploys | **Only the services the PR changes**; every other hop is the baseline | Demonstrates the real mechanism (header propagation + per-hop routing), and one lane costs about one JVM (384Mi). Deploying all four services per lane would cost ~1.5Gi and fit nowhere |
 | How a lane knows its services | **PR label `lane:<service>`**, one per service, several allowed | ApplicationSet cannot see a PR's changed files. A label is explicit, is a clear demo step, and is what hello's `pr-lane` label already does. Auto-labelling from the diff can be added later on top without changing anything here |
-| Capacity | Lanes live in `lab-environment` and **share the blue-green headroom**; at most 2 lane pods; mutually exclusive with page 10's 5-replica green | The quota and the node have no other room (§3). Same namespace keeps ServiceAccounts, so postgres/redis principals need no change |
+| Capacity | Lanes live in `lab-environment` and **share the blue-green headroom**; at most 2 lane pods; mutually exclusive with page 12's 5-replica green | The quota and the node have no other room (§3). Same namespace keeps ServiceAccounts, so postgres/redis principals need no change |
 | Baseline images | **Migrate the baseline to signed GHCR images too**, including `customers-service-canary` (`lab-v2`) | Otherwise the story is "PR images are signed, production is not". Adds negative evidence: an unsigned or locally built image is refused at admission |
 | Lane routing | **One header-only HTTPRoute per lane**, parented on the baseline Service; the resident VirtualServices are not touched | Phase I observed that on one host, HTTPRoute rules are evaluated before VirtualService rules: a header-only HTTPRoute captures only the lane's requests and everything else falls through to the VirtualService. Pages 09–13 stay untouched. Per-lane VirtualServices on the same host are undefined in the mesh (merging is gateway-only); a static rule in the resident VS allows one lane per service and edits customers' VS |
 
@@ -26,27 +26,29 @@ Built on [2a's framework](2026-09-27-lab-demo-runbook-framework-design.md) (fixe
 | Trigger | Builds |
 |---|---|
 | push to `main` or `lab-v2` | all four services (baseline, canary) |
-| `pull_request` (`opened`, `synchronize`, `reopened`, `labeled`) | only the services with a `lane:<service>` label on the PR |
+| `pull_request` (`opened`, `synchronize`, `reopened`) | the services whose `spring-petclinic-<service>/` directory the PR changes; all four if the root `pom.xml` or `docker/` changes |
+| `workflow_dispatch` (inputs `sha`, `unsigned`) | all four at a given commit — used to build the two `lab-v2` commits the canary patches pin (`ce942c9` v2, `16b18eb` v2-bad), and to publish the unsigned negative-test image `ghcr.io/jeromefromcn/petclinic-unsigned:demo` |
 
+- Why not by label: a label triggers the ApplicationSet (polling every 30 s) and CI at the same moment, so the lane pod would be created minutes before its image is signed and Kyverno would refuse it (`FailedCreate`, then ReplicaSet backoff). Building on every PR push means the image is signed before anyone adds the label; the page waits for CI, then labels.
 - One matrix job per service, on GitHub's native arm64 runner (`ubuntu-24.04-arm`, free for public repos), running the fork's Maven `-PbuildDocker` build. No QEMU: emulation crashes in the Spring Boot layertools extract step (recorded in `lab-environment/scripts/build.sh`).
 - Image `ghcr.io/jeromefromcn/petclinic-<service>`. Tag: the PR **head SHA** on `pull_request` (not the merge SHA — hello's pitfall), `github.sha` otherwise.
 - Same shape as `.github/workflows/hello-backend.yml` after the build: push → Trivy (`CRITICAL`, `ignore-unfixed`, fail) → Cosign keyless sign by digest.
 - GHCR packages are public, so the cluster needs no pull secret.
 - The fork's existing `maven-build.yml` is left as is.
 
-**Baseline promotion stays git-first**: once CI has published a tag, a commit in this repo changes the image in `k3s/apps/lab-environment/k8s/*.yaml`. No Image Updater — "a release is a git commit" stays true for the demo. `lab-environment/scripts/build.sh` and the local import into oracle2's containerd are marked retired for the k3s lab in its README (the lab-environment repo's own docker-compose use of `ops-lab/*` is out of scope).
+**Baseline promotion stays git-first**: once CI has published a tag, a commit in this repo changes the image in `k3s/apps/lab-environment/k8s/*.yaml`. Baseline refs are digest-pinned (`@sha256:<digest>` with a `# fork <sha12>` comment) because `restrict-image-registry` keeps the default `verifyDigest: true`. No Image Updater — "a release is a git commit" stays true for the demo. `lab-environment/scripts/build.sh` and the local import into oracle2's containerd are marked retired for the k3s lab in its README (the lab-environment repo's own docker-compose use of `ops-lab/*` is out of scope).
 
 **Kyverno**:
 
 - `restrict-image-registry`: `subjectRegExp` also accepts `^https://github\.com/Jeromefromcn/spring-petclinic-microservices/\.github/workflows/[^/]+\.yml@refs/heads/(main|lab-v2)$`; the rule additionally excludes Pods carrying the `lab.jerome/lane` label.
 - New `restrict-image-registry-lab-lanes`: matches Pods in `lab-environment` **with** the `lab.jerome/lane` label; accepts the fork's `refs/pull/[0-9]+/merge` subject (as well as `main`) with `verifyDigest: false`, mirroring `restrict-image-registry-pr-lanes`.
 - New validate rule `lab-business-images-from-ghcr`: in `lab-environment`, Pods whose `app` is one of the four services (or its `-lane` variant) must use `ghcr.io/jeromefromcn/*` images. `verifyImages` only checks references that match `ghcr.io/jeromefromcn/*` — on its own it would still admit a locally built `ops-lab/*` image, so without this rule "only CI-signed images run" would be false.
-- `require-vuln-scan-clean`: the `app` list gains the four lab services and their `-lane` variants.
+- `require-vuln-scan-clean`: the `app` list gains the four lab services. It only bites when a VulnerabilityReport exists, and lab pods carry `trivy-operator.skip` (added 2026-09-24 because local `ops-lab/*` images could not be scanned). The four baseline Deployments drop that label once they run GHCR images; `customers-service-canary` (normally 0 replicas) and lane pods keep it — lanes are short-lived and CI's Trivy step is their gate. As for hello, a new ReplicaSet's first pod is admitted before its report exists; CI's Trivy step is the primary gate.
 - **Order**: the Kyverno changes are deployed and confirmed before any lab image is switched, with `lab-business-images-from-ghcr` in `Audit` until the switch is complete and `Enforce` after. Switching first would have the old rule refuse every new pod for the wrong signer; enforcing the registry rule first would refuse the current `ops-lab/*` pods on their next restart.
 
 Known gap, accepted: anyone able to create a Pod in `lab-environment` can add the lane label and get the looser signer rule. This is a single-operator cluster; the rule is confined to one namespace. Recorded in the policy's comment.
 
-Possible owner action: the ApplicationSet's `github-pr-generator-token` may be a fine-grained PAT scoped to `docker-gitops` only; if so it needs read access to the fork's pull requests. Checked during implementation, raised only if needed.
+Owner action (confirmed): `k3s/README.md` "Rotating the GitHub PAT" scopes the ApplicationSet's `github-pr-generator-token` to `Jeromefromcn/docker-gitops` only, so the owner must regenerate it with the fork added.
 
 ### 2. Lanes
 
@@ -80,16 +82,16 @@ Possible owner action: the ApplicationSet's `github-pr-generator-token` may be a
 Measured 2026-09-29: lab quota 5424Mi used of 9472Mi — the remaining ~4Gi is the derived room for a 5-replica blue-green green (1920Mi), one surge pod per rolling Deployment (1824Mi) and the `db-init` hook (64Mi). vps-oracle2's 10263Mi allocatable already holds the full quota plus ~640Mi of DaemonSets. There is no unreserved room for lanes, and the owner's rule is that `FailedCreate` / `Pending` are not acceptable.
 
 - **At most 2 lane pods at once** (768Mi / 40m), inside the blue-green headroom. Quota unchanged.
-- **Mutually exclusive with page 10's 5-replica green**, enforced by process in three places: page 10's preconditions ("no lane pods"), page 18's preconditions ("green at 0"), and `demo-reset`'s routing baseline check, which fails on any Pod carrying `lab.jerome/lane`.
+- **Mutually exclusive with page 12's 5-replica green**, enforced by process in three places: page 12's preconditions ("no lane pods"), page 18's preconditions ("green at 0"), and `demo-reset`'s routing baseline check, which fails on any Pod carrying `lab.jerome/lane`.
 - The 2-lane cap is written in the runbook and the quota's derivation comment (`k8s/namespace.yaml`, README), not in an admission rule.
 
 ### 4. Runbook, evidence, tests
 
 **Page `docs/demo/18-pr-lane.md`**, fixed structure:
 
-- **Flow**: open a PR on the fork that changes a visible field in visits' response → add label `lane:visits-service` → CI builds, scans, signs → ArgoCD shows `lab-visits-service-pr-<N>` → the same URL with and without `x-pr-lane: <N>`, side by side → close the PR → the lane disappears.
+- **Flow**: open a PR on the fork whose visible change is a response header `X-Visits-Build: lane`, added by a commit on the fork branch `demo/pr-lane` (kept for reuse: the PR is closed, not merged) → wait for CI → add label `lane:visits-service` → CI builds, scans, signs → ArgoCD shows `lab-visits-service-pr-<N>` → the same URL with and without `x-pr-lane: <N>`, side by side → close the PR → the lane disappears.
 - **Evidence** (★ = infrastructure layer):
-  - ★ Kyverno: the lane pod passed `restrict-image-registry-lab-lanes` (admission event / PolicyReport).
+  - ★ Kyverno: the lane pod passed `restrict-image-registry-lab-lanes` — the Pod annotation `kyverno.io/verify-images` (`{"<image>":"pass"}`), confirmed on hello's pods 2026-09-29.
   - ★ Negative: server-side dry-runs in `lab-environment` of an unsigned GHCR image and of an `ops-lab/*` image are both refused.
   - ★ waypoint access log: header requests go upstream to `visits-service-pr-<N>`, the rest to `visits-service`.
   - ★ ArgoCD: the Application's creation and deletion times against the label and close events.
@@ -97,7 +99,7 @@ Measured 2026-09-29: lab quota 5424Mi used of 9472Mi — the remaining ~4Gi is t
 - **Talking points**: lanes deliberately do not inherit retries and outlier detection (a test lane is not production traffic); the HTTPRoute-before-VirtualService ordering and why an unconditional HTTPRoute would swallow the host (phase I); head SHA vs merge SHA; why `verifyImages` alone does not stop a local image; the lane label's looser signer rule and its namespace confinement.
 - **Reset**: close the PR or remove the label.
 
-Demo order: 18 goes after the routing scenarios (09–13) and before resilience; it must not overlap 10.
+Demo order: 18 goes after the routing scenarios (09–13) and before resilience; it must not overlap 12.
 
 **Tests**:
 
@@ -120,7 +122,7 @@ Constraints 4's spec must honour; nothing here implements 4.
 
 - A Rollout's canary pod takes that service's surge slot (384Mi of the 1824Mi surge budget) — one canary or surge pod at a time per release, so the quota is unchanged.
 - The Rollouts controller runs in its own `argo-rollouts` namespace, outside the lab quota and outside the Kyverno mutate that pins `lab-environment` to oracle2, so it schedules on vps_oracle. 4's spec measures its memory and checks vps_oracle's headroom.
-- Lane demos, page 10's blue-green and a Rollout release share oracle2's headroom **in time, not in space**. `demo-reset`'s check covers lane leftovers now and must cover "no Rollout mid-release" once 4 exists.
+- Lane demos, page 12's blue-green and a Rollout release share oracle2's headroom **in time, not in space**. `demo-reset`'s check covers lane leftovers now and must cover "no Rollout mid-release" once 4 exists.
 
 **Kyverno**
 
@@ -139,7 +141,7 @@ Every push touching `k3s/` is approved by the owner first.
 3. Kyverno rule changes (`lab-business-images-from-ghcr` in `Audit`).
 4. Switch the baseline Deployments and the canary to the GHCR images (one rolling release); then `lab-business-images-from-ghcr` to `Enforce`.
 5. `lane-direct` policy, `lanes/<service>/` kustomize, the ApplicationSet (generator token checked).
-6. Page 18, `demo-reset` / baseline check, tests, page 10's precondition, README and quota comment.
+6. Page 18, `demo-reset` / baseline check, tests, page 12's precondition, README and quota comment.
 7. One full rehearsal; its saved evidence is the scenario's backup.
 
 ## Acceptance criteria
