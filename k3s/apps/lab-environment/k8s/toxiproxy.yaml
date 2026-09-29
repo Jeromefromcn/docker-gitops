@@ -1,3 +1,14 @@
+# Its own identity even at rest, although nothing admits it then: postgres
+# and redis grant it only while docs/demo/17 runs. Resident on purpose - a
+# demo patch that adds and later reverts serviceAccountName leaves the
+# API-server-defaulted serviceAccount field behind, which re-defaults the
+# name and blocks new pods once the ServiceAccount is gone.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: toxiproxy
+  namespace: lab-environment
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,6 +29,7 @@ spec:
         trivy-operator.skip: "true"
         app: toxiproxy
     spec:
+      serviceAccountName: toxiproxy
       enableServiceLinks: false
       containers:
         - name: toxiproxy
