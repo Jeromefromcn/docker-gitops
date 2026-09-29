@@ -456,6 +456,41 @@ has "$WORK/out" "waypoint-a 20"
 V16=170 FAKE_CURL_HOOK=$WORK/hook16 check "16 fails when every request reached vets" 1 "$DEMO/demo-evidence" rate-limit
 G16=3 FAKE_CURL_HOOK=$WORK/hook16 check "16 fails when steady traffic was limited" 1 "$DEMO/demo-evidence" rate-limit
 
+# 08: shed fast, admitted P99 flat, node and pool out of saturation; the
+# minute table survives a run across UTC midnight.
+cp "$DEMO/scenarios/load-test.sh" "$DEMO_SCENARIO_DIR/"
+win load-test 86100 86520
+mr() { printf '{"data":{"result":[{"metric":{},"values":[[86280,"%s"],[86340,"%s"],[86400,"%s"],[86460,"%s"],[86520,"%s"]]}]}}' "$@"; }
+export -f mr
+cat > "$WORK/hook08" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"query_range"*"histogram_quantile"*)
+    if [ -n "${GAP08:-}" ]; then printf '{"data":{"result":[{"metric":{},"values":[[86280,"70"],[86400,"90"],[86460,"95"],[86520,"99"]]}]}}'
+    else mr 70 80 90 95 99; fi ;;
+  *"query_range"*) mr 10 20 40 60 80 ;;
+  *'response_code="429"'*) val "${S08:-500}" ;;
+  *'response_code="200"'*) val "${P08:-180}" ;;
+  *'id="/"'*) val "${N08:-1.1}" ;;
+  *"cfs_throttled"*) res '{"metric":{"pod":"vets-service-x"},"value":[0,"0.1"]}' ;;
+  *"hikaricp_connections_acquire_seconds_max"*) res "{\"metric\":{\"service\":\"vets-service\"},\"value\":[0,\"${H08:-0.1}\"]}" ;;
+  *"container_memory_working_set_bytes"*) val 402653184 ;;
+  *"/api/prometheus/grafana"*) echo '{"data":{"alerts":[]}}' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook08"
+FAKE_CURL_HOOK=$WORK/hook08 check "08 passes: shed, flat, unsaturated" 0 "$DEMO/demo-evidence" load-test
+for m in "23:58" "23:59" "00:00" "00:01" "00:02"; do has "$WORK/out" "      $m "; done
+got=$(grep -oE '^      [0-9]{2}:[0-9]{2} ' "$WORK/out" | tr -d ' ' | paste -sd' ')
+[ "$got" = "23:58 23:59 00:00 00:01 00:02" ] && echo "PASS 08 minute table in time order across midnight" || { echo "FAIL 08 minute table order: '$got'"; fails=$((fails+1)); }
+GAP08=1 FAKE_CURL_HOOK=$WORK/hook08 check "08 run with a minute missing from one series (4 P99 points: fails the >= 5 rule)" 1 "$DEMO/demo-evidence" load-test
+got=$(grep -oE '^      [0-9]{2}:[0-9]{2} ' "$WORK/out" | tr -d ' ' | paste -sd' ')
+[ "$got" = "23:58 00:00 00:01 00:02" ] && echo "PASS 08 minute table keeps every joined minute across midnight" || { echo "FAIL 08 minute table with a gap: '$got'"; fails=$((fails+1)); }
+N08=1.8 FAKE_CURL_HOOK=$WORK/hook08 check "08 fails when the node saturated" 1 "$DEMO/demo-evidence" load-test
+S08=0 FAKE_CURL_HOOK=$WORK/hook08 check "08 fails when nothing was shed" 1 "$DEMO/demo-evidence" load-test
+H08=2.9 FAKE_CURL_HOOK=$WORK/hook08 check "08 fails when vets still queued for connections" 1 "$DEMO/demo-evidence" load-test
+
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
   echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))

@@ -1,14 +1,19 @@
-# 08 — Load test: capacity baseline and bottleneck
+# 08 — Load test: capacity and overload protection
 
 ## Purpose
-Find the request rate at which P99 departs, and prove from the platform's
-own metrics what saturated — a capacity number with a cause, not a guess.
+Drive the lab past its measured knee and show the overload protection
+holding: the excess is refused in milliseconds at the waypoint, the
+admitted requests stay fast, and neither the node nor vets' DB pool
+saturates — the same load that broke the lab in 2a.
 
 ## Preconditions
-Scenarios 01–06 are done (this overloads the node; nothing runs after it).
-**This will likely fire the production `Lab API Down` alert (Telegram)** —
-a real load test runs under real alerting. The load comes from vps_oracle:
-a generator on vps-oracle2 would share the 2 cores it is measuring.
+Scenarios 01–06 and 16 are done (this overloads the node; nothing runs
+after it). **Say before the run:** the production `Lab API Down` probe
+reads `/api/vet/vets`, the very path the limiter protects, so under this
+load the probe itself gets 429s and may page (Telegram) — a real limiter
+protecting a real bottleneck, under real alerting. The load comes from
+vps_oracle: a generator on vps-oracle2 would share the 2 cores it is
+measuring.
 
 ## Commands
 ```bash
@@ -23,8 +28,26 @@ demo-evidence load-test
 on this host — see `vps_oracle/host-native/npm-nodeport-relay/`.)
 
 ## Expected result
-k6 steps 5 → 80 req/s over 6 minutes. Rehearsal 2026-09-27 (10 613
-requests, 0.85 % failed, k6 P99 970 ms):
+k6 steps 5 → 80 req/s over 6 minutes. Rehearsal 2026-09-29 (10 647
+requests, 12.9 % "failed" — all of them 429s from the limiter; k6 P99
+153 ms, max 565 ms):
+
+| minute ending | waypoint RPS | P99 (ms) |
+|---|---|---|
+| 02:59 | 9 | 38 |
+| 03:00 | 17 | 42 |
+| 03:01 | 31 | 44 |
+| 03:02 | 51 | 90 |
+| 03:03 | 71 | 214 |
+
+1 430 vets-service requests were shed with `429` (none needed the pool's
+`UO`); admitted requests' P99 over the whole run was 162 ms; the node
+peaked at 1.06 of 2 cores; the longest wait for a DB connection anywhere
+was 0.06 s.
+
+### Before protection (2a, 2026-09-27)
+
+10 613 requests, 0.85 % failed, k6 P99 970 ms:
 
 | minute ending | waypoint RPS | P99 (ms) |
 |---|---|---|
@@ -33,37 +56,45 @@ requests, 0.85 % failed, k6 P99 970 ms):
 | 14:24 | 51 | 145 |
 | 14:25 | 70 | 842 |
 
-P99 first departs around **30 req/s** and breaks at ~70. 89 of 92
+P99 first departed around **30 req/s** and broke at ~70. 89 of 92
 timeouts were `vets-service`; its DB connection pool made requests wait
 up to 3 s for a connection while the node still had CPU to spare (peak
 1.29 of 2 cores, no business container throttled).
 
 ## Evidence
-- **Envoy:** waypoint RPS and P99 per minute for api-gateway; upstream
-  timeouts (`UT`) grouped by upstream — the hop that gave out first.
-- **cAdvisor:** peak node CPU on vps-oracle2 and the most-throttled container.
-- **App:** the saturated resource, chosen from the measurements — node CPU
-  (≥ 1.6 cores or a container ≥ 50 % throttled) and/or a service's Hikari
-  pool (`hikaricp_connections_acquire_seconds_max` ≥ 0.5 s).
-- Notes: the `Lab CPU Throttling` state; k6's own summary above.
+- **Envoy:** waypoint RPS and P99 per minute for api-gateway (joined on
+  timestamps, so a run across UTC midnight keeps every row in order).
+- **Envoy:** vets-service requests shed fast — `429` from the limiter or
+  `UO` from the pool — must be > 0.
+- **Envoy:** admitted (`200`) requests' P99 over the whole run ≤ 400 ms.
+- **cAdvisor:** peak node CPU on vps-oracle2 < 1.6 cores (not saturated);
+  the most-throttled container for reference.
+- **App:** the longest wait for a DB connection (Hikari acquire max)
+  < 0.5 s — 2a measured 2.99 s.
+- Notes: vets-service's peak working set (ledger D) and the
+  `Lab CPU Throttling` state; k6's own summary above.
 - Grafana → Lab Mesh Overview: P99 panel and the capacity row.
 
 ## Talking points
 - Open model (fixed arrival rate): a closed model would slow its own
   request rate as latency grows and hide the knee.
-- **The bottleneck was a hypothesis, and it was wrong.** Five 1000m-limit
-  JVMs on two cores looked CPU-bound on paper; the measurement says the
-  single vets-service replica's pool of 5 DB connections gave out first,
-  with CPU still spare. Scaling the node would not have moved the knee.
-- The 1 s per-try timeout turns pool waits into 504s instead of slow 200s;
-  the gateway's circuit breaker covers only the visits call, so `/api/vet/vets`
-  has no fallback.
-- Knee → headroom: steady traffic is ~1 req/s; ~30 req/s is where capacity
-  planning starts.
-- What the lab cannot show yet: overload protection (rate limiting, outlier
-  ejection shielding `/api/vet/vets`) is sub-project 2c; horizontal
-  autoscaling is not built yet — this run says more vets replicas or a
-  larger pool, not more CPU, is the first lever.
+- **The bottleneck was a hypothesis, and it was wrong** (2a). Five
+  1000m-limit JVMs on two cores looked CPU-bound on paper; the measurement
+  said the single vets-service replica's pool of 5 DB connections gave out
+  first, with CPU still spare.
+- **The limit came from that measured knee.** ~30 req/s at the edge, a
+  quarter to vets: vets queues at ~7.5 req/s; the limiter admits 6 (16).
+- **Excess fails in milliseconds instead of queueing 3 s for a
+  connection.** Same load as 2a: the P99 of what is admitted stays low,
+  and the excess gets an immediate, honest 429.
+- **Two different guards.** The `429` comes from the Lua limiter (rate);
+  `503 UO` would come from vets' DestinationRule (`http1MaxPendingRequests:
+  5` — queue depth). In the rehearsal the limiter held the rate low enough
+  that the queue never overflowed.
+- **The probe got limited too.** `Lab API Down` probes `/api/vet/vets`; in
+  the last minutes of the rehearsal its checks got 429s. The limiter does
+  not know a monitor from a user — which is the honest trade-off to say out
+  loud.
 - Envoy is cheap: at ~68 req/s the waypoint peaked at ~80m and the
   ingress at ~36m, unthrottled (measured 2026-09-28, after CPU requests
   were cut to steady-state usage).
