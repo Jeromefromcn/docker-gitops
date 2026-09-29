@@ -315,7 +315,7 @@ data:
             for: 2m
             noDataState: OK
             annotations:
-              summary: "lab-environment-quota requests above 90% of hard"
+              summary: "A lab-environment-quota resource (CPU or memory requests, or any other quota item) above 90% of hard"
             data:
               - refId: A
                 datasourceUid: prometheus
@@ -369,6 +369,24 @@ data:
               - refId: B
                 datasourceUid: '__expr__'
                 model: {refId: B, type: threshold, expression: A, conditions: [{evaluator: {type: gt, params: [0]}}]}
+          # Every rule above reads kube-state-metrics and has noDataState OK,
+          # so a KSM outage would silence all of them at once. This one is
+          # the opposite: no data is itself the alert.
+          - uid: lab_ksm_down
+            title: Lab KSM Down
+            condition: B
+            for: 3m
+            noDataState: Alerting
+            annotations:
+              summary: "kube-state-metrics is not being scraped - the other Lab Capacity rules cannot fire while it is down"
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: {from: 300, to: 0}
+                model: {refId: A, instant: true, expr: 'max(up{job="kube-state-metrics"})'}
+              - refId: B
+                datasourceUid: '__expr__'
+                model: {refId: B, type: threshold, expression: A, conditions: [{evaluator: {type: lt, params: [1]}}]}
 ---
 apiVersion: v1
 kind: ConfigMap

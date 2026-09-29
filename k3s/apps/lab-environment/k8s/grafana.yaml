@@ -20,7 +20,7 @@ spec:
       annotations:
         # Datasources and the dashboards provider are subPath mounts, which
         # do not pick up ConfigMap changes; this bumps a roll when they change.
-        lab.jerome/config-rev: "2"
+        lab.jerome/config-rev: "3"
     spec:
       enableServiceLinks: false
       containers:
