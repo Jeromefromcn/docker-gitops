@@ -1,0 +1,14 @@
+[Unit]
+Description=Hand-written host firewall rules (single source of truth: vps_oracle2/host-native/host-firewall/)
+After=network-online.target
+Wants=network-online.target
+# Replaces netfilter-persistent full-snapshot persistence (disabled on vps-oracle2 2026-09-29;
+# see vps_oracle/host-native/host-firewall/README.md for why).
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/host-firewall.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
