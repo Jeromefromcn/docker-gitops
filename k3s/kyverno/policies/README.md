@@ -15,7 +15,9 @@
   local `ops-lab/*` build would be admitted unverified.
 - `require-vuln-scan-clean.yaml` — Trivy CVE gate via Trivy Operator's
   `VulnerabilityReport` CRDs, narrowed 2026-08-18 to self-built images only
-  (same `app in (...)` scope as `restricted-self-built.yaml` below).
+  (same `app in (...)` scope as `restricted-self-built.yaml` below), plus
+  the lab's four business services since 2026-09-29 (their images moved to
+  Spring Boot 4.0.8 and CI gates on the same CVEs).
 - `restricted-self-built.yaml` — Kubernetes `restricted` Pod Security
   profile, scoped to the `placeholder-hello` Deployment by pod label
   (`vikunja-notify-relay` dropped 2026-08-18 — migrated back to compose,

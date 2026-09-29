@@ -28,6 +28,14 @@ spec:
                     values:
                       - hello-frontend
                       - hello-backend
+                      # lab-environment's business services (baseline only:
+                      # customers-service-canary and PR lane pods keep
+                      # trivy-operator.skip, so no report exists for them;
+                      # CI's Trivy gate covers their images).
+                      - api-gateway
+                      - customers-service
+                      - vets-service
+                      - visits-service
       context:
         - name: vulnreports
           apiCall:
