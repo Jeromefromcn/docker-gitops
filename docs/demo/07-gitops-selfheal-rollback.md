@@ -13,14 +13,22 @@ git pull --ff-only
 demo-window start gitops-selfheal-rollback
 # 1. Drift: someone scales by hand
 kubectl -n lab-environment scale deploy/customers-service --replicas=1
-kubectl -n lab-environment get deploy customers-service -w    # Ctrl-C when READY is 5/5 again
+# Watch READY drop and climb back to 5/5 (no Ctrl-C: it would drop the rest of this block)
+end=$((SECONDS + 300)); low=; last=
+while :; do
+  r=$(kubectl -n lab-environment get deploy customers-service -o jsonpath='{.status.readyReplicas}/{.spec.replicas}')
+  [ "$r" = "$last" ] || { echo "READY $r"; last=$r; }
+  if [ "$r" = 5/5 ]; then [ -z "$low" ] || break; else low=1; fi
+  [ $SECONDS -lt $end ] || { echo "READY WAIT TIMED OUT - stop here"; break; }
+  sleep 2
+done
 # 2. Rollback: revert 02's commit through git
 SHA=$(git log -1 --grep='^demo: rolling-restart customers-service$' --format=%H)
 git show --stat $SHA
 git revert --no-edit $SHA
-git push
+git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null
-until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do sleep 5; done
+end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
 kubectl -n lab-environment rollout status deploy/customers-service --timeout=6m
 demo-window stop gitops-selfheal-rollback
 demo-evidence gitops-selfheal-rollback

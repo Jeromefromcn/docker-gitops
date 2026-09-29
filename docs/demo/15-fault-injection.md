@@ -19,7 +19,7 @@ argocd app get lab-environment --core --refresh >/dev/null
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
 U=http://10.0.0.95:30097
 # Both waypoint replicas must have the new route before the window opens.
-ok=0; until [ $ok -ge 10 ]; do if [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-fault: abort' $U/api/customer/owners/1)" != 200 ]; then ok=$((ok + 1)); else ok=0; fi; sleep 0.5; done
+end=$((SECONDS + 120)); ok=0; until [ $ok -ge 10 ]; do [ $SECONDS -lt $end ] || { echo "ROUTE WAIT TIMED OUT - stop here"; break; }; if [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-fault: abort' $U/api/customer/owners/1)" != 200 ]; then ok=$((ok + 1)); else ok=0; fi; sleep 0.5; done
 sleep 20   # quiet gap: keeps the warm-up out of the window
 demo-window start fault-injection
 echo "delay:";    for i in $(seq 1 10); do curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H 'x-fault: delay' $U/api/customer/owners/1; done

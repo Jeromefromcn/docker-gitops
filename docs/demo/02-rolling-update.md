@@ -16,11 +16,11 @@ cur=$(grep -oP 'lab.jerome/rollout-rev: "\K[0-9]+' $F)
 sed -i "s|lab.jerome/rollout-rev: \"$cur\"|lab.jerome/rollout-rev: \"$((cur + 1))\"|" $F
 git diff
 git commit -m "demo: rolling-restart customers-service" -- $F
-git push
+git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null
 # Wait until ArgoCD has synced this commit (the PreSync hook runs first) —
 # otherwise rollout status reports the *old* rollout as done.
-until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do sleep 5; done
+end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
 kubectl -n lab-environment rollout status deploy/customers-service --timeout=6m
 demo-window stop rolling-update
 demo-evidence rolling-update

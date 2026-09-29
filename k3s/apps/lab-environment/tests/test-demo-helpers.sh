@@ -543,4 +543,18 @@ if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$
   echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))
 else echo "PASS no password on argv in the runbook pages"; fi
 
+# --- runbook pages: nothing in a pasted block can hang the demo -------------
+# Ctrl-C out of a watch also drops the rest of the pasted block, and a wait
+# with no deadline spins silently after a rejected push.
+if grep -nE 'kubectl[^|]* get [^|]*(-w|--watch)( |$)' "$HERE/../../../../docs/demo/"*.md; then
+  echo "FAIL a runbook page watches with kubectl get -w"; fails=$((fails+1))
+else echo "PASS no kubectl watch in the runbook pages"; fi
+out=$(awk '/^```bash/ { code = 1; next } /^```/ { code = 0; loop = 0; next }
+  code && !loop && /(^|;[ \t]*)(until|while)[ \t]/ { loop = 1; start = FNR; body = "" }
+  code && loop { body = body $0 }
+  code && loop && /(^|;[ \t]*)done([ ;]|$)/ { if (body !~ /SECONDS/) print FILENAME ":" start; loop = 0 }' \
+  "$HERE/../../../../docs/demo/"*.md)
+if [ -n "$out" ]; then echo "FAIL runbook wait loops without a deadline:"; sed 's/^/    /' <<< "$out"; fails=$((fails+1))
+else echo "PASS every runbook wait loop has a deadline"; fi
+
 [ $fails -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

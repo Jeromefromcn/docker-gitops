@@ -22,9 +22,9 @@ kubectl -n lab-environment create secret generic lab-db-credentials \
   > k3s/sealed-secrets/secrets/lab-db-credentials.sealed.yaml
 git diff --stat
 git commit -m "demo: rotate lab-db-credentials" -- k3s/sealed-secrets/secrets/lab-db-credentials.sealed.yaml
-git push
+git push || echo "PUSH FAILED - stop here"
 argocd app get sealed-secrets --core --refresh >/dev/null
-until [ "$(kubectl -n lab-environment get secret lab-db-credentials -o jsonpath='{.data.password}' | base64 -d)" = "$NEW" ]; do sleep 5; done; echo "Secret updated"
+end=$((SECONDS + 120)); until [ "$(kubectl -n lab-environment get secret lab-db-credentials -o jsonpath='{.data.password}' | base64 -d)" = "$NEW" ]; do [ $SECONDS -lt $end ] || { echo "SECRET WAIT TIMED OUT - stop here"; break; }; sleep 5; done; [ $SECONDS -ge $end ] || echo "Secret updated"
 # 2. Switch Postgres to the new password (via stdin, never on a command line).
 printf 'ALTER USER "%s" PASSWORD '"'"'%s'"'"';\n' "$U" "$NEW" | kubectl -n lab-environment exec -i deploy/postgres -- psql -U "$U" -d postgres
 # 3. Roll the three DB clients onto the new env.
@@ -34,9 +34,9 @@ for d in customers-service vets-service visits-service; do
   sed -i "s|lab.jerome/rollout-rev: \"$cur\"|lab.jerome/rollout-rev: \"$((cur + 1))\"|" $F
 done
 git commit -m "demo: roll services onto the rotated DB password" -- k3s/apps/lab-environment/k8s/{customers,vets,visits}-service.yaml
-git push
+git push || echo "PUSH FAILED - stop here"
 argocd app get lab-environment --core --refresh >/dev/null
-until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do sleep 5; done
+end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
 for d in customers-service vets-service visits-service; do kubectl -n lab-environment rollout status deploy/$d --timeout=8m; done
 unset NEW
 demo-window stop secret-rotation
@@ -87,6 +87,10 @@ sub-project 2c (mesh resilience); it is not hidden by loosening the note.
   now in the Secret: `kubectl -n lab-environment get secret lab-db-credentials
   -o jsonpath='{.data.password}' | base64 -d`), then step 3.
 - After step 2: old pods keep running on pooled connections; finish step 3.
+- At any point: the old password stays on disk (mode 600) at
+  `~/.local/state/lab-demo/secret-rotation.old`, saved by `demo-window
+  start` for the evidence's scram check, until `demo-reset secret-rotation`
+  deletes it. Run the reset even when abandoning the rotation.
 
 ## Reset
 `demo-reset secret-rotation` — deletes the saved old password, checks the
