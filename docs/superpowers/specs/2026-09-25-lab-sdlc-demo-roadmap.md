@@ -24,7 +24,7 @@ Ground rules agreed on 2026-09-25:
 | 2b | Routing scenarios | Canary by weight and by instance ratio, blue-green, header-based gray release / A/B, traffic mirroring — each needs a new Deployment or routing rules | 2a; CPU-requests ceiling lifted 2026-09-28 (see below) — memory is the next one, size it in 2b's spec | **Done 2026-09-28** — all 5 acceptance criteria pass; [spec](2026-09-28-lab-routing-scenarios-design.md) (implementation results at the end), [plan](../plans/2026-09-28-lab-routing-scenarios.md), runbook pages [09](../../demo/09-canary-instance-ratio.md)–[13](../../demo/13-mirror.md). Memory resolved by decommissioning dify and a 9.25Gi quota |
 | 2c | Resilience scenarios | One-misbehaving-pod outlier ejection, header-triggered fault injection, rate limiting on the lab waypoint, Toxiproxy in front of postgres/redis, overload protection under load (extends 2a's k6 script — its measured knee is ~30 req/s, bottleneck vets-service's 5-connection pool); ledger items C and D; 2a's open finding: `UF,URX` from the waypoint to new, Ready pods during concurrent rollouts | 2a | **Done 2026-09-29** — all 7 acceptance criteria pass; [spec](2026-09-28-lab-resilience-scenarios-design.md) (implementation results at the end), [plan](../plans/2026-09-28-lab-resilience-scenarios.md), runbook pages [14](../../demo/14-bad-pod.md)–[17](../../demo/17-toxiproxy.md) and a rewritten [08](../../demo/08-load-test.md). Ledger C measured (3 attempts, no compounding), ledger D closed (332Mi of 512Mi), 2a's `UF,URX` and 2b's two resilience findings closed as accepted with measured windows |
 | 3 | PR lanes for the lab | Fork CI → GHCR → Cosign; ApplicationSet lanes; lane header propagation; Kyverno signature verification for lab images | 1; ideally 2 so lanes get a runbook scenario | Not started |
-| 4 | Automated progressive delivery (optional) | Argo Rollouts with Istio traffic routing: stepped weights + Prometheus analysis + automatic rollback | 1, 2 | Proposed, not agreed |
+| 4 | Automated progressive delivery (optional) | Argo Rollouts with Istio traffic routing: stepped weights + Prometheus analysis + automatic rollback — on a service other than `customers-service`, so the manual (2b) and automated versions can be demoed side by side | 1, 2 | Proposed, not agreed; placement decided 2026-09-29 (see notes below) |
 | — | Runbook as a web page | Render `docs/demo/` as a page to present from | 2a (grows with 2b/2c) | Not started |
 | — | Production monitoring consumes kube-state-metrics | An `npm-nodeport-relay` instance for the NodePort 2a reserves (the compose Prometheus is a Docker-bridge container), a scrape job in the vps_oracle Prometheus, a k3s container dashboard, production alert rules | 2a (KSM deployed) | Not started |
 | — | 2a polish | The final review's 11 deferred minors, grouped by when to do them: group A before the next real demo (07's Ctrl-C, sync-wait timeouts, the 06 interruption note); group B with 2c; group C when next touching the file. See [2a spec → Deferred minors](2026-09-27-lab-demo-runbook-framework-design.md#deferred-minors-from-the-final-review) | 2a | **Done 2026-09-29.** Group B with 2c (KSM Down alert, Quota summary wording, 08's cAdvisor piece and midnight-safe minute table); groups A and C together afterwards — every runbook wait loop now has a deadline (also the route waits in 11 and 15, found on the way) and a test enforces it, 07 polls instead of `-w`, 03/04/`demo-window` fixes with stub tests, stub tests for 01/03/04/05/06's evidence, scenario scripts shellcheck-clean at warning level |
@@ -79,7 +79,22 @@ Scenario catalogue (mechanism built in sub-project 1 unless marked):
 
 ### Sub-project 4 — notes
 
-Only proposed. Argo Rollouts is the lightweight choice (native Istio VirtualService traffic routing, Prometheus analysis templates). It replaces sub-project 2's hand-driven canary with automatic promotion/rollback, so decide after sub-project 2 whether the manual version is enough for the interview story.
+Only proposed. Argo Rollouts is the lightweight choice (native Istio VirtualService traffic routing, Prometheus analysis templates).
+
+**Decided 2026-09-29: Rollouts goes on a different service than `customers-service`, and it complements 2b's manual releases rather than replacing them.** The demo must be able to show both the manual and the automated version and compare them side by side ("this is each step by hand; this is the same mechanism automated, with analysis and rollback").
+
+Why not `customers-service`:
+
+- All of 2b's scenarios (pages 09–13) are built on it: the separate `customers-service-canary` Deployment, the stable/canary subsets, and weights / header rules / mirror edited by hand in git.
+- A Rollout on it would take over that VirtualService's weights and rewrite them on every release, fighting any weight committed by hand; its own canary ReplicaSet would make `customers-service-canary` redundant. Pages 09–13 would have to be rewritten and the manual version would be gone.
+- Rollouts' own manual mode (`pause: {}` + `kubectl argo rollouts promote`) is still Rollouts' mechanism, not 2b's "edit the VirtualService in git" — it does not stand in for the manual demo.
+
+For its spec (not yet verified):
+
+- Hard requirement: `customers-service` and pages 09–13 stay unchanged.
+- Candidate service: `vets-service` already carries 16's rate limit and 08's load-test bottleneck, so a release on top would muddle evidence attribution; `visits-service` is touched by 17's Toxiproxy, but only temporarily. Settle it in the spec.
+- The chosen service needs its own VirtualService/DestinationRule for Rollouts to manage, `routing_baseline` (and so `demo-reset`) extended to check it, and ArgoCD `ignoreDifferences` for the weights Rollouts writes at runtime — otherwise selfHeal treats them as drift and reverts them.
+- The Rollouts controller needs room in oracle2's CPU/memory budget and the lab quota.
 
 ## Out of scope of every sub-project
 
