@@ -9,19 +9,6 @@ metadata:
   name: toxiproxy
   namespace: lab-environment
 ---
-# Demo-only (docs/demo/17): the two proxies visits-service is pointed at.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: toxiproxy-config
-  namespace: lab-environment
-data:
-  toxiproxy.json: |
-    [
-      {"name": "postgres", "listen": "0.0.0.0:5432", "upstream": "postgres:5432", "enabled": true},
-      {"name": "redis", "listen": "0.0.0.0:6379", "upstream": "redis:6379", "enabled": true}
-    ]
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -44,17 +31,9 @@ spec:
     spec:
       serviceAccountName: toxiproxy
       enableServiceLinks: false
-      volumes:
-        - name: config
-          configMap:
-            name: toxiproxy-config
       containers:
         - name: toxiproxy
           image: ghcr.io/shopify/toxiproxy:2.9.0
-          args: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
-          volumeMounts:
-            - name: config
-              mountPath: /config
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
@@ -63,7 +42,7 @@ spec:
               cpu: 10m
               memory: 16Mi
             limits:
-              cpu: 200m
+              cpu: 25m
               memory: 32Mi
 ---
 apiVersion: v1
@@ -78,9 +57,3 @@ spec:
     - port: 8474
       targetPort: 8474
       name: api
-    - port: 5432
-      targetPort: 5432
-      name: postgres
-    - port: 6379
-      targetPort: 6379
-      name: redis
