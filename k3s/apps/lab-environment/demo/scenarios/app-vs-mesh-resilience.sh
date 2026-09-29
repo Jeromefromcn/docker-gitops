@@ -19,10 +19,10 @@ evidence_app_vs_mesh_resilience() {
 }
 
 reset_app_vs_mesh_resilience() {
-  local i slow=0 r
+  local slow=0 r
   curl -sf -X PUT -d false "$CONSUL/v1/kv/chaos/visits-service/redis-timeout" >/dev/null
   sleep 10   # the fork's ChaosToggleWatcher polls every 5 s
-  for i in $(seq 1 10); do
+  for _ in $(seq 1 10); do
     r=$(curl -s -o /dev/null -w '%{http_code} %{time_total}' "$INGRESS/api/customer/owners/6/visits")
     case $r in "200 0."*) ;; *) slow=$((slow + 1)) ;; esac
   done

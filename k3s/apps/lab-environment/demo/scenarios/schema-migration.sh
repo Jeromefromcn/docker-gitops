@@ -1,4 +1,5 @@
 # 03 — no action of its own: reads the PreSync hook out of 02's sync.
+# shellcheck disable=SC2034  # read by demo-evidence after sourcing this file
 WINDOW_FROM=rolling-update
 
 evidence_schema_migration() {

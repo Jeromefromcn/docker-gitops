@@ -19,7 +19,7 @@ scram_try() {
 }
 
 evidence_secret_rotation() {
-  local hist upd ok old new created d want c total bad
+  local hist upd ok old new d want c total bad
   hist=$(argocd app get sealed-secrets --core -o json \
     | jq -r --arg s "$(iso "$WINDOW_START")" '[.status.history[] | select(.deployedAt >= $s)] | length')
   rec_if argocd "sealed-secrets app deployments inside the window: $hist (want >= 1)" [ "$hist" -ge 1 ]
