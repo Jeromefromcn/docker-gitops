@@ -349,7 +349,7 @@ Note: `kustomize.images` in `pr-lanes-appset.yaml` uses the **plain string form*
 The generator authenticates to GitHub via a fine-grained PAT, sealed into `sealed-secrets/secrets/github-pr-generator-token.sealed.yaml` (see "Sealed Secrets" above for the general pattern). Token creation itself can't be automated the way a `kubeseal` migration can — it's a manual step on github.com:
 
 1. github.com → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token.
-2. Repository access: **Only** `Jeromefromcn/docker-gitops`. Permissions: **Pull requests: Read-only**, **Contents: Read-only** (the generator only lists/reads PRs, never writes anything). Expiration: your call — read-only, single-repo, low blast radius, but fine-grained PATs cap out at 1 year so this needs periodic repeating.
+2. Repository access: **Only** `Jeromefromcn/docker-gitops`. Permissions: **Pull requests: Read-only**, **Contents: Read-only** (the generator only lists/reads PRs, never writes anything). `lab-lanes` reads the public fork `Jeromefromcn/spring-petclinic-microservices` with the same token — fine-grained PATs always have read access to public repositories, so the fork needs no entry here. Expiration: your call — read-only, single-repo, low blast radius, but fine-grained PATs cap out at 1 year so this needs periodic repeating.
 3. Reseal with the new value, **overwriting the existing file** (unlike a fresh migration, there's no old bare Secret to delete first — the controller already owns this Secret's name and updates it in place on the next sync):
    ```bash
    kubectl create secret generic github-pr-generator-token \

@@ -12,5 +12,5 @@ never hand-written.
 
 | File | Namespace | Purpose |
 |---|---|---|
-| `github-pr-generator-token.sealed.yaml` | `argocd` | Fine-grained GitHub PAT for the `pr-lanes` ApplicationSet PR generator |
+| `github-pr-generator-token.sealed.yaml` | `argocd` | Fine-grained GitHub PAT for the `pr-lanes` and `lab-lanes` ApplicationSet PR generators |
 | `lab-db-credentials.sealed.yaml` | `lab-environment` | PostgreSQL user/password for the lab (postgres, business services, `db-init` Job) |
