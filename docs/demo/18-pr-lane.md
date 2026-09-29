@@ -10,7 +10,7 @@ checks out, and gone when the PR closes.
 Preflight passed; 12 reset (the green is at 0 — a lane uses the same
 memory headroom, so the two never run together); no Rollout of
 visits-service in progress. The fork's `demo/pr-lane` branch is based on
-the current fork `main` (`git -C ../spring-petclinic-microservices log --oneline main..demo/pr-lane` shows exactly one commit; rebase it if `main` moved).
+the current fork `main` (`git -C ../spring-petclinic-microservices log --oneline main..demo/pr-lane` shows exactly one commit; rebase it if `main` moved). The fork has the `lane:<service>` labels (created 2026-09-29; `gh label list -R Jeromefromcn/spring-petclinic-microservices | grep lane:`).
 
 ## Commands
 ```bash

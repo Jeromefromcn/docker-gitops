@@ -161,3 +161,28 @@ Every push touching `k3s/` is approved by the owner first.
 - Lanes with their own database or data isolation — lanes share the baseline's postgres and redis.
 - `mcp-toolkit`'s image (not a PetClinic service; stays `ops-lab/*`, outside `lab-business-images-from-ghcr`).
 - The lab-environment repo's docker-compose flow.
+
+## Implementation results
+
+Implemented and rehearsed 2026-09-29 ([plan](../plans/2026-09-29-lab-pr-lanes.md); rehearsal evidence [`docs/demo/evidence/pr-lane.txt`](../../demo/evidence/pr-lane.txt)).
+
+**Acceptance criteria**
+
+1. **Pass.** api-gateway, customers-service, vets-service, visits-service and `customers-service-canary` run digest-pinned `ghcr.io/jeromefromcn/petclinic-*` images (fork `main` 70caf2d, canary `lab-v2` ce942c9); every running pod's `kyverno.io/verify-images` is `pass`. Nothing references `ops-lab/*` for them.
+2. **Pass.** Server-side dry-runs in `lab-environment`: the unsigned `ghcr.io/jeromefromcn/petclinic-unsigned:demo` is refused by `restrict-image-registry` ("no matching signatures"); `ops-lab/visits-service:21d8461c6ce4` is refused by `lab-business-images-from-ghcr`; the signed main-branch digest is admitted.
+3. **Pass.** Adding `lane:visits-service` to fork PR #1 produced a Ready lane pod 63 s later (Application `lab-visits-service-pr-1`, Synced/Healthy) with no manual step. Closing the PR removed the Application, pod, Service and HTTPRoute; `demo-reset pr-lane` returned `baseline OK` 44 s after the close.
+4. **Pass.** Page 18 window: all 15 header requests (10 direct, 5 via customers-service) went to `visits-service-pr-1`, and none of the header-less or generator requests did; 15 reached the baseline. Customers lane (PR #2): 5/5 header requests on `customers-service-pr-2`, 10/10 header-less on `http/stable`.
+5. **Pass, with different evidence than planned.** One Jaeger trace (14 spans) covers api-gateway, customers-service, visits-service and the waypoint's span named after `visits-service-pr-1`. The `tag-fields` baggage tag never appears on any span under Spring Boot 4.0.1 / Micrometer Tracing 1.6.1 (root cause not found), so the evidence uses the waypoint span, not an `x-pr-lane` tag. Propagation itself was measured before lanes existed with a hand-applied spike: 5/5 header requests went gateway → customers → visits-spike, 5/5 header-less to the baseline.
+6. **Pass.** Page 10 run end to end on the GHCR canary digests: 179 × 200 / 21 × 500; evidence 3/3 (canary 10 %, 5xx only on the canary, rollback deployed); `baseline OK`. `test-demo-helpers.sh` (`git apply --check` of every patch) passes.
+7. **Pass.** With lanes `visits-service-pr-1` and `customers-service-pr-2` Running on vps-oracle2 at the same time: no `FailedCreate` and no `Pending` pods; quota `requests.memory` 6192Mi = 5424Mi + 768Mi, `requests.cpu` 590m.
+
+**Spike (2026-09-29).** Waypoint route order for `visits-service:8082`: [0] the HTTPRoute header match `x-pr-lane: 999` → lane (retries 2, timeout 3s), [1] the VirtualService GET route (retries 2, 3s), [2] the VirtualService catch-all (no retries, 5s). The vets rate limit still applied (6 × 200 / 24 × 429). Lane upstream cluster: `outbound|8082||<svc>-pr-<N>.lab-environment.svc.cluster.local`; baseline: `inbound-vip|8082|http|<svc>…`.
+
+**Deviations from the plan and this spec**
+
+- **Trivy is report-only** (owner decision). The first CI run failed its gate on every image. Fixable CRITICAL CVEs per image: visits 10, customers 9, vets 9, api-gateway 4 (tomcat-embed-core 11.0.15, netty-handler 4.2.9, bcprov-jdk18on 1.81, spring-boot 4.0.1). Measured locally: Boot 4.0.8 + Spring Cloud 2025.1.3 + tomcat 11.0.26 clears all four images (the control on 4.0.1 still shows 10). Consequence: the lab stays outside `require-vuln-scan-clean` and keeps `trivy-operator.skip`. The plan's vuln-gate step and its label removal were dropped.
+- **The PR generator token was not regenerated.** Fine-grained PATs can read public repositories, and `lab-lanes` generated PR #1's Application with the existing token. Docs updated instead.
+- Lanes get Istio's default retry policy (2 attempts) on their HTTPRoute, not "no retries". Page 18 and the lane HTTPRoute comments say so.
+- A cold lane JVM answered its first calls through customers with 504 (the 3 s timeout). Page 18 warms the lane up and leaves a quiet gap before the window.
+- Workflow fixes: `actions/checkout` reads a short `sha` input as a branch name, so the plan job resolves it to the full SHA first. The "Locate the jar" step is a glob loop (actionlint SC2010). The push to `lab-v2` that added the workflow did not trigger a run; nothing consumes that build.
+- The `lane:<service>` labels had to be created on the fork before the first `gh pr edit --add-label`. Page 18's preconditions now say so.
