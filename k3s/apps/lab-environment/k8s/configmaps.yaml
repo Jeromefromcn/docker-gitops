@@ -90,11 +90,17 @@ data:
             action: keep
             regex: lab-environment
 
-      # cAdvisor through the API server's node proxy (no kubelet port
-      # exposure needed). Keeps lab containers plus each node's root cgroup
-      # (id="/"), which is where node-level CPU saturation is read from.
+      # cAdvisor straight from the lab node's kubelet, so the ClusterRole
+      # needs only `nodes/metrics` — the API server's node proxy would need
+      # `nodes/proxy`, which kubelet also accepts for websocket exec. Only
+      # the lab node (label dedicated=lab): it is the only one the lab reads,
+      # and oracle2's host firewall admits pods to its own :10250 only
+      # (vps_oracle2/host-native/host-firewall/). Keeps lab containers plus
+      # the node's root cgroup (id="/"), where node-level CPU saturation is
+      # read from.
       - job_name: kubelet-cadvisor
         scheme: https
+        metrics_path: /metrics/cadvisor
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         authorization:
@@ -102,12 +108,12 @@ data:
         kubernetes_sd_configs:
           - role: node
         relabel_configs:
-          - target_label: __address__
-            replacement: kubernetes.default.svc:443
-          - source_labels: [__meta_kubernetes_node_name]
-            regex: (.+)
-            target_label: __metrics_path__
-            replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+          - source_labels: [__meta_kubernetes_node_label_dedicated]
+            action: keep
+            regex: lab
+          - source_labels: [__meta_kubernetes_node_address_InternalIP]
+            target_label: __address__
+            replacement: $1:10250
           - source_labels: [__meta_kubernetes_node_name]
             target_label: node
         metric_relabel_configs:
