@@ -71,8 +71,13 @@ def prepare(src: Path, out: Path, base: Path) -> list[str]:
         if re.search(rf"^{key}\s*:", base_text, re.M):
             errors.append(f"{base.name} must not set {key}: prepare.py generates it")
 
+    # Every markdown file is checked, not only NN-*.md: the copy below
+    # publishes all of them, so a stray or misnamed page would otherwise go
+    # live with no nav entry and no evidence check.
     pages = {}
-    for path in sorted(src.glob("[0-9][0-9]-*.md")):
+    for path in sorted(src.glob("*.md")):
+        if path.name == "README.md":
+            continue
         m = PAGE_NAME.match(path.name)
         if not m:
             errors.append(f"{path.name}: page names must be NN-lowercase-slug.md")

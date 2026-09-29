@@ -147,6 +147,15 @@ class PrepareTest(unittest.TestCase):
         after = {p: p.read_bytes() for p in fx.src.rglob("*") if p.is_file()}
         self.assertEqual(before, after)
 
+    def test_refuses_markdown_outside_the_page_pattern(self):
+        # copytree publishes everything; a stray or misnamed page would go
+        # live with no nav entry and no evidence check.
+        fx = self.fixture(ROWS)
+        (fx.src / "notes.md").write_text("draft\n")
+        (fx.src / "7-typo.md").write_text("typo\n")
+        with self.assertRaisesRegex(PrepareError, "(?s)7-typo.md.*notes.md"):
+            fx.run()
+
     def test_base_with_nav_is_refused(self):
         fx = self.fixture(ROWS)
         fx.base.write_text(BASE + "nav:\n  - x.md\n")

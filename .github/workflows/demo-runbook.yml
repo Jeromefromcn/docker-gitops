@@ -17,6 +17,14 @@ on:
 permissions:
   contents: read
 
+# Whole-run serialization, not just the deploy job: with only deploy
+# serialized, a slower build of an older push could deploy after a newer
+# one and leave the site stale. PR runs get their own group per PR so they
+# never queue behind main.
+concurrency:
+  group: demo-runbook-${{ github.event_name == 'pull_request' && github.ref || 'pages' }}
+  cancel-in-progress: false
+
 # Renders docs/demo/ as a static site on GitHub Pages (demo-site/README.md).
 # Pull requests build and check only; pushes to main also deploy.
 jobs:
@@ -60,10 +68,6 @@ jobs:
     permissions:
       pages: write
       id-token: write
-    # Two quick pushes publish in order rather than racing.
-    concurrency:
-      group: pages
-      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
