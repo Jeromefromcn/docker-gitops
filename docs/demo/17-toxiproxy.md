@@ -23,6 +23,10 @@ kubectl -n lab-environment rollout status deploy/visits-service --timeout=6m
 T="kubectl -n lab-environment exec deploy/toxiproxy -- /toxiproxy-cli"
 U=http://10.0.0.95:30097/api/customer/owners
 $T list
+# visits just restarted: a cold JVM's first requests can take over 1 s and
+# would 504 before any toxic. Warm it on owners the steps below do not use
+# (3, 5, 7 must stay out of the 60 s Redis cache).
+for i in $(seq 1 10); do curl -s -o /dev/null $U/6/visits; curl -s -o /dev/null $U/9/visits; done
 demo-window start toxiproxy
 echo "through the proxy, no toxic:"; for i in 1 2 3; do curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' $U/6/visits; done
 $T toxic add -t latency -a latency=1500 redis
@@ -80,6 +84,10 @@ demo-reset toxiproxy
   not visits': the patch grants `sa/toxiproxy` on both. The revert takes
   the grant away, and `demo-reset` refuses to call the lab healthy while
   either policy still admits it or visits still points at the proxy.
+- **Ready is not warm.** visits' first requests after the rollout can take
+  over 1 s (cold JVM) and hit the same 504 the toxics produce — hence the
+  warm-up before the window (rehearsal 2026-09-29, twice: one 504 before
+  any toxic without it).
 - **Toxiproxy is not resident in the data path** — production would not
   have it. It stays deployed with its own (unprivileged) identity; only the
   wiring is temporary.
