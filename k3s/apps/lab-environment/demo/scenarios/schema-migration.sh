@@ -11,8 +11,8 @@ evidence_schema_migration() {
   rec_if argocd "sync of ${sha:0:7} ran db-init as $hook (want PreSync/Succeeded; last op revision ${oprev:0:7})" [ $ok = 1 ]
   done_at=$(kubectl -n "$NS" get job db-init -o jsonpath='{.status.completionTime}')
   # Terminating pods (preStop drain) outlive rollout status; skip them.
-  first_pod=$(kubectl -n "$NS" get pods -l app=customers-service -o json | jq -r '[.items[] | select(.metadata.deletionTimestamp == null) | .metadata.creationTimestamp] | min')
-  ok=0; [[ "$done_at" > "$(iso "$WINDOW_START")" ]] && ! [[ "$done_at" > "$first_pod" ]] && ok=1
+  first_pod=$(kubectl -n "$NS" get pods -l app=customers-service -o json | jq -r '[.items[] | select(.metadata.deletionTimestamp == null) | .metadata.creationTimestamp] | min // "none"')
+  ok=0; [ "$first_pod" != none ] && [[ "$done_at" > "$(iso "$WINDOW_START")" ]] && ! [[ "$done_at" > "$first_pod" ]] && ok=1
   rec_if kubernetes "db-init completed $done_at, first new customers pod $first_pod (hook first)" [ $ok = 1 ]
   owners=$(pg customers 'select count(*) from owners')
   ok=0; [ -n "${OWNERS_BEFORE:-}" ] && [ "$owners" = "$OWNERS_BEFORE" ] && ok=1

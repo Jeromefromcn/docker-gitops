@@ -45,6 +45,7 @@ esac
 EOF
 cat > "$WORK/bin/argocd" <<'EOF'
 #!/bin/bash
+if [ -n "${FAKE_ARGOCD_HOOK:-}" ] && out=$("$FAKE_ARGOCD_HOOK" "$*"); then printf '%s\n' "$out"; exit 0; fi
 echo "{\"status\":{\"sync\":{\"status\":\"${FAKE_SYNC:-Synced}\"},\"health\":{\"status\":\"Healthy\"},\"history\":${FAKE_HISTORY:-[]}}}"
 EOF
 chmod +x "$WORK/bin/"*
@@ -537,6 +538,34 @@ grep -q '^      23:59    20  -$' "$WORK/out" && echo "PASS 08 missing P99 shown 
 N08=1.8 FAKE_CURL_HOOK=$WORK/hook08 check "08 fails when the node saturated" 1 "$DEMO/demo-evidence" load-test
 S08=0 FAKE_CURL_HOOK=$WORK/hook08 check "08 fails when nothing was shed" 1 "$DEMO/demo-evidence" load-test
 H08=2.9 FAKE_CURL_HOOK=$WORK/hook08 check "08 fails when vets still queued for connections" 1 "$DEMO/demo-evidence" load-test
+
+# --- 2a scenarios: evidence against hook-driven stubs ----------------------
+# 03: the PreSync hook of 02's sync finished before the first new pod.
+cp "$DEMO/scenarios/schema-migration.sh" "$DEMO_SCENARIO_DIR/"
+export DEMO_REPO_ROOT=$WORK/repo03; git init -q "$DEMO_REPO_ROOT"
+git -C "$DEMO_REPO_ROOT" -c user.name=t -c user.email=t@t commit -q --allow-empty -m 'demo: rolling-restart customers-service'
+SHA03=$(git -C "$DEMO_REPO_ROOT" rev-parse HEAD); export SHA03
+printf 'WINDOW_START=1000\nWINDOW_END=1300\nOWNERS_BEFORE=10\n' > "$DEMO_STATE_DIR/rolling-update.window"
+cat > "$WORK/hook03" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"app get lab-environment"*) echo "{\"status\":{\"operationState\":{\"syncResult\":{\"revision\":\"$SHA03\",\"resources\":[{\"kind\":\"Job\",\"name\":\"db-init\",\"syncPhase\":\"PreSync\",\"hookPhase\":\"Succeeded\"}]}}}}" ;;
+  *"get job db-init"*) echo "1970-01-01T00:17:00Z" ;;
+  *"get pods -l app=customers-service -o json"*)
+    if [ -n "${NOPODS03:-}" ]; then echo '{"items":[]}'
+    else echo '{"items":[{"metadata":{"creationTimestamp":"1970-01-01T00:17:30Z"}},{"metadata":{"creationTimestamp":"1970-01-01T00:16:00Z","deletionTimestamp":"1970-01-01T00:17:40Z"}}]}'; fi ;;
+  *"exec deploy/postgres"*) echo "${OWN03:-10}" ;;
+  *"logs job/db-init"*) echo "applying customers.sql" ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook03"
+FAKE_ARGOCD_HOOK=$WORK/hook03 FAKE_KUBECTL_HOOK=$WORK/hook03 check "03 passes: hook first, data untouched" 0 "$DEMO/demo-evidence" schema-migration
+has "$WORK/out" "first new customers pod 1970-01-01T00:17:30Z"
+NOPODS03=1 FAKE_ARGOCD_HOOK=$WORK/hook03 FAKE_KUBECTL_HOOK=$WORK/hook03 check "03 fails with no running customers pod" 1 "$DEMO/demo-evidence" schema-migration
+has "$WORK/out" "[kubernetes    ] FAIL"
+OWN03=12 FAKE_ARGOCD_HOOK=$WORK/hook03 FAKE_KUBECTL_HOOK=$WORK/hook03 check "03 fails when the re-run changed the data" 1 "$DEMO/demo-evidence" schema-migration
+unset DEMO_REPO_ROOT
 
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
