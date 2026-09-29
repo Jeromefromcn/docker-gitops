@@ -57,3 +57,6 @@ vps_oracle/host-native/inspector/state/
 *.tfstate.*
 .terraform/
 *.auto.tfvars
+
+# demo runbook site build output (demo-site/prepare.py + mkdocs)
+demo-site/build/

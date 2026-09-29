@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Turn docs/demo/ into a site build directory without touching the source.
+
+Writes <out>/docs/ -- a copy of every page, each scenario page with its
+rehearsal evidence appended as a collapsed block -- and <out>/mkdocs.yml,
+the hand-written base plus a nav in README's demo order. Standard library
+only. Nothing here is MkDocs-specific except the `???` admonition syntax and
+the nav format, so moving to another generator (Zensical) changes only
+those two.
+"""
+import argparse
+import json
+import re
+import shutil
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+# | 07 | [GitOps self-heal and rollback](07-gitops-selfheal-rollback.md) | why |
+ORDER_ROW = re.compile(r"^\|\s*(\d{2})\s*\|\s*\[([^\]]+)\]\(((\d{2})-[a-z0-9-]+\.md)\)\s*\|")
+PAGE_NAME = re.compile(r"^(\d{2})-([a-z0-9-]+)\.md$")
+# == bad-pod  window 2026-09-29T03:52:24Z → 2026-09-29T03:53:03Z (39s)
+WINDOW = re.compile(r"\bwindow\s+(.+?)\s*$")
+EXEMPT = {"00"}  # preflight runs no scenario, so it has no evidence
+
+
+class PrepareError(Exception):
+    pass
+
+
+def parse_order(readme: str) -> list[tuple[str, str, str]]:
+    rows, seen = [], set()
+    for line in readme.splitlines():
+        m = ORDER_ROW.match(line)
+        if not m:
+            continue
+        num, title, filename, file_num = m.groups()
+        if num != file_num:
+            raise PrepareError(f"README Order row {num} links {filename}: the numbers disagree")
+        if filename in seen:
+            raise PrepareError(f"README Order table lists {filename} twice")
+        seen.add(filename)
+        rows.append((num, title, filename))
+    if not rows:
+        raise PrepareError("README.md has no Order table rows")
+    return rows
+
+
+def evidence_block(evidence: str, name: str) -> str:
+    lines = evidence.replace("\r\n", "\n").rstrip("\n").split("\n")
+    if lines == [""]:
+        raise PrepareError(f"evidence/{name} is empty")
+    m = WINDOW.search(lines[0])
+    if not m:
+        raise PrepareError(f"evidence/{name}: first line has no 'window ...': {lines[0]!r}")
+    title = f"Rehearsal evidence — window {m.group(1)}".replace('"', "'")
+    # A fence longer than any backtick run inside, so the evidence cannot close it.
+    longest = max((len(r) for r in re.findall(r"`+", evidence)), default=0)
+    fence = "`" * max(3, longest + 1)
+    body = [f"{fence}text", *lines, fence]
+    indented = "\n".join(f"    {line}" if line else "" for line in body)
+    return f'\n??? note "{title}"\n\n{indented}\n'
+
+
+def prepare(src: Path, out: Path, base: Path) -> list[str]:
+    order = parse_order((src / "README.md").read_text())
+    base_text = base.read_text()
+    errors = []
+    for key in ("nav", "docs_dir"):
+        if re.search(rf"^{key}\s*:", base_text, re.M):
+            errors.append(f"{base.name} must not set {key}: prepare.py generates it")
+
+    pages = {}
+    for path in sorted(src.glob("[0-9][0-9]-*.md")):
+        m = PAGE_NAME.match(path.name)
+        if not m:
+            errors.append(f"{path.name}: page names must be NN-lowercase-slug.md")
+            continue
+        pages[path.name] = (m.group(1), m.group(2))
+
+    listed = [f for _, _, f in order]
+    errors += [f"README Order table links {f}, which does not exist" for f in listed if f not in pages]
+    errors += [f"{f} is not in README's Order table" for f in pages if f not in listed]
+
+    slugs = {}
+    for name, (_, slug) in pages.items():
+        if slug in slugs:
+            errors.append(f"{slugs[slug]} and {name} share the slug {slug!r}: evidence would be ambiguous")
+        slugs[slug] = name
+    evidence_dir = src / "evidence"
+    evidence = {p.stem: p for p in evidence_dir.glob("*.txt")} if evidence_dir.is_dir() else {}
+    errors += [f"evidence/{s}.txt has no page NN-{s}.md" for s in sorted(evidence) if s not in slugs]
+    errors += [
+        f"{name} has no evidence/{slug}.txt"
+        for name, (num, slug) in pages.items()
+        if num not in EXEMPT and slug not in evidence
+    ]
+
+    blocks = {}
+    for name, (num, slug) in pages.items():
+        if slug in evidence and num not in EXEMPT:
+            try:
+                blocks[name] = evidence_block(evidence[slug].read_text(), f"{slug}.txt")
+            except PrepareError as e:
+                errors.append(str(e))
+    if errors:
+        raise PrepareError("\n".join(errors))
+
+    docs = out / "docs"
+    if docs.exists():
+        shutil.rmtree(docs)
+    shutil.copytree(src, docs, ignore=shutil.ignore_patterns("evidence"))
+    for name, block in blocks.items():
+        page = docs / name
+        page.write_text(page.read_text().rstrip("\n") + "\n" + block)
+
+    nav = "".join(
+        f"  - {json.dumps(f'{num} — {title}', ensure_ascii=False)}: {filename}\n"
+        for num, title, filename in order
+    )
+    (out / "mkdocs.yml").write_text(
+        base_text.rstrip("\n")
+        + "\n\n# Generated by prepare.py from README's Order table -- do not edit.\n"
+        + "docs_dir: docs\nnav:\n  - Overview: README.md\n"
+        + nav
+    )
+    return listed
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--src", type=Path, default=HERE.parent / "docs" / "demo")
+    ap.add_argument("--out", type=Path, default=HERE / "build")
+    ap.add_argument("--base", type=Path, default=HERE / "mkdocs.base.yml")
+    args = ap.parse_args()
+    try:
+        nav = prepare(args.src, args.out, args.base)
+    except PrepareError as e:
+        print(f"prepare.py: {e}", file=sys.stderr)
+        return 1
+    print(f"prepare.py: {len(nav)} pages -> {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
