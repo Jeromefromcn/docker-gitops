@@ -204,12 +204,16 @@ metadata:
 spec:
   host: vets-service.lab-environment.svc.cluster.local
   trafficPolicy:
+    # Tighter than the other services: vets holds 5 DB connections, so a
+    # deep queue in front of it only turns load into 3 s waits. Past 10 in
+    # flight and 5 queued (per waypoint replica) Envoy fails fast with
+    # 503 UO instead.
     connectionPool:
       tcp:
-        maxConnections: 100
+        maxConnections: 10
       http:
-        http1MaxPendingRequests: 100
-        http2MaxRequests: 200
+        http1MaxPendingRequests: 5
+        http2MaxRequests: 10
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 10s

@@ -1,0 +1,48 @@
+# Resident overload protection for vets-service - the lab's measured
+# bottleneck (one replica, a 5-connection Hikari pool; 2a's load test saw
+# connection waits of up to 3 s while the node still had CPU to spare).
+#
+# Fixed-window token bucket in Lua on the waypoint (phase L's mechanism,
+# k3s/apps/hello/k8s/hello-backend-ratelimit-trafficextension.yaml). The
+# bucket is per Envoy worker per waypoint replica, not global: with
+# concurrency 1 (measured 2026-09-29) and 2 replicas the effective ceiling is
+# LIMIT x 1 x 2 = 6 req/s.
+# Sized from 2a's knee: ~30 req/s at the edge, a quarter to vets = ~7.5 req/s
+# where vets starts to queue; the total is kept below that, at 6 req/s.
+# Steady traffic (vets 0.48 req/s measured, generator plus the Lab API Down
+# probe) is far below.
+apiVersion: extensions.istio.io/v1alpha1
+kind: TrafficExtension
+metadata:
+  name: vets-service-ratelimit
+  namespace: lab-environment
+spec:
+  targetRefs:
+    - kind: Service
+      name: vets-service
+  match:
+    - mode: SERVER
+  phase: STATS
+  lua:
+    inlineCode: |
+      -- 3 requests per 1 s window, per worker.
+      local WINDOW_MS = 1000
+      local LIMIT = 3
+      local window_start_ms = 0
+      local count = 0
+
+      function envoy_on_request(request_handle)
+        local now_ms = request_handle:timestamp()
+        if now_ms - window_start_ms >= WINDOW_MS then
+          window_start_ms = now_ms
+          count = 0
+        end
+        count = count + 1
+        if count > LIMIT then
+          request_handle:respond(
+            {[":status"] = "429", ["x-envoy-ratelimited"] = "true"},
+            "rate limit exceeded"
+          )
+          return
+        end
+      end
