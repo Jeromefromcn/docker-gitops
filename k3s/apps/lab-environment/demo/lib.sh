@@ -135,8 +135,10 @@ routing_baseline() {
   [ -z "$pods" ] || { echo "canary pods still present: $(tr "\n" " " <<< "$pods")"; bad=1; }
   # PR lanes (page 18) live in the headroom page 12's green needs: none may
   # be left behind. Closing the PR or dropping its lane: label removes it.
-  pods=$(kubectl -n "$NS" get pods -l lab.jerome/lane -o name)
-  [ -z "$pods" ] || { echo "lane pods still present: $(tr "\n" " " <<< "$pods")"; bad=1; }
+  # Deployments too: one stuck in FailedCreate has no pod yet, but gets one
+  # as soon as its image is signed - possibly in the middle of page 12.
+  pods=$(kubectl -n "$NS" get deploy,pods -l lab.jerome/lane -o name)
+  [ -z "$pods" ] || { echo "lane objects still present: $(tr "\n" " " <<< "$pods")"; bad=1; }
   got=$(kubectl -n "$NS" get deploy "$CANARY" -o jsonpath='{.spec.template.spec.containers[0].image}')
   want=$(git_image "$CANARY")
   [ "$got" = "$want" ] || { echo "$CANARY image '$got', git wants $want"; bad=1; }

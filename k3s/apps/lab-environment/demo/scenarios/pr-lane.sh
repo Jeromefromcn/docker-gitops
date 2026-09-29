@@ -47,8 +47,8 @@ EOF
 # The page closes the PR first; this waits for ArgoCD to remove the lane.
 reset_pr_lane() {
   local end=$((SECONDS + 300))
-  until [ -z "$(kubectl -n "$NS" get pods -l lab.jerome/lane -o name)" ]; do
-    [ $SECONDS -lt $end ] || { echo "lane pods still present after 5 min - was the PR closed or its label removed?"; return 1; }
+  until [ -z "$(kubectl -n "$NS" get deploy,pods -l lab.jerome/lane -o name)" ]; do
+    [ $SECONDS -lt $end ] || { echo "lane objects still present after 5 min - was the PR closed or its label removed?"; return 1; }
     sleep 5
   done
 }

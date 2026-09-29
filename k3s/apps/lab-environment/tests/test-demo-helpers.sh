@@ -38,7 +38,7 @@ case "$*" in
   *"get trafficextension vets-service-ratelimit"*) [ -n "${FAKE_NO_RATELIMIT:-}" ] || echo "trafficextension.extensions.istio.io/vets-service-ratelimit" ;;
   *"get deploy visits-service -o jsonpath"*"env"*) echo "${FAKE_VISITS_ENV:-TZ SPRING_CLOUD_CONSUL_HOST SPRING_CLOUD_CONSUL_PORT DATA_DB_PASSWORD}" ;;
   *"get authorizationpolicy postgres-clients redis-clients"*) echo "{\"items\":[{\"spec\":{\"rules\":[{\"from\":[{\"source\":{\"principals\":[\"cluster.local/ns/lab-environment/sa/visits-service\"${FAKE_TOXI_PRINCIPAL:+,\"cluster.local/ns/lab-environment/sa/toxiproxy\"}]}}]}]}}]}" ;;
-  *"get pods -l lab.jerome/lane -o name"*) printf '%s' "${FAKE_LANE_PODS:-}" ;;
+  *"get deploy,pods -l lab.jerome/lane -o name"*) printf '%s' "${FAKE_LANE_OBJS:-}" ;;
   *" get deploy "*) d=$(sed -E 's/.* get deploy ([^ ]+).*/\1/' <<< "$*"); grep "^$d " "$FAKE_DEPLOYS" | cut -d' ' -f2- ;;
   *"logs statefulset/argocd-application-controller"*) printf '%s\n' "${FAKE_CTRL_LOG:-}" ;;
   *"logs deploy/traffic-generator"*) for i in 1 2 3; do echo "2026-09-27T00:00:0${i}+00:00 ${FAKE_GEN_CODE:-200} /api/vet/vets"; done ;;
@@ -185,8 +185,10 @@ FAKE_CANARY_PODS='pod/customers-service-canary-abc' check "reset waits for termi
 has "$WORK/out" "canary pods still present"
 FAKE_CANARY_IMAGE=ghcr.io/jeromefromcn/petclinic-customers-service@sha256:bad check "reset fails on a canary image off git" 1 "$DEMO/demo-reset" preflight
 check "reset passes at the routing baseline" 0 "$DEMO/demo-reset" preflight
-FAKE_LANE_PODS='pod/visits-service-pr-42-abc' check "reset fails while a PR lane pod exists" 1 "$DEMO/demo-reset" preflight
-has "$WORK/out" "lane pods still present: pod/visits-service-pr-42-abc"
+FAKE_LANE_OBJS='pod/visits-service-pr-42-abc' check "reset fails while a PR lane pod exists" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "lane objects still present: pod/visits-service-pr-42-abc"
+FAKE_LANE_OBJS='deployment.apps/visits-service-pr-42' check "reset fails on a lane Deployment stuck without a pod (FailedCreate)" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "lane objects still present: deployment.apps/visits-service-pr-42"
 
 # --- routing primitives (in a subshell: lib.sh sets -e and its own state) --
 prims=$( (
