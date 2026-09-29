@@ -15,9 +15,12 @@ Correct order: **edit the file → commit → push → let ArgoCD sync (or `argo
 
 - Sole exception: the one-time `argocd/apps/root.yaml` bootstrap.
 - Read-only diagnostics (`kubectl get` / `describe` / `logs`, `argocd app diff`) are fine at any time.
-- For genuine live trial-and-error, disable that Application's `selfHeal` first and re-enable it once the final version is back in git.
+- For genuine live trial-and-error, disable that Application's `selfHeal` first and re-enable it once the final version is back in git. **Not enough for an Application under `root`:** `root`'s own selfHeal restores the Application object's `selfHeal: true` within seconds (2026-09-29, kube-state-metrics was back in 22 s).
+- **To simulate an outage, change it in git instead** (e.g. `replicas: 0` in the manifest or Helm values), push, then `git revert` and push — no selfHeal needs touching, and the outage is on record.
 
 **Recreating a resource (e.g. to change an immutable PVC field) — confirm ArgoCD has the new revision first.** Push, hard-refresh (`kubectl -n argocd annotate application <app> argocd.argoproj.io/refresh=hard --overwrite`), check `.status.sync.revision` matches `git rev-parse HEAD`, and only then delete the live object. Deleted too early, selfHeal recreates it instantly from the *old* cached manifest — happened 2026-09-24 with lab-environment's PVCs, which then had to be deleted a second time.
+
+**A revert does not undo `serviceAccountName`.** Setting it makes the API server fill in the deprecated `serviceAccount` field; removing `serviceAccountName` later leaves `serviceAccount` behind, which re-defaults the name — if that ServiceAccount was pruned in the same revert, new pods fail `FailedCreate` (2026-09-29, toxiproxy). Keep a workload's ServiceAccount resident rather than adding and reverting it.
 
 ## Editing an Application object means syncing `root`
 
