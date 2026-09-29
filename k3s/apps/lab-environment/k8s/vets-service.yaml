@@ -33,7 +33,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: vets-service
-          image: ops-lab/vets-service:8839b4c7fa57
+          image: ghcr.io/jeromefromcn/petclinic-vets-service@sha256:56b3d7872c79176bb6b3211f37b16f383b79464328f2d7e7a74fd1590f2b5232 # fork 70caf2d26643
           env:
             - name: TZ
               value: "Asia/Hong_Kong"

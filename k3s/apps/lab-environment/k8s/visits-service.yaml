@@ -33,7 +33,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: visits-service
-          image: ops-lab/visits-service:21d8461c6ce4
+          image: ghcr.io/jeromefromcn/petclinic-visits-service@sha256:4fc81d35a828fb932595787c8205466d3ef9c9d6a2811e98d2d7b6f0c15e034b # fork 70caf2d26643
           env:
             - name: TZ
               value: "Asia/Hong_Kong"

@@ -31,7 +31,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: api-gateway
-          image: ops-lab/api-gateway:8839b4c7fa57
+          image: ghcr.io/jeromefromcn/petclinic-api-gateway@sha256:e6889171e82d10c2c52fb425f448a4e3b66e6f1704244671084cc9089dc20f4b # fork 70caf2d26643
           env:
             - name: TZ
               value: "Asia/Hong_Kong"

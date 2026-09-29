@@ -182,7 +182,7 @@ FAKE_CANARY_REPLICAS=1 check "reset fails while the canary is scaled up" 1 "$DEM
 has "$WORK/out" "customers-service-canary spec.replicas '1'"
 FAKE_CANARY_PODS='pod/customers-service-canary-abc' check "reset waits for terminating canary pods" 1 "$DEMO/demo-reset" preflight
 has "$WORK/out" "canary pods still present"
-FAKE_CANARY_IMAGE=ops-lab/customers-service:badbadbadbad check "reset fails on a canary image off git" 1 "$DEMO/demo-reset" preflight
+FAKE_CANARY_IMAGE=ghcr.io/jeromefromcn/petclinic-customers-service@sha256:bad check "reset fails on a canary image off git" 1 "$DEMO/demo-reset" preflight
 check "reset passes at the routing baseline" 0 "$DEMO/demo-reset" preflight
 
 # --- routing primitives (in a subshell: lib.sh sets -e and its own state) --
