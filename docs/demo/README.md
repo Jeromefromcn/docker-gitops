@@ -1,5 +1,8 @@
 # Lab demo runbook
 
+Rendered at **https://jeromefromcn.github.io/docker-gitops/** (built from this
+directory by [`demo-site/`](https://github.com/Jeromefromcn/docker-gitops/tree/main/demo-site)).
+
 Live demonstrations of SDLC capabilities on `lab-environment` (PetClinic
 microservices on vps-oracle2). Each scenario is real platform behaviour,
 backed by evidence from the infrastructure layer — Envoy, ztunnel, ArgoCD,

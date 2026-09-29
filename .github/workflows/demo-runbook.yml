@@ -1,0 +1,73 @@
+name: demo-runbook
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/demo/**'
+      - 'demo-site/**'
+      - '.github/workflows/demo-runbook.yml'
+  pull_request:
+    paths:
+      - 'docs/demo/**'
+      - 'demo-site/**'
+      - '.github/workflows/demo-runbook.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Renders docs/demo/ as a static site on GitHub Pages (demo-site/README.md).
+# Pull requests build and check only; pushes to main also deploy.
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: demo-site/requirements.txt
+
+      - name: Install MkDocs
+        run: pip install -r demo-site/requirements.txt
+
+      - name: Unit tests
+        run: python -m unittest discover -s demo-site/tests -v
+
+      - name: Prepare
+        run: python demo-site/prepare.py
+
+      - name: Build (strict)
+        run: mkdocs build --strict -f demo-site/build/mkdocs.yml
+
+      - name: Check the built site
+        run: python demo-site/check_site.py demo-site/build/site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: demo-site/build/site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    # Two quick pushes publish in order rather than racing.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5.0.1

@@ -38,6 +38,7 @@ docker-gitops/
 │   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
 ├── k3s/                           # the k3s cluster spanning hosts (always via ArgoCD GitOps): server on vps_oracle, vps-oracle2 as agent
 ├── tailscale/                     # tailnet ACL policy, applied by GitOps (see tailscale/README.md)
+├── demo-site/                     # docs/demo/ rendered as a web page on GitHub Pages (see demo-site/README.md)
 ├── docs/                          # history & design archives: incidents/, misc/, deployment-topology/, superpowers/
 ├── .claude/                       # rules/ + skills/ (loaded automatically), agents/, hooks/
 └── .github/                       # CI: repo-conventions check, image build/sign, tailscale ACL apply
