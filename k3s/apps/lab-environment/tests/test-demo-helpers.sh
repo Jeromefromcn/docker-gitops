@@ -163,9 +163,11 @@ has "$WORK/out" "chaos/customers-service/slow-query-enabled"
 FAKE_CHAOS_ON=chaos/customers-service/fail-instance FAKE_CHAOS_VALUE=$(printf customers-service-abc | base64) \
   check "reset fails while fail-instance names a pod" 1 "$DEMO/demo-reset" preflight
 has "$WORK/out" "chaos/customers-service/fail-instance"
-sed -i 's/^customers-service .*/customers-service 4 5/' "$FAKE_DEPLOYS"
+# One pod short of git's count, then back to the fixture's line.
+cust=$(grep '^customers-service ' "$FAKE_DEPLOYS"); r=${cust##* }
+sed -i "s/^customers-service .*/customers-service $((r - 1)) $r/" "$FAKE_DEPLOYS"
 check "reset fails on replica mismatch" 1 "$DEMO/demo-reset" preflight
-sed -i 's/^customers-service .*/customers-service 5 5/' "$FAKE_DEPLOYS"
+sed -i "s/^customers-service .*/$cust/" "$FAKE_DEPLOYS"
 FAKE_GEN_CODE=503 check "reset fails on generator errors" 1 "$DEMO/demo-reset" preflight
 FAKE_SYNC=OutOfSync check "reset fails when ArgoCD is not synced" 1 "$DEMO/demo-reset" preflight
 FAKE_CONSUL_DOWN=1 check "reset fails when Consul is unreachable" 1 "$DEMO/demo-reset" preflight
