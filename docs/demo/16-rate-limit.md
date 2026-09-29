@@ -22,9 +22,9 @@ kubectl -n lab-environment get trafficextension vets-service-ratelimit -o jsonpa
 ```
 
 ## Expected result
-About `6 200 -` and `54 429 ratelimited` (rehearsal 2026-09-29: exactly
-that) — the burst finishes inside about a second, so each waypoint replica
-admits its 3 and limits the rest. The evidence lists the 429s per waypoint
+About `6 200 -` and `54 429 ratelimited` — each waypoint replica admits 3
+per second the burst spans and limits the rest (rehearsals 2026-09-29:
+6 / 54 in one second, 11 / 49 when it spilled into a second one). The evidence lists the 429s per waypoint
 replica (uneven — 17 and 37 in the rehearsal — because each replica keeps
 its own bucket).
 
@@ -33,7 +33,8 @@ its own bucket).
   replica.
 - **App (Spring metrics):** vets-service's own request count stays below the
   60 sent — the limited requests never arrived; the traffic generator saw
-  no non-200 in the window.
+  no non-200 on its other paths. A note counts the generator's own
+  `/api/vet/vets` calls that fell inside the burst and were limited too.
 
 ## Talking points
 - **The limit is derived, not guessed.** 2a's load test put the knee at
@@ -49,6 +50,13 @@ its own bucket).
   (1 worker × 2 replicas × 3 = 6 req/s). A global limit needs an external
   rate-limit service, which needs EnvoyFilter — "very very limited
   support" on an ambient waypoint — so it was not built.
+- **The bucket does not know who is calling.** Every request reaches vets
+  through api-gateway with the same identity, so a burst spends the budget
+  for everyone: a generator `/api/vet/vets` call landing in the burst's
+  second is limited like the rest (rehearsal 2026-09-29: one). Steady
+  traffic alone is never limited (10 minutes at 0 × 429 after the limiter
+  landed). Fair sharing between callers needs a key — per-client limits,
+  which a local Lua bucket without caller identity cannot give.
 - **Authorization runs first.** In the waypoint's filter chain `rbac`
   precedes the Lua filter, so a denied caller never spends quota.
 - **Only traffic through the waypoint is limited.** A direct pod call would

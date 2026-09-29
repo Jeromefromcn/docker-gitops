@@ -445,7 +445,9 @@ case "$1" in
   *"sum by (pod_name)"*) res "{\"metric\":{\"pod_name\":\"waypoint-a\"},\"value\":[0,\"${L16:-20}\"]},{\"metric\":{\"pod_name\":\"waypoint-b\"},\"value\":[0,\"18\"]}" ;;
   *"vets-service"*"time=1000"*) val 100 ;;
   *"vets-service"*"time=1320"*) val "${V16:-125}" ;;
-  *"traffic-generator"*'!~'*) val "${G16:-0}" ;;
+  *"traffic-generator"*'|= " 429 /api/vet/vets"'*) val "${GV16:-0}" ;;
+  *"traffic-generator"*'!~'*'!= "/api/vet/vets"'*) val "${G16:-0}" ;;
+  *"traffic-generator"*'!~'*) val $(( ${G16:-0} + ${GV16:-0} )) ;;
   *"traffic-generator"*) val 300 ;;
   *) exit 1 ;;
 esac
@@ -454,7 +456,11 @@ chmod +x "$WORK/hook16"
 FAKE_CURL_HOOK=$WORK/hook16 check "16 passes: 38 limited, vets saw only the rest" 0 "$DEMO/demo-evidence" rate-limit
 has "$WORK/out" "waypoint-a 20"
 V16=170 FAKE_CURL_HOOK=$WORK/hook16 check "16 fails when every request reached vets" 1 "$DEMO/demo-evidence" rate-limit
-G16=3 FAKE_CURL_HOOK=$WORK/hook16 check "16 fails when steady traffic was limited" 1 "$DEMO/demo-evidence" rate-limit
+G16=3 FAKE_CURL_HOOK=$WORK/hook16 check "16 fails when the generator's other paths failed" 1 "$DEMO/demo-evidence" rate-limit
+# The bucket is shared: a generator /api/vet/vets call inside the burst's
+# second is limited like any other caller (rehearsal 2026-09-29).
+GV16=1 FAKE_CURL_HOOK=$WORK/hook16 check "16 passes when the burst also limited a generator vets call" 0 "$DEMO/demo-evidence" rate-limit
+has "$WORK/out" "generator's own /api/vet/vets calls limited in the burst: 1"
 
 # 08: shed fast, admitted P99 flat, node and pool out of saturation; the
 # minute table survives a run across UTC midnight.
