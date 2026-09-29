@@ -1,0 +1,45 @@
+# verifyImages only checks references that match ghcr.io/jeromefromcn/* — a
+# locally built ops-lab/* image never matches, so it would be admitted
+# unverified. This closes that: the lab's business services (and their PR
+# lanes) run only CI-built GHCR images, which the restrict-image-registry*
+# policies then verify.
+# Audit while the baseline still runs ops-lab/* images; Enforce once every
+# business Deployment is on GHCR (lab PR lanes plan, Task 5).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: lab-business-images-from-ghcr
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: business-images-from-ghcr
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - lab-environment
+              selector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - api-gateway
+                      - customers-service
+                      - vets-service
+                      - visits-service
+                      - api-gateway-lane
+                      - customers-service-lane
+                      - vets-service-lane
+                      - visits-service-lane
+      validate:
+        message: >-
+          {{ request.object.metadata.name }}: lab business services run only
+          CI-built images from ghcr.io/jeromefromcn/ — a local ops-lab/* build
+          is refused.
+        pattern:
+          spec:
+            containers:
+              - image: "ghcr.io/jeromefromcn/*"

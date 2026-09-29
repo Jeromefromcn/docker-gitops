@@ -3,7 +3,16 @@
 `ClusterPolicy` manifests for phase E's admission control:
 
 - `restrict-image-registry.yaml` — Cosign keyless signature verification,
-  scoped to `ghcr.io/jeromefromcn/*` only.
+  scoped to `ghcr.io/jeromefromcn/*` only. Accepts this repo's workflows on
+  `main` and the lab fork's `lab-images.yml` on `main` / `lab-v2`.
+- `restrict-image-registry-lab-lanes.yaml` — the same check for lab PR lane
+  pods (`lab-environment`, label `lab.jerome/lane`), which also accepts the
+  fork's `refs/pull/<N>/merge` builds and tag references
+  (`verifyDigest: false`).
+- `lab-business-images-from-ghcr.yaml` — validate: the lab's four business
+  services and their `-lane` pods must run `ghcr.io/jeromefromcn/*` images.
+  `verifyImages` never looks at a non-matching reference, so without this a
+  local `ops-lab/*` build would be admitted unverified.
 - `require-vuln-scan-clean.yaml` — Trivy CVE gate via Trivy Operator's
   `VulnerabilityReport` CRDs, narrowed 2026-08-18 to self-built images only
   (same `app in (...)` scope as `restricted-self-built.yaml` below).
@@ -17,6 +26,7 @@
   `lab-environment` Pod, pinning the lab to the tainted vps-oracle2 agent
   node. Mutates Pods rather than Deployments so ArgoCD never sees drift.
 
-The three validate policies are `validationFailureAction: Enforce` (flipped from `Audit` on
+The phase E validate policies are `validationFailureAction: Enforce` (flipped from `Audit` on
 2026-08-18 — see `k3s/README.md`'s Kyverno section for the
-cutover details).
+cutover details). `lab-business-images-from-ghcr` is `Audit` until the lab's
+baseline runs GHCR images.

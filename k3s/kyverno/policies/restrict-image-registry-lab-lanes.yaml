@@ -1,0 +1,42 @@
+# Signature verification for lab PR lanes (docs/superpowers/specs/2026-09-29-lab-pr-lanes-design.md).
+# Lane pods (lab.jerome/lane) are excluded from restrict-image-registry and
+# verified here instead, where a pull_request build of the fork's lab-images
+# workflow (signed as refs/pull/<N>/merge) is also accepted. verifyDigest is
+# off because lanes reference the PR head SHA as a tag, like pr-lanes.
+#
+# Known gap, accepted: anyone who can create a Pod in lab-environment can add
+# the label and get this looser signer rule. Single-operator cluster; the rule
+# is confined to this one namespace.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registry-lab-lanes
+spec:
+  validationFailureAction: Enforce
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-lab-lane-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - lab-environment
+              selector:
+                matchExpressions:
+                  - key: lab.jerome/lane
+                    operator: Exists
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/jeromefromcn/*"
+          type: SigstoreBundle
+          mutateDigest: false
+          verifyDigest: false
+          attestors:
+            - entries:
+                - keyless:
+                    subjectRegExp: "^https://github\\.com/Jeromefromcn/spring-petclinic-microservices/\\.github/workflows/lab-images\\.yml@refs/(heads/main|pull/[0-9]+/merge)$"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev

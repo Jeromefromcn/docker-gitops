@@ -17,6 +17,15 @@ spec:
           - resources:
               namespaces:
                 - pr-lanes
+          # Lab PR lanes carry lab.jerome/lane and are verified by
+          # restrict-image-registry-lab-lanes, which also accepts PR builds.
+          - resources:
+              namespaces:
+                - lab-environment
+              selector:
+                matchExpressions:
+                  - key: lab.jerome/lane
+                    operator: Exists
       verifyImages:
         - imageReferences:
             - "ghcr.io/jeromefromcn/*"
@@ -31,7 +40,7 @@ spec:
                 - keyless:
                     # keyless.subject is an exact match (no wildcards); use
                     # subjectRegExp to cover every repo workflow.
-                    subjectRegExp: "^https://github\\.com/Jeromefromcn/docker-gitops/\\.github/workflows/[^/]+\\.yml@refs/heads/main$"
+                    subjectRegExp: "^https://github\\.com/Jeromefromcn/(docker-gitops/\\.github/workflows/[^/]+\\.yml@refs/heads/main|spring-petclinic-microservices/\\.github/workflows/lab-images\\.yml@refs/heads/(main|lab-v2))$"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
