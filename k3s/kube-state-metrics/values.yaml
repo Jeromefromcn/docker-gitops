@@ -6,9 +6,9 @@ fullnameOverride: kube-state-metrics
 nodeSelector:
   kubernetes.io/hostname: instance-20260321-2043
 
-# 30115 is reserved for the vps_oracle compose Prometheus. It is not wired
-# yet: that container is on a Docker bridge and needs an npm-nodeport-relay
-# instance first (roadmap follow-up "Production monitoring consumes KSM").
+# 30115 is for the vps_oracle compose Prometheus. That container is on a
+# Docker bridge, so it reaches the NodePort through nodeport-relay@30115
+# (vps_oracle/host-native/npm-nodeport-relay/).
 service:
   type: NodePort
   nodePort: 30115
