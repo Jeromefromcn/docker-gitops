@@ -595,6 +595,71 @@ D04=0 FAKE_CURL_HOOK=$WORK/hook04 FAKE_KUBECTL_HOOK=$WORK/hook04 check "04 fails
 ODD04=peer=unknown FAKE_CURL_HOOK=$WORK/hook04 FAKE_KUBECTL_HOOK=$WORK/hook04 check "04 runs on through a rejection with no source field" 0 "$DEMO/demo-evidence" zero-trust
 has "$WORK/out" "? -> postgres"
 
+# 01: the waypoint spread requests over every customers pod git declares.
+cp "$DEMO/scenarios/load-balancing.sh" "$DEMO_SCENARIO_DIR/"
+win load-balancing 1000 1300
+cat > "$WORK/hook01" <<'EOF'
+#!/bin/bash
+n=$(grep -m1 -E '^\s+replicas:' "$FAKE_LAB_K8S/customers-service.yaml" | awk '{print $2}')
+[ -z "${SHORT01:-}" ] || n=$((n - 1))
+case "$1" in
+  *"sum by (upstream_host)"*) res "$(for i in $(seq 1 "$n"); do printf '{"metric":{"upstream_host":"10.42.1.%s:8081"},"value":[0,"20"]},' "$i"; done | sed 's/,$//')" ;;
+  *"sum by (pod)"*) res "$(for i in $(seq 1 "$n"); do printf '{"metric":{"pod":"customers-service-%s"},"value":[0,"20"]},' "$i"; done | sed 's/,$//')" ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook01"
+FAKE_CURL_HOOK=$WORK/hook01 check "01 passes: every pod served" 0 "$DEMO/demo-evidence" load-balancing
+SHORT01=1 FAKE_CURL_HOOK=$WORK/hook01 check "01 fails when a pod got nothing" 1 "$DEMO/demo-evidence" load-balancing
+
+# 05: UT on both hops, the gateway's circuit breaker, a slow trace in Jaeger.
+cp "$DEMO/scenarios/app-vs-mesh-resilience.sh" "$DEMO_SCENARIO_DIR/"
+win app-vs-mesh-resilience 1000 1300
+cat > "$WORK/hook05" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *'response_flags="UT"'*)
+    v='{"metric":{"upstream_cluster":"inbound-vip|8082|http|visits-service.lab-environment.svc.cluster.local;"},"value":[0,"4"]}'
+    [ -n "${VISONLY05:-}" ] || v="$v"',{"metric":{"upstream_cluster":"inbound-vip|8081|http|customers-service.lab-environment.svc.cluster.local;"},"value":[0,"3"]}'
+    res "$v" ;;
+  *"resilience4j_circuitbreaker"*) val 5 ;;
+  *"/api/traces/abc"*) echo '{"data":[{"spans":[1,2,3],"processes":{"p1":{"serviceName":"api-gateway"},"p2":{"serviceName":"visits-service"}}}]}' ;;
+  *"/api/traces "*) echo '{"data":[{"traceID":"abc"}]}' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook05"
+JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook05 check "05 passes: UT on both hops, breaker, trace" 0 "$DEMO/demo-evidence" app-vs-mesh-resilience
+has "$WORK/out" "3 spans: api-gateway, visits-service"
+VISONLY05=1 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook05 check "05 fails with UT on one hop only" 1 "$DEMO/demo-evidence" app-vs-mesh-resilience
+
+# 06: resealed in the window, old password rejected over scram, new accepted,
+# every DB client restarted.
+cp "$DEMO/scenarios/secret-rotation.sh" "$DEMO_SCENARIO_DIR/"
+win secret-rotation 1000 1300
+printf oldpw > "$DEMO_STATE_DIR/secret-rotation.old"
+cat > "$WORK/hook06" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"app get sealed-secrets"*) echo '{"status":{"history":[{"deployedAt":"1970-01-01T00:17:10Z"}]}}' ;;
+  *"get sealedsecret lab-db-credentials"*) echo '{"status":{"conditions":[{"type":"Synced","status":"True","lastUpdateTime":"1970-01-01T00:17:20Z"}]}}' ;;
+  *"{.data.username}"*) printf petclinic | base64 ;;
+  *"{.data.password}"*) printf newpw | base64 ;;
+  *"exec -i deploy/postgres"*)
+    read -r p
+    if [ "$p" = newpw ] || [ -n "${OLDOK06:-}" ]; then echo 1; else echo 'psql: error: FATAL:  password authentication failed for user "petclinic"'; fi ;;
+  *"get pods -l app="*)
+    d=$(sed -E 's/.*app=([^ ]+).*/\1/' <<< "$1")
+    n=$(grep -m1 -E '^\s+replicas:' "$FAKE_LAB_K8S/$d.yaml" | awk '{print $2}')
+    jq -n --argjson n "$n" '{items: [range($n) | {metadata: {creationTimestamp: "1970-01-01T00:18:00Z"}, status: {conditions: [{type: "Ready", status: "True"}]}}]}' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook06"
+FAKE_ARGOCD_HOOK=$WORK/hook06 FAKE_KUBECTL_HOOK=$WORK/hook06 check "06 passes: resealed, old rejected, new accepted, clients restarted" 0 "$DEMO/demo-evidence" secret-rotation
+has "$WORK/out" "old password rejected, new password accepted"
+OLDOK06=1 FAKE_ARGOCD_HOOK=$WORK/hook06 FAKE_KUBECTL_HOOK=$WORK/hook06 check "06 fails while the old password still works" 1 "$DEMO/demo-evidence" secret-rotation
+
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
   echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))
