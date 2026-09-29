@@ -37,7 +37,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: customers-service
-          image: ghcr.io/jeromefromcn/petclinic-customers-service@sha256:0c615aae5588cbca6175235ddba854358ff5f38e096ebe79e6d900e28379c2c1 # fork 9dbe3b96a1e8
+          image: ghcr.io/jeromefromcn/petclinic-customers-service@sha256:1744ad9658c88bbcdaaf0bc6188381ecf9c94ed65305c616ceab288c9022e48a # fork a2516709edde
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
