@@ -20,3 +20,6 @@ resources:
   limits:
     cpu: 100m
     memory: 128Mi
+
+# Temporary: fire the Lab KSM Down alert once (2c, Task 10); reverted next.
+replicas: 0
