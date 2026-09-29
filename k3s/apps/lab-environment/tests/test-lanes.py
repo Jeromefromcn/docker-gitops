@@ -82,8 +82,14 @@ for s in services:
     bc = b["spec"]["template"]["spec"]["containers"][0]
     check(dep["spec"]["template"]["spec"]["serviceAccountName"] == b["spec"]["template"]["spec"]["serviceAccountName"],
           f"{s}: same ServiceAccount as the baseline")
-    for field in ("env", "ports", "resources", "startupProbe", "readinessProbe", "lifecycle"):
-        check(c.get(field) == bc.get(field), f"{s}: container {field} equals the baseline's")
+    # Whole container and pod spec, not a field list: a field added to the
+    # baseline later (a probe, a mount, a securityContext) must reach the lane.
+    strip = lambda d, *keys: {k: v for k, v in d.items() if k not in keys}
+    diff = sorted(k for k in set(c) | set(bc) if k != "image" and c.get(k) != bc.get(k))
+    check(not diff, f"{s}: container equals the baseline's except image (differs: {diff or 'none'})")
+    bs, ls = b["spec"]["template"]["spec"], dep["spec"]["template"]["spec"]
+    pdiff = sorted(k for k in set(strip(bs, "containers")) | set(strip(ls, "containers")) if bs.get(k) != ls.get(k))
+    check(not pdiff, f"{s}: pod spec equals the baseline's except containers (differs: {pdiff or 'none'})")
     rule = rt["spec"]["rules"][0]
     check(rt["spec"]["parentRefs"] == [{"group": "", "kind": "Service", "name": s}], f"{s}: HTTPRoute parented on the baseline Service")
     check(rule["matches"] == [{"headers": [{"name": "x-pr-lane", "value": PR}]}], f"{s}: matches only x-pr-lane: {PR}")
