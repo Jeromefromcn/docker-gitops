@@ -63,6 +63,7 @@ Grafana datasource files instead.
 | 30112 | waypoint-metrics (pr-lanes) | compose Prometheus scrape job `waypoint` (same file) |
 | 30113 | loki (mesh-observability) | compose Grafana datasource `Loki` (`vps_oracle/compose/monitoring/grafana/provisioning/datasources/loki.yml`) |
 | 30114 | jaeger-query (mesh-observability) | compose Grafana datasource `Jaeger` (`vps_oracle/compose/monitoring/grafana/provisioning/datasources/jaeger.yml`) |
+| 30115 | kube-state-metrics (kube-system) | compose Prometheus scrape job `kube_state_metrics` (`vps_oracle/compose/monitoring/prometheus/prometheus.yml`) |
 
 **When adding a new NPM proxy_host, compose Prometheus scrape job, or
 Grafana datasource that targets a k3s NodePort**, enable a new instance for
@@ -74,7 +75,7 @@ this incident was about.
 ```bash
 sudo cp nodeport-relay@.service /etc/systemd/system/
 sudo systemctl daemon-reload
-for p in 30090 30092 30094 30095 30097 30098 30110 30111 30112 30113 30114; do
+for p in 30090 30092 30094 30095 30097 30098 30110 30111 30112 30113 30114 30115; do
   sudo systemctl enable --now nodeport-relay@$p.service
 done
 ```

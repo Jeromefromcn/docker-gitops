@@ -1,0 +1,143 @@
+apiVersion: 1
+
+# k3s workload state, from the cluster's shared kube-state-metrics (scrape job
+# kube_state_metrics in prometheus.yml). Two deliberate exclusions:
+#   - namespace lab-environment: the lab alerts on itself in its own Grafana
+#     (Lab Pod Pending / CPU Throttling / OOMKilled / KSM Down), and its demo
+#     scenarios break pods on purpose — alerting here too would page on every
+#     rehearsal.
+#   - PR lanes (`*-pr-<n>`): a lane may legitimately wait for capacity; same
+#     reasoning as k3s/inspector-checks/checks/k3s-capacity-pressure.sh.
+# OOMKills, evictions, NotReady nodes and stuck-Terminating pods are the
+# inspector's k3s checks (twice daily), not duplicated here.
+
+groups:
+  - orgId: 1
+    name: k3s_workloads
+    folder: Monitoring
+    interval: 60s
+    rules:
+      - uid: k3s_ksm_down
+        title: kube-state-metrics Scrape Down
+        condition: B
+        for: 5m
+        noDataState: OK
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape kube-state-metrics (10.0.0.95:30115 via nodeport-relay@30115) — every k3s workload alert is blind"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="kube_state_metrics"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: k3s_container_not_starting
+        title: k3s Container Not Starting
+        condition: B
+        for: 10m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }} has been {{ $labels.reason }} for 10 minutes"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'max by (namespace, pod, reason) (kube_pod_container_status_waiting_reason{namespace!="lab-environment", reason=~"CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError"})'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: k3s_pod_pending
+        title: k3s Pod Pending
+        condition: B
+        for: 15m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.pod }} has been Pending for 15 minutes (quota, node requests or an unbound volume)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'max by (namespace, pod) (kube_pod_status_phase{phase="Pending", namespace!="lab-environment", pod!~".*-pr-[0-9]+-.*"})'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: k3s_workload_unavailable
+        title: k3s Workload Replicas Unavailable
+        condition: B
+        for: 15m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.namespace }}/{{ $labels.workload }} has been missing {{ $values.A.Value }} ready replica(s) for 15 minutes"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                max by (namespace, workload) (
+                  label_replace(kube_deployment_status_replicas_unavailable{namespace!="lab-environment", deployment!~".*-pr-[0-9]+"}, "workload", "deployment/$1", "deployment", "(.+)")
+                  or label_replace(kube_daemonset_status_number_unavailable{namespace!="lab-environment"}, "workload", "daemonset/$1", "daemonset", "(.+)")
+                  or label_replace(kube_statefulset_replicas{namespace!="lab-environment"} - on (namespace, statefulset) kube_statefulset_status_replicas_ready, "workload", "statefulset/$1", "statefulset", "(.+)")
+                )
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
