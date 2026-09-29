@@ -3,7 +3,7 @@
 SENT=60   # the page sends exactly these
 
 evidence_rate_limit() {
-  local per total own gtotal gbad glim
+  local per total own gtotal gbad glim gvbad
   settle
   per=$(loki_by pod_name '{service="istio-proxy", response_code="429"} | json | __error__="" | authority=~"vets-service.*"' "$WINDOW_START" "$WINDOW_END")
   echo "$per" | awk '{ printf "      %s %s\n", $2, $1 }'
@@ -15,7 +15,8 @@ evidence_rate_limit() {
   # lands in the burst's second is limited too. Only its other paths must be clean.
   gbad=$(loki_count '{service="traffic-generator"} !~ " 200 " != "/api/vet/vets"' "$WINDOW_START" "$WINDOW_END")
   glim=$(loki_count '{service="traffic-generator"} |= " 429 /api/vet/vets"' "$WINDOW_START" "$WINDOW_END")
-  rec_if app "vets-service counted $own requests itself (want < $SENT - the limited ones never arrived); generator $gbad non-200 of $gtotal on other paths (want 0)" \
-    [ "$own" -lt "$SENT" -a "$gbad" -eq 0 -a "$gtotal" -gt 0 ]
+  gvbad=$(loki_count '{service="traffic-generator"} |= "/api/vet/vets" !~ " (200|429) "' "$WINDOW_START" "$WINDOW_END")
+  rec_if app "vets-service counted $own requests itself (want < $SENT - the limited ones never arrived); generator $gbad non-200 of $gtotal on other paths, $gvbad on /api/vet/vets other than 429 (want 0 and 0)" \
+    [ "$own" -lt "$SENT" -a "$gbad" -eq 0 -a "$gvbad" -eq 0 -a "$gtotal" -gt 0 ]
   note "generator's own /api/vet/vets calls limited in the burst: $glim (the bucket does not know who is calling)"
 }
