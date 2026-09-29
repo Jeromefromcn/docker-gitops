@@ -202,9 +202,25 @@ to N endpoints (page 11's warm-up covers it). Rolling the waypoint twice
 under continuous requests dropped nothing (0 of 2800), against 2b's single
 503; `terminationDrainDuration` is the first candidate if it recurs.
 
-Every workload carries `trivy-operator.skip: "true"` on its pod template: the
-five `ops-lab/*` images can't be pulled for scanning, and nothing consumes the
-namespace's reports.
+**PR lanes.** A fork PR labelled `lane:<service>` gets that service deployed
+as `<service>-pr-<N>` by the `lab-lanes` ApplicationSet
+(`k3s/argocd/apps/lab-lanes-appset.yaml`, bases in `lanes/`), reached only by
+requests carrying `x-pr-lane: <N>`: a header-only HTTPRoute on the baseline
+Service, evaluated on the waypoint before the resident VirtualService. The
+apps propagate the header as Micrometer baggage, so the lane is chosen again
+at every hop. Lane pods carry `app: <service>-lane` (never `app: <service>`,
+or the baseline Service would select them), the baseline's ServiceAccount and
+data, and `lab.jerome/lane-pod: "true"` for the `lane-direct` L4 policy.
+`tests/test-lanes.sh` renders every lane and checks it against its baseline.
+At most 2 lane pods, never alongside page 12's green (see the quota);
+`demo-reset` refuses a leftover lane pod. Runbook: docs/demo/18.
+
+Every workload carries `trivy-operator.skip: "true"` on its pod template, and
+nothing consumes the namespace's reports. The business images now come from
+GHCR and could be scanned, but they carry fixable CRITICAL CVEs (Spring Boot
+4.0.1's dependencies, accepted for the demo): adding the lab to
+`require-vuln-scan-clean` would refuse the next pod of a ReplicaSet once its
+report exists. CI's Trivy step reports them instead (see Images).
 
 ## Service discovery and config
 
@@ -336,33 +352,36 @@ them with the ingress handover.
 
 ## Images
 
-`mcp-toolkit`, `customers-service`, `vets-service`, `visits-service`, and
-`api-gateway` are local-only builds with no registry behind them — containerd
-can't pull them.
+The four business services and the canary slot run digest-pinned images the
+fork's `lab-images` workflow
+(`Jeromefromcn/spring-petclinic-microservices`, `.github/workflows/lab-images.yml`)
+built on a native arm64 runner, scanned with Trivy (report-only: the fixable
+CRITICAL CVEs of Spring Boot 4.0.1's dependencies are accepted for the demo;
+Boot 4.0.8 + Spring Cloud 2025.1.3 + tomcat 11.0.26 clears them) and signed
+with Cosign keyless. Kyverno admits only those
+(`restrict-image-registry`, `restrict-image-registry-lab-lanes`,
+`lab-business-images-from-ghcr` in `k3s/kyverno/policies/`). The packages are
+public, so no pull secret.
 
-**Manifests reference immutable SHA tags** (`ops-lab/api-gateway:8839b4c7fa57`),
-never `:dev`/`:latest`: a tag has to identify exactly one commit for a manifest
-to mean anything, and it is what makes "roll back" a one-line change.
-`build.sh` refuses to build from a dirty tree for the same reason, and tags
-each image both `:dev` and `:<12-char git sha>`:
+**Manifests pin digests** —
+`ghcr.io/jeromefromcn/petclinic-<service>@sha256:<digest> # fork <sha12>` —
+because `restrict-image-registry` keeps Kyverno's default `verifyDigest: true`;
+the comment names the fork commit. A release is still a git commit here that
+changes the digest (no Image Updater). A push to the fork's `main` or `lab-v2`
+builds all four services; `gh workflow run lab-images.yml --ref lab-v2 -f
+sha=<commit>` builds an older commit (the canary patches pin `ce942c9` v2 and
+`16b18eb` v2-bad), and `-f unsigned=true` republishes the negative-test image
+`ghcr.io/jeromefromcn/petclinic-unsigned:demo`. Each run's summary lists the
+digests.
 
-```bash
-cd ~/jerome/lab-environment && ./scripts/build.sh        # prints FORK_TAG=… MCP_TAG=…
-./scripts/push-to-k3s.sh ops-lab/customers-service:<sha> ops-lab/api-gateway:<sha> …
-```
-
-`push-to-k3s.sh` imports into **vps-oracle2's** k3s containerd (via `k3s ctr`,
-not plain `ctr` — on oracle2 plain `ctr` is docker's, a different store) and
-verifies the images landed. It refuses `:dev`/`:latest` outright.
-
-If the source project rebuilds these images, re-run the import and restart
-the affected Deployment, or containerd keeps serving the stale image it
-already has (no pull happens for an image it believes it has).
-
-**They are irreplaceable once deleted.** On 2026-09-24 they were found gone:
-vps_oracle's `k3s-containerd-images` inspector check runs `crictl rmi
---prune`, and with the lab at `replicas: 0` nothing referenced them. The
-oracle2 counterpart (`oracle2-k3s-containerd-images`) removes by ID and
+`mcp-toolkit` is still a local-only build (`ops-lab/mcp-toolkit:<sha>`),
+imported into **vps-oracle2's** k3s containerd with
+`lab-environment/scripts/build.sh` and `push-to-k3s.sh` (via `k3s ctr`, not
+plain `ctr` — on oracle2 plain `ctr` is docker's, a different store). The
+same scripts are retired for the business services. A local image is
+irreplaceable once deleted: on 2026-09-24 the lab's were found gone after
+vps_oracle's `k3s-containerd-images` inspector check ran `crictl rmi --prune`;
+the oracle2 counterpart (`oracle2-k3s-containerd-images`) removes by ID and
 always keeps `ops-lab/*`.
 
 ## Evidence

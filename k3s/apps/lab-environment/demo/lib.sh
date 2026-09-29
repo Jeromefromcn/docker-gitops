@@ -124,14 +124,19 @@ argocd_sync_times() {
     '[.status.history[] | select(.revision == $s)] | first // empty | "\(.deployStartedAt) \(.deployedAt)"' \
     | while read -r a b; do echo "$(date -u -d "$a" +%s) $(date -u -d "$b" +%s)"; done
 }
-# Every routing demo returns here: slot empty and on git's image, every
-# VirtualService route pinned to stable - no weights, mirror or header rule.
+# Every routing demo returns here: slot empty and on git's image, no PR lane
+# pod, every VirtualService route pinned to stable - no weights, mirror or
+# header rule.
 routing_baseline() {
   local bad=0 got want pods off
   got=$(kubectl -n "$NS" get deploy "$CANARY" -o jsonpath='{.spec.replicas}')
   [ "$got" = 0 ] || { echo "$CANARY spec.replicas '$got', want 0"; bad=1; }
   pods=$(kubectl -n "$NS" get pods -l app=customers-service,track=canary -o name)
   [ -z "$pods" ] || { echo "canary pods still present: $(tr "\n" " " <<< "$pods")"; bad=1; }
+  # PR lanes (page 18) live in the headroom page 12's green needs: none may
+  # be left behind. Closing the PR or dropping its lane: label removes it.
+  pods=$(kubectl -n "$NS" get pods -l lab.jerome/lane -o name)
+  [ -z "$pods" ] || { echo "lane pods still present: $(tr "\n" " " <<< "$pods")"; bad=1; }
   got=$(kubectl -n "$NS" get deploy "$CANARY" -o jsonpath='{.spec.template.spec.containers[0].image}')
   want=$(git_image "$CANARY")
   [ "$got" = "$want" ] || { echo "$CANARY image '$got', git wants $want"; bad=1; }

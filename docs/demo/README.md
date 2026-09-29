@@ -42,6 +42,7 @@ anyway, which scenario 07 demonstrates.
 | 11 | [Header / cookie gray release](11-header-canary.md) | |
 | 13 | [Traffic mirroring](13-mirror.md) | Same bad build as 10, zero user impact |
 | 12 | [Blue-green switch](12-blue-green.md) | Five extra JVMs — heaviest routing step |
+| 18 | [PR lane: a pull request next to production](18-pr-lane.md) | After 12's reset — lanes use the same headroom as its green |
 | 14 | [One bad pod is ejected](14-bad-pod.md) | Resilience after routing; an ejection lasts 30 s |
 | 15 | [Header-triggered fault injection](15-fault-injection.md) | |
 | 17 | [Network faults through Toxiproxy](17-toxiproxy.md) | Two visits rollouts |

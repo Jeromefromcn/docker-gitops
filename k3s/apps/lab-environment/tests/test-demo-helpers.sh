@@ -38,6 +38,7 @@ case "$*" in
   *"get trafficextension vets-service-ratelimit"*) [ -n "${FAKE_NO_RATELIMIT:-}" ] || echo "trafficextension.extensions.istio.io/vets-service-ratelimit" ;;
   *"get deploy visits-service -o jsonpath"*"env"*) echo "${FAKE_VISITS_ENV:-TZ SPRING_CLOUD_CONSUL_HOST SPRING_CLOUD_CONSUL_PORT DATA_DB_PASSWORD}" ;;
   *"get authorizationpolicy postgres-clients redis-clients"*) echo "{\"items\":[{\"spec\":{\"rules\":[{\"from\":[{\"source\":{\"principals\":[\"cluster.local/ns/lab-environment/sa/visits-service\"${FAKE_TOXI_PRINCIPAL:+,\"cluster.local/ns/lab-environment/sa/toxiproxy\"}]}}]}]}}]}" ;;
+  *"get pods -l lab.jerome/lane -o name"*) printf '%s' "${FAKE_LANE_PODS:-}" ;;
   *" get deploy "*) d=$(sed -E 's/.* get deploy ([^ ]+).*/\1/' <<< "$*"); grep "^$d " "$FAKE_DEPLOYS" | cut -d' ' -f2- ;;
   *"logs statefulset/argocd-application-controller"*) printf '%s\n' "${FAKE_CTRL_LOG:-}" ;;
   *"logs deploy/traffic-generator"*) for i in 1 2 3; do echo "2026-09-27T00:00:0${i}+00:00 ${FAKE_GEN_CODE:-200} /api/vet/vets"; done ;;
@@ -184,6 +185,8 @@ FAKE_CANARY_PODS='pod/customers-service-canary-abc' check "reset waits for termi
 has "$WORK/out" "canary pods still present"
 FAKE_CANARY_IMAGE=ghcr.io/jeromefromcn/petclinic-customers-service@sha256:bad check "reset fails on a canary image off git" 1 "$DEMO/demo-reset" preflight
 check "reset passes at the routing baseline" 0 "$DEMO/demo-reset" preflight
+FAKE_LANE_PODS='pod/visits-service-pr-42-abc' check "reset fails while a PR lane pod exists" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "lane pods still present: pod/visits-service-pr-42-abc"
 
 # --- routing primitives (in a subshell: lib.sh sets -e and its own state) --
 prims=$( (
@@ -659,6 +662,29 @@ chmod +x "$WORK/hook06"
 FAKE_ARGOCD_HOOK=$WORK/hook06 FAKE_KUBECTL_HOOK=$WORK/hook06 check "06 passes: resealed, old rejected, new accepted, clients restarted" 0 "$DEMO/demo-evidence" secret-rotation
 has "$WORK/out" "old password rejected, new password accepted"
 OLDOK06=1 FAKE_ARGOCD_HOOK=$WORK/hook06 FAKE_KUBECTL_HOOK=$WORK/hook06 check "06 fails while the old password still works" 1 "$DEMO/demo-evidence" secret-rotation
+
+# --- 18 PR lane ---------------------------------------------------------------
+cp "$DEMO/scenarios/pr-lane.sh" "$DEMO_SCENARIO_DIR/"
+cat > "$WORK/hook18" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"loki/api/v1/query"*) echo '{"data":{"result":[{"metric":{"upstream_cluster":"outbound|8082||visits-service-pr-42.lab-environment.svc.cluster.local"},"value":[0,"'"${LANE18:-15}"'"]},{"metric":{"upstream_cluster":"inbound-vip|8082|http|visits-service.lab-environment.svc.cluster.local;"},"value":[0,"30"]}]}}' ;;
+  *"/api/traces/t18"*) echo '{"data":[{"spans":[1,2,3],"processes":{"p1":{"serviceName":"customers-service"},"p2":{"serviceName":"visits-service"}}}]}' ;;
+  *"/api/traces"*"visits-service-pr-42."*) echo '{"data":[{"traceID":"direct","processes":{"p1":{"serviceName":"api-gateway"}}},{"traceID":"t18","processes":{"p1":{"serviceName":"'"${HOP18:-customers-service}"'"}}}]}' ;;
+  *"get pods -l lab.jerome/lane=pr-42 -o name"*) echo "pod/visits-service-pr-42-abc" ;;
+  *"get pod/visits-service-pr-42-abc"*) echo "{\"ghcr.io/jeromefromcn/petclinic-visits-service:0123456789abcdef0123456789abcdef01234567\":\"${SIG18:-pass}\"}" ;;
+  *"apply --dry-run=server"*) echo 'Error from server: admission webhook "validate.kyverno.svc-fail" denied the request: policy Pod/lab-environment/probe-local for resource violation: lab-business-images-from-ghcr' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook18"
+DEMO_NOW=1000 "$DEMO/demo-window" start pr-lane >/dev/null; DEMO_NOW=1001 "$DEMO/demo-window" stop pr-lane >/dev/null
+LANE_PR=42 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook18 FAKE_KUBECTL_HOOK=$WORK/hook18 check "18 passes: lane took every header request, signed, local image refused, trace crosses hops" 0 "$DEMO/demo-evidence" pr-lane
+has "$WORK/out" "waypoint sent 15 requests to visits-service-pr-42"
+has "$WORK/out" "spans customers -> visits: 3 spans: customers-service, visits-service"
+LANE18=14 LANE_PR=42 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook18 FAKE_KUBECTL_HOOK=$WORK/hook18 check "18 fails when the lane missed a header request" 1 "$DEMO/demo-evidence" pr-lane
+SIG18=fail LANE_PR=42 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook18 FAKE_KUBECTL_HOOK=$WORK/hook18 check "18 fails without a passing signature" 1 "$DEMO/demo-evidence" pr-lane
+HOP18=api-gateway LANE_PR=42 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook18 FAKE_KUBECTL_HOOK=$WORK/hook18 check "18 fails when no lane trace crosses customers" 1 "$DEMO/demo-evidence" pr-lane
 
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then

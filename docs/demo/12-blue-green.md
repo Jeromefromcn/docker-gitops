@@ -8,7 +8,7 @@ step — with no user-visible error either way.
 ## Preconditions
 Preflight passed; 13 reset. The lab memory quota (9.25Gi) was sized for a
 five-pod green alongside a full release; dify was decommissioned on
-vps-oracle2 to make room.
+vps-oracle2 to make room. No PR lane pod (18) — a lane uses the same memory headroom as the green.
 
 ## Commands
 ```bash
