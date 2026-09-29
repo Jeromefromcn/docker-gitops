@@ -5,19 +5,20 @@
 # transient failures. 500 is deliberately not in retryOn: that is an
 # application bug, and retrying it just multiplies the damage.
 #
-# Retries DO compound across hops, and the budget is not as small as it looks.
-# The api-gateway VirtualService below only covers the ingress -> api-gateway
-# hop; it does nothing about api-gateway -> customers or customers -> visits,
-# and both of those carry 503 in retryOn. One external GET can therefore
-# become 3 attempts at the gateway, each fanning out to 3 at customers, each
-# to 3 at visits: 9 requests to the deepest service. Latency stays bounded by
-# perTryTimeout (1s per try), the attempt count does not.
-#
-# This is currently latent rather than active: the three chaos scenarios all
-# measure attempts=1, because their symptoms are 502/504/UT and none of those
-# is in retryOn. It becomes live the moment a dependency fails with 503.
-# If that matters, the fix is a per-hop retry budget or dropping 503 from the
-# inner hops — not adding retries at the edge.
+# Retries do not compound across hops here — measured, not assumed (ledger C,
+# 2026-09-29): with visits-service answering 503 to everything
+# (chaos/visits-service/fail-instance), one external GET produced exactly
+# 3 attempts at visits on both paths that reach it (access log attempts=3,
+# URX), not the 3 x 3 = 9 the policy alone would allow:
+#   /api/customer/owners/{id}/visits: customers-service turns visits' 503
+#     into a 502, which is not in retryOn, so the customers hop logs
+#     attempts=1; the client gets 502.
+#   /api/gateway/owners/{id}: api-gateway calls visits itself (one hop, 3
+#     attempts); its Resilience4j fallback returns 200 without visits.
+# The ingress -> api-gateway hop never retries (attempts: 0 below). Latency
+# stays bounded by perTryTimeout (1s per try). Compounding would become real
+# only if a caller passed a 503 through unchanged; the fix then is a per-hop
+# retry budget or dropping 503 from the inner hops — not retries at the edge.
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
