@@ -567,6 +567,29 @@ has "$WORK/out" "[kubernetes    ] FAIL"
 OWN03=12 FAKE_ARGOCD_HOOK=$WORK/hook03 FAKE_KUBECTL_HOOK=$WORK/hook03 check "03 fails when the re-run changed the data" 1 "$DEMO/demo-evidence" schema-migration
 unset DEMO_REPO_ROOT
 
+# 04: 403s at the mesh, RBAC denials, and three ztunnel L4 rejections.
+cp "$DEMO/scenarios/zero-trust.sh" "$DEMO_SCENARIO_DIR/"
+win zero-trust 1000 1300
+cat > "$WORK/hook04" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"envoy_http_rbac"*) val "${D04:-2}" ;;
+  *"logs -l app=ztunnel"*)
+    echo 'warn access connection complete src.addr=10.0.0.95:40000 dst.service="customers-service.lab-environment.svc.cluster.local" error="policy rejection"'
+    echo 'warn access connection complete src.addr=10.42.1.7:40001 src.workload="traffic-generator-abc" dst.service="customers-service.lab-environment.svc.cluster.local" error="policy rejection"'
+    echo "warn access connection complete ${ODD04:-src.addr=10.42.1.8:40002} dst.service=\"postgres.lab-environment.svc.cluster.local\" error=\"policy rejection\""
+    echo 'info access connection complete src.workload="api-gateway-x" dst.service="customers-service.lab-environment.svc.cluster.local"' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook04"
+FAKE_CURL_HOOK=$WORK/hook04 FAKE_KUBECTL_HOOK=$WORK/hook04 check "04 passes: 403s, RBAC denials, 3 L4 rejections" 0 "$DEMO/demo-evidence" zero-trust
+has "$WORK/out" "traffic-generator-abc -> customers-service"
+has "$WORK/out" "ztunnel L4 policy rejections: 3"
+D04=0 FAKE_CURL_HOOK=$WORK/hook04 FAKE_KUBECTL_HOOK=$WORK/hook04 check "04 fails without an RBAC denial" 1 "$DEMO/demo-evidence" zero-trust
+ODD04=peer=unknown FAKE_CURL_HOOK=$WORK/hook04 FAKE_KUBECTL_HOOK=$WORK/hook04 check "04 runs on through a rejection with no source field" 0 "$DEMO/demo-evidence" zero-trust
+has "$WORK/out" "? -> postgres"
+
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then
   echo "FAIL a runbook page puts a password on argv"; fails=$((fails+1))

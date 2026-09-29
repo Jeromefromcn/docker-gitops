@@ -11,7 +11,7 @@ evidence_zero_trust() {
   lines=$(kubectl -n istio-system logs -l app=ztunnel --tail=-1 --since-time="$(iso "$WINDOW_START")" | grep 'policy rejection' || true)
   while read -r l; do
     [ -n "$l" ] || continue
-    src=$(grep -oP 'src\.workload="?\K[^ "]+' <<< "$l" || grep -oP 'src\.addr=\K[^ ]+' <<< "$l")
+    src=$(grep -oP 'src\.workload="?\K[^ "]+' <<< "$l" || grep -oP 'src\.addr=\K[^ ]+' <<< "$l") || src=?
     echo "      $src -> $(grep -oP 'dst\.service="\K[^"]+' <<< "$l")"
   done <<< "$lines"
   rej=$(echo "$lines" | grep -c . || true)
