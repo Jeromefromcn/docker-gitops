@@ -377,7 +377,8 @@ changes the digest (no Image Updater). A push to the fork's `main` or `lab-v2`
 builds all four services; `gh workflow run lab-images.yml --ref lab-v2 -f
 sha=<commit>` builds an older commit (the canary patches pin `c44d332` v2 and
 `77962ea` v2-bad), and `-f unsigned=true` republishes the negative-test image
-`ghcr.io/jeromefromcn/petclinic-unsigned:demo`. Each run's summary lists the
+`ghcr.io/jeromefromcn/petclinic-unsigned:demo` (new digest: update
+`UNSIGNED_IMAGE` in `demo/scenarios/pr-lane.sh`). Each run's summary lists the
 digests.
 
 `mcp-toolkit` is still a local-only build (`ops-lab/mcp-toolkit:<sha>`),

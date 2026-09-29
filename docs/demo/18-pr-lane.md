@@ -45,8 +45,10 @@ generator's traffic.
 - **Envoy (waypoint access log):** 15 requests upstream to the lane, every
   other visits request to the baseline.
 - **Kyverno:** the lane pod's `kyverno.io/verify-images` annotation shows
-  its PR image `pass`; a server-side dry-run of a local `ops-lab/*` image is
-  refused by `lab-business-images-from-ghcr`.
+  its PR image `pass`; server-side dry-runs are refused - a local `ops-lab/*`
+  image by `lab-business-images-from-ghcr`, and an unsigned GHCR image
+  (`petclinic-unsigned`, pushed by CI but never signed) by
+  `restrict-image-registry`.
 - **App (Jaeger):** a trace holding customers-service's spans and the
   waypoint's span named after `visits-service-pr-<N>` — the header crossed
   a hop the client never saw, and the waypoint picked the lane there.
@@ -80,8 +82,8 @@ generator's traffic.
 - **Head SHA, not merge SHA.** The image is tagged with the PR's head commit;
   the signature's subject is the merge ref GitHub builds PRs on.
 - **Capacity is shared in time.** Lanes use the headroom page 12's green
-  needs: two lane pods at most, never both at once — the reset refuses a
-  leftover lane.
+  needs: at most two lane pods, and never while page 12's green runs — the
+  reset refuses a leftover lane.
 
 ## Reset
 `gh pr close` (last command) makes the generator drop the PR; ArgoCD deletes

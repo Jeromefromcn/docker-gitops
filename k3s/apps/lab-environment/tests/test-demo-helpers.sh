@@ -675,7 +675,8 @@ case "$1" in
   *"/api/traces"*"visits-service-pr-42."*) echo '{"data":[{"traceID":"direct","processes":{"p1":{"serviceName":"api-gateway"}}},{"traceID":"t18","processes":{"p1":{"serviceName":"'"${HOP18:-customers-service}"'"}}}]}' ;;
   *"get pods -l lab.jerome/lane=pr-42 -o name"*) echo "pod/visits-service-pr-42-abc" ;;
   *"get pod/visits-service-pr-42-abc"*) echo "{\"ghcr.io/jeromefromcn/petclinic-visits-service:0123456789abcdef0123456789abcdef01234567\":\"${SIG18:-pass}\"}" ;;
-  *"apply --dry-run=server"*) echo 'Error from server: admission webhook "validate.kyverno.svc-fail" denied the request: policy Pod/lab-environment/probe-local for resource violation: lab-business-images-from-ghcr' ;;
+  *"apply --dry-run=server"*"probe-local"*) echo 'Error from server: admission webhook "validate.kyverno.svc-fail" denied the request: policy Pod/lab-environment/probe-local for resource violation: lab-business-images-from-ghcr' ;;
+  *"apply --dry-run=server"*"probe-unsigned"*) if [ -n "${UNSIG18:-}" ]; then echo "pod/probe-unsigned created (server dry run)"; else printf '%s\n' 'resource Pod/lab-environment/probe-unsigned was blocked due to the following policies' 'restrict-image-registry:' '  verify-ghcr-jeromefromcn-signature: sigstore bundle verification failed: no matching signatures'; fi ;;
   *) exit 1 ;;
 esac
 EOF
@@ -684,7 +685,9 @@ DEMO_NOW=1000 "$DEMO/demo-window" start pr-lane >/dev/null; DEMO_NOW=1001 "$DEMO
 LANE_PR=42 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook18 FAKE_KUBECTL_HOOK=$WORK/hook18 check "18 passes: lane took every header request, signed, local image refused, trace crosses hops" 0 "$DEMO/demo-evidence" pr-lane
 has "$WORK/out" "waypoint sent 15 requests to visits-service-pr-42"
 has "$WORK/out" "spans customers -> visits: 3 spans: customers-service, visits-service"
+has "$WORK/out" "an unsigned GHCR image is refused: restrict-image-registry"
 LANE18=14 LANE_PR=42 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook18 FAKE_KUBECTL_HOOK=$WORK/hook18 check "18 fails when the lane missed a header request" 1 "$DEMO/demo-evidence" pr-lane
+UNSIG18=1 LANE_PR=42 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook18 FAKE_KUBECTL_HOOK=$WORK/hook18 check "18 fails when an unsigned image is admitted" 1 "$DEMO/demo-evidence" pr-lane
 SIG18=fail LANE_PR=42 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook18 FAKE_KUBECTL_HOOK=$WORK/hook18 check "18 fails without a passing signature" 1 "$DEMO/demo-evidence" pr-lane
 HOP18=api-gateway LANE_PR=42 JAEGER_POLL_SECONDS=0 FAKE_CURL_HOOK=$WORK/hook18 FAKE_KUBECTL_HOOK=$WORK/hook18 check "18 fails when no lane trace crosses customers" 1 "$DEMO/demo-evidence" pr-lane
 

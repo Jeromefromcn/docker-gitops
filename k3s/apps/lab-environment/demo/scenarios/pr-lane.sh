@@ -4,6 +4,20 @@
 SENT_DIRECT=10   # the page sends these to /api/visit/... with the header
 SENT_HOP=5       # and these to /api/customer/owners/1/visits (via customers)
 
+# Built by the fork's lab-images workflow with unsigned=true: pushed, never
+# signed. A new dispatch republishes the tag with a new digest; update this.
+UNSIGNED_IMAGE=ghcr.io/jeromefromcn/petclinic-unsigned@sha256:b5b9d0eacd284190ca95f06c3f04cd9ddcc9020eb763d510a95c12b84ecaf21c
+
+# probe_pod <name> <image> <labels>: server-side dry-run of a bare Pod; prints
+# the admission result. The manifest goes to a file named after the probe.
+probe_pod() {
+  local f; f=$(mktemp --suffix="-$1.yaml")
+  printf 'apiVersion: v1\nkind: Pod\nmetadata: {name: %s, namespace: %s, labels: %s}\nspec:\n  containers:\n    - {name: c, image: "%s", resources: {requests: {cpu: 10m, memory: 16Mi}}}\n' \
+    "$1" "$NS" "$3" "$2" > "$f"
+  kubectl apply --dry-run=server -f "$f" 2>&1 || true
+  rm -f "$f"
+}
+
 evidence_pr_lane() {
   local n=${LANE_PR:?export LANE_PR=<the PR number>} per lane base pod ann tid svcs out ok pat
   # The lane's host inside upstream_cluster: "|" before it and "." after it
@@ -20,17 +34,14 @@ evidence_pr_lane() {
   ann=$(kubectl -n "$NS" get "${pod:-pod/none}" -o jsonpath='{.metadata.annotations.kyverno\.io/verify-images}' 2>/dev/null || true)
   rec_if kyverno "lane pod ${pod#pod/} signature: ${ann:-none} (want ghcr.io/jeromefromcn/petclinic-visits-service:<sha> pass)" \
     grep -q 'petclinic-visits-service:[0-9a-f]\{40\}":"pass"' <<< "$ann"
-  out=$(kubectl apply --dry-run=server -f - 2>&1 <<EOF || true
-apiVersion: v1
-kind: Pod
-metadata: {name: probe-local, namespace: $NS, labels: {app: visits-service}}
-spec:
-  containers:
-    - {name: c, image: "ops-lab/visits-service:21d8461c6ce4", resources: {requests: {cpu: 10m, memory: 16Mi}}}
-EOF
-)
+  out=$(probe_pod probe-local "ops-lab/visits-service:21d8461c6ce4" "{app: visits-service}")
   rec_if kyverno "a local ops-lab/* image is refused: $(grep -o 'lab-business-images-from-ghcr' <<< "$out" | head -1)" \
     grep -q 'lab-business-images-from-ghcr' <<< "$out"
+  # No app label: only the signature rule applies, so a refusal here is the
+  # missing signature and nothing else.
+  out=$(probe_pod probe-unsigned "$UNSIGNED_IMAGE" "{}")
+  rec_if kyverno "an unsigned GHCR image is refused: $(grep -o '^restrict-image-registry' <<< "$out" | head -1)" \
+    grep -q '^restrict-image-registry:' <<< "$out"
   # The waypoint names its span after the upstream host, so a trace holding
   # a waypoint span "visits-service-pr-<N>...:8082/*" next to customers'
   # spans shows the lane chosen at the customers -> visits hop. (Micrometer's
