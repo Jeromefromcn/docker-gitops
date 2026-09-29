@@ -9,6 +9,7 @@ on:
       - '*/inspector-checks/**'
       - '*/tofu/**'
       - 'k3s/apps/lab-environment/**'
+      - 'k3s/argocd/apps/lab-lanes-appset.yaml'
       - '.github/scripts/**'
       - '.github/workflows/repo-conventions.yml'
   pull_request:
@@ -18,7 +19,9 @@ on:
       - '*/inspector-checks/**'
       - '*/tofu/**'
       - 'k3s/apps/lab-environment/**'
+      - 'k3s/argocd/apps/lab-lanes-appset.yaml'
       - '.github/scripts/**'
+      - '.github/workflows/repo-conventions.yml'
   workflow_dispatch: {}
 
 permissions:
