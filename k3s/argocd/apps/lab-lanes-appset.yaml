@@ -1,0 +1,104 @@
+# Lab PR lanes (docs/superpowers/specs/2026-09-29-lab-pr-lanes-design.md):
+# one Application per (fork PR, service) whose PR carries lane:<service>.
+# The fork's lab-images workflow builds and signs a PR's changed services on
+# every push, so by the time the label is added the image exists. At most 2
+# lane pods at once, never alongside page 12's 5-replica green (capacity).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: lab-lanes
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - list:
+              elements:
+                - service: api-gateway
+                - service: customers-service
+                - service: vets-service
+                - service: visits-service
+          - pullRequest:
+              requeueAfterSeconds: 30
+              github:
+                owner: Jeromefromcn
+                repo: spring-petclinic-microservices
+                tokenRef:
+                  secretName: github-pr-generator-token
+                  key: token
+                labels:
+                  - "lane:{{.service}}"
+  template:
+    metadata:
+      name: "lab-{{.service}}-pr-{{.number}}"
+      annotations:
+        argocd.argoproj.io/pull-request-number: "{{.number}}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Jeromefromcn/docker-gitops.git
+        targetRevision: main
+        path: "k3s/apps/lab-environment/lanes/{{.service}}"
+        kustomize:
+          # Plain-string form: this ArgoCD's CRD rejects the object form.
+          images:
+            - "ghcr.io/jeromefromcn/petclinic-{{.service}}:{{.head_sha}}"
+          patches:
+            - target:
+                kind: Deployment
+                name: "{{.service}}-lane"
+              patch: |-
+                - op: replace
+                  path: /metadata/name
+                  value: "{{.service}}-pr-{{.number}}"
+                - op: replace
+                  path: /metadata/labels/lab.jerome~1lane
+                  value: "pr-{{.number}}"
+                - op: replace
+                  path: /spec/selector/matchLabels/lab.jerome~1lane
+                  value: "pr-{{.number}}"
+                - op: replace
+                  path: /spec/template/metadata/labels/lab.jerome~1lane
+                  value: "pr-{{.number}}"
+            - target:
+                kind: Service
+                name: "{{.service}}-lane"
+              patch: |-
+                - op: replace
+                  path: /metadata/name
+                  value: "{{.service}}-pr-{{.number}}"
+                - op: replace
+                  path: /metadata/labels/lab.jerome~1lane
+                  value: "pr-{{.number}}"
+                - op: replace
+                  path: /spec/selector/lab.jerome~1lane
+                  value: "pr-{{.number}}"
+            - target:
+                kind: HTTPRoute
+                name: "{{.service}}-lane"
+              patch: |-
+                - op: replace
+                  path: /metadata/name
+                  value: "{{.service}}-pr-{{.number}}"
+                - op: replace
+                  path: /metadata/labels/lab.jerome~1lane
+                  value: "pr-{{.number}}"
+                - op: replace
+                  path: /spec/rules/0/matches/0/headers/0/value
+                  value: "{{.number}}"
+                - op: replace
+                  path: /spec/rules/0/backendRefs/0/name
+                  value: "{{.service}}-pr-{{.number}}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: lab-environment
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+  syncPolicy:
+    preserveResourcesOnDeletion: false

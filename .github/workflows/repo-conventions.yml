@@ -105,6 +105,10 @@ jobs:
 
       - name: Run demo helper tests
         run: bash k3s/apps/lab-environment/tests/test-demo-helpers.sh
+      - name: Run lab PR lane render tests
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install pyyaml
+          bash k3s/apps/lab-environment/tests/test-lanes.sh
 
   # Static checks only — tofu fmt + validate never touch live cloud resources.
   # `tofu init -backend=false` only downloads provider plugins from the

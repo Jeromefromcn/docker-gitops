@@ -1,0 +1,10 @@
+# One lab PR lane of api-gateway. The lab-lanes ApplicationSet renames
+# everything to api-gateway-pr-<N>, sets lab.jerome/lane: pr-<N> and the
+# header value, and overrides the image with the PR head SHA.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab-environment
+resources:
+  - deployment.yaml
+  - service.yaml
+  - httproute.yaml

@@ -1,0 +1,29 @@
+# On the waypoint, HTTPRoute rules are evaluated before the resident
+# VirtualService's (verified by the lab PR lanes spike): this header-only
+# rule takes just the lane's requests and everything else falls through to
+# the VirtualService untouched. An unconditional rule here would swallow the
+# whole host (phase I). Lane traffic gets Istio's default retry policy (2
+# attempts), not the VirtualService's tuned retries or its outlier detection
+# - a lane is a test path.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: customers-service-lane
+  labels:
+    app: customers-service-lane
+    lab.jerome/lane: template
+spec:
+  parentRefs:
+    - group: ""
+      kind: Service
+      name: customers-service
+  rules:
+    - matches:
+        - headers:
+            - name: x-pr-lane
+              value: "0"
+      backendRefs:
+        - name: customers-service-lane
+          port: 8081
+      timeouts:
+        request: 3s

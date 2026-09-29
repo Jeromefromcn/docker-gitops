@@ -1,0 +1,16 @@
+# No istio.io/use-waypoint: lane traffic arrives through the baseline
+# Service's waypoint route; nothing addresses this Service directly.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway-lane
+  labels:
+    app: api-gateway-lane
+    lab.jerome/lane: template
+spec:
+  selector:
+    app: api-gateway-lane
+    lab.jerome/lane: template
+  ports:
+    - port: 8080
+      targetPort: 8080

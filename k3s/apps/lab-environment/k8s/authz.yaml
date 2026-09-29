@@ -208,6 +208,33 @@ spec:
         - operation:
             ports: ["8083"]
 ---
+# L4 for lab PR lanes: same shape as the <service>-direct policies above.
+# Without it no ALLOW policy selects a lane pod and any caller could reach
+# it directly. Istio selectors match values, not label presence, so lane
+# pods carry the fixed label lab.jerome/lane-pod: "true" for this.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: lane-direct
+  namespace: lab-environment
+spec:
+  selector:
+    matchLabels:
+      lab.jerome/lane-pod: "true"
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/waypoint
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/lab-environment/sa/prometheus
+      to:
+        - operation:
+            ports: ["8080", "8081", "8082", "8083"]
+---
 # L4 (ztunnel) for the data stores. Client sets verified from live Consul KV
 # (config/<svc>/data/db.host=postgres, redis.host=redis for visits only) and
 # pod env: mcp-toolkit holds only consul/prometheus/loki/jaeger URLs, Grafana
