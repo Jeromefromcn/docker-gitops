@@ -1,0 +1,39 @@
+# Everything except docs_dir and nav, which prepare.py generates into
+# build/mkdocs.yml. Build: python3 demo-site/prepare.py &&
+# mkdocs build --strict -f demo-site/build/mkdocs.yml
+site_name: Lab demo runbook
+site_description: Live SDLC demonstrations on lab-environment, with the evidence behind each one
+site_url: https://jeromefromcn.github.io/docker-gitops/
+repo_url: https://github.com/Jeromefromcn/docker-gitops
+repo_name: docker-gitops
+
+theme:
+  name: material
+  custom_dir: ../overrides
+  features:
+    - navigation.footer      # prev/next in demo order
+    - content.code.copy      # one-click copy on every command block
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details         # the collapsed rehearsal-evidence block
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - tables
+  - toc:
+      permalink: true

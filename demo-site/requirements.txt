@@ -1,0 +1,8 @@
+# Pinned exactly. Never mkdocs>=2: Material's build banner warns that
+# MkDocs 2.0 removes the plugin system and breaks theme overrides
+# (overrides/main.html). Material itself is in maintenance mode since
+# 2025-11; see demo-site/README.md for the way out.
+mkdocs==1.6.1
+mkdocs-material==9.7.7
+pymdown-extensions==12.1
+Markdown==3.11
