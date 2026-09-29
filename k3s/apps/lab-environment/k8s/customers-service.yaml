@@ -38,7 +38,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: customers-service
-          image: ops-lab/customers-service:8839b4c7fa57
+          image: ops-lab/customers-service:21d8461c6ce4
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
