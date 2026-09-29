@@ -35,6 +35,7 @@ case "$*" in
   *"get deploy customers-service-canary"*"image"*) echo "${FAKE_CANARY_IMAGE:-$(grep -m1 -oP 'image: \K\S+' "$FAKE_LAB_K8S/customers-service-canary.yaml")}" ;;
   *"get pods -l app=customers-service,track=canary -o name"*) printf '%s' "${FAKE_CANARY_PODS:-}" ;;
   *"get virtualservice customers-service -o json"*) cat "${FAKE_VS:-$FAKE_VS_PINNED}" ;;
+  *"get trafficextension vets-service-ratelimit"*) [ -n "${FAKE_NO_RATELIMIT:-}" ] || echo "trafficextension.extensions.istio.io/vets-service-ratelimit" ;;
   *"get deploy visits-service -o jsonpath"*"env"*) echo "${FAKE_VISITS_ENV:-TZ SPRING_CLOUD_CONSUL_HOST SPRING_CLOUD_CONSUL_PORT DATA_DB_PASSWORD}" ;;
   *"get authorizationpolicy postgres-clients redis-clients"*) echo "{\"items\":[{\"spec\":{\"rules\":[{\"from\":[{\"source\":{\"principals\":[\"cluster.local/ns/lab-environment/sa/visits-service\"${FAKE_TOXI_PRINCIPAL:+,\"cluster.local/ns/lab-environment/sa/toxiproxy\"}]}}]}]}}]}" ;;
   *" get deploy "*) d=$(sed -E 's/.* get deploy ([^ ]+).*/\1/' <<< "$*"); grep "^$d " "$FAKE_DEPLOYS" | cut -d' ' -f2- ;;
@@ -301,6 +302,8 @@ FAKE_VISITS_ENV="TZ DATA_DB_HOST DATA_REDIS_HOST" check "reset fails while visit
 has "$WORK/out" "visits-service still points at toxiproxy"
 FAKE_TOXI_PRINCIPAL=1 check "reset fails while postgres/redis still admit toxiproxy" 1 "$DEMO/demo-reset" preflight
 has "$WORK/out" "still admit sa/toxiproxy"
+FAKE_NO_RATELIMIT=1 check "reset fails when the resident rate limit is gone" 1 "$DEMO/demo-reset" preflight
+has "$WORK/out" "vets-service-ratelimit TrafficExtension missing"
 unset DEMO_REPO_ROOT
 
 # 11: exactly the marked requests reach the canary.
@@ -431,6 +434,27 @@ EOF
 chmod +x "$WORK/hook17"
 FAKE_CURL_HOOK=$WORK/hook17 check "17 passes: visits timed out at the mesh" 0 "$DEMO/demo-evidence" toxiproxy
 T17=0 FAKE_CURL_HOOK=$WORK/hook17 check "17 fails without an upstream timeout on visits" 1 "$DEMO/demo-evidence" toxiproxy
+
+# 16: the burst was limited at the waypoint; vets itself saw only the
+# admitted requests; steady traffic was untouched.
+cp "$DEMO/scenarios/rate-limit.sh" "$DEMO_SCENARIO_DIR/"
+win rate-limit 1000 1300
+cat > "$WORK/hook16" <<'EOF'
+#!/bin/bash
+case "$1" in
+  *"sum by (pod_name)"*) res "{\"metric\":{\"pod_name\":\"waypoint-a\"},\"value\":[0,\"${L16:-20}\"]},{\"metric\":{\"pod_name\":\"waypoint-b\"},\"value\":[0,\"18\"]}" ;;
+  *"vets-service"*"time=1000"*) val 100 ;;
+  *"vets-service"*"time=1320"*) val "${V16:-125}" ;;
+  *"traffic-generator"*'!~'*) val "${G16:-0}" ;;
+  *"traffic-generator"*) val 300 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/hook16"
+FAKE_CURL_HOOK=$WORK/hook16 check "16 passes: 38 limited, vets saw only the rest" 0 "$DEMO/demo-evidence" rate-limit
+has "$WORK/out" "waypoint-a 20"
+V16=170 FAKE_CURL_HOOK=$WORK/hook16 check "16 fails when every request reached vets" 1 "$DEMO/demo-evidence" rate-limit
+G16=3 FAKE_CURL_HOOK=$WORK/hook16 check "16 fails when steady traffic was limited" 1 "$DEMO/demo-evidence" rate-limit
 
 # --- runbook pages: a secret never goes on a command line (visible in ps) --
 if grep -nE -- '--from-literal=password|PGPASSWORD=[^"]*\$NEW|--password[= ]' "$HERE/../../../../docs/demo/"*.md; then

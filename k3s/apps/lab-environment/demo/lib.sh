@@ -199,6 +199,8 @@ baseline_check() {
   { [ "$total" -gt 0 ] && [ "$non200" -eq 0 ]; } || { echo "generator last 30s: $total requests, $non200 non-200"; bad=1; }
   routing_baseline || bad=1
   toxiproxy_baseline || bad=1
+  kubectl -n "$NS" get trafficextension vets-service-ratelimit -o name 2>/dev/null | grep -q . \
+    || { echo "vets-service-ratelimit TrafficExtension missing"; bad=1; }
   return $bad
 }
 wait_baseline() {
