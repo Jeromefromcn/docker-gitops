@@ -445,6 +445,7 @@ case "$1" in
   *"sum by (pod_name)"*) res "{\"metric\":{\"pod_name\":\"waypoint-a\"},\"value\":[0,\"${L16:-20}\"]},{\"metric\":{\"pod_name\":\"waypoint-b\"},\"value\":[0,\"18\"]}" ;;
   *"vets-service"*"time=1000"*) val 100 ;;
   *"vets-service"*"time=1320"*) val "${V16:-125}" ;;
+  *"traffic-generator"*'(200|429)'*) val "${GO16:-0}" ;;
   *"traffic-generator"*'|= " 429 /api/vet/vets"'*) val "${GV16:-0}" ;;
   *"traffic-generator"*'!~'*'!= "/api/vet/vets"'*) val "${G16:-0}" ;;
   *"traffic-generator"*'!~'*) val $(( ${G16:-0} + ${GV16:-0} )) ;;
@@ -461,6 +462,7 @@ G16=3 FAKE_CURL_HOOK=$WORK/hook16 check "16 fails when the generator's other pat
 # second is limited like any other caller (rehearsal 2026-09-29).
 GV16=1 FAKE_CURL_HOOK=$WORK/hook16 check "16 passes when the burst also limited a generator vets call" 0 "$DEMO/demo-evidence" rate-limit
 has "$WORK/out" "generator's own /api/vet/vets calls limited in the burst: 1"
+GO16=1 FAKE_CURL_HOOK=$WORK/hook16 check "16 fails when a generator vets call failed with something other than 429" 1 "$DEMO/demo-evidence" rate-limit
 
 # 08: shed fast, admitted P99 flat, node and pool out of saturation; the
 # minute table survives a run across UTC midnight.
@@ -492,7 +494,8 @@ got=$(grep -oE '^      [0-9]{2}:[0-9]{2} ' "$WORK/out" | tr -d ' ' | paste -sd' 
 [ "$got" = "23:58 23:59 00:00 00:01 00:02" ] && echo "PASS 08 minute table in time order across midnight" || { echo "FAIL 08 minute table order: '$got'"; fails=$((fails+1)); }
 GAP08=1 FAKE_CURL_HOOK=$WORK/hook08 check "08 run with a minute missing from one series (4 P99 points: fails the >= 5 rule)" 1 "$DEMO/demo-evidence" load-test
 got=$(grep -oE '^      [0-9]{2}:[0-9]{2} ' "$WORK/out" | tr -d ' ' | paste -sd' ')
-[ "$got" = "23:58 00:00 00:01 00:02" ] && echo "PASS 08 minute table keeps every joined minute across midnight" || { echo "FAIL 08 minute table with a gap: '$got'"; fails=$((fails+1)); }
+[ "$got" = "23:58 23:59 00:00 00:01 00:02" ] && echo "PASS 08 minute table keeps a minute missing from one series" || { echo "FAIL 08 minute table with a gap: '$got'"; fails=$((fails+1)); }
+grep -q '^      23:59    20  -$' "$WORK/out" && echo "PASS 08 missing P99 shown as -" || { echo "FAIL 08 missing P99 not shown as -"; fails=$((fails+1)); }
 N08=1.8 FAKE_CURL_HOOK=$WORK/hook08 check "08 fails when the node saturated" 1 "$DEMO/demo-evidence" load-test
 S08=0 FAKE_CURL_HOOK=$WORK/hook08 check "08 fails when nothing was shed" 1 "$DEMO/demo-evidence" load-test
 H08=2.9 FAKE_CURL_HOOK=$WORK/hook08 check "08 fails when vets still queued for connections" 1 "$DEMO/demo-evidence" load-test

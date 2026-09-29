@@ -17,8 +17,9 @@ evidence_load_test() {
   rps=$(range_minutes "sum(rate(istio_requests_total{$API}[1m]))")
   p99=$(range_minutes "histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{$API}[1m])))")
   echo "      minute  rps   p99(ms)"
-  # Join on the epoch, not on HH:MM, so a run across UTC midnight keeps its rows and order.
-  join <(echo "$rps" | sort -k1,1) <(echo "$p99" | sort -k1,1) | sort -n \
+  # Join on the epoch, not on HH:MM, so a run across UTC midnight keeps its rows
+  # and order; a minute missing from one series still gets its row, with "-".
+  join -a1 -a2 -e - -o 0,1.2,2.2 <(echo "$rps" | sort -k1,1) <(echo "$p99" | sort -k1,1) | sort -n \
     | while read -r t r p; do printf '      %s  %4s  %s\n' "$(date -u -d "@$t" +%H:%M)" "$r" "$p"; done
   pts=$(echo "$p99" | grep -c . || true)
   rec_if envoy "waypoint RPS and P99 per minute over the run: $pts points (want >= 5)" [ "$pts" -ge 5 ]
