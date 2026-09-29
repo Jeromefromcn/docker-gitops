@@ -193,3 +193,13 @@ Implemented and rehearsed 2026-09-29 ([plan](../plans/2026-09-29-lab-pr-lanes.md
 - `lab-v2` was rebuilt on the upgraded `main` (force-pushed; the old history is tag `lab-v2-boot-4.0.1`). Canary v2 is now `c44d33230743`, v2-bad `77962eada66c`. `X-App-Version` is the build's own SHA, so pages 09–12 quote the new values. `demo/pr-lane` was rebased too.
 - The baseline and canary run the new digests. The four baseline Deployments dropped `trivy-operator.skip`, and Trivy Operator's reports show `critical=0` for all four ReplicaSets. `require-vuln-scan-clean` then gained the four services. Probes: a dry-run pod owned by the clean customers ReplicaSet is admitted; one labelled `app: visits-service` and owned by a ReplicaSet whose report has fixable CRITICALs is refused by `block-critical-fixable-cves`.
 - Accepted cost: a CVE published later against a running image blocks that ReplicaSet's next pod until a patched release, as for hello.
+
+**Follow-ups, later on 2026-09-29.**
+
+- The api-gateway and vets lanes were run live (fork PR #4, both labels, which is exactly the 2-lane cap). Both pods were Ready with no `FailedCreate`, and CI built only those two services, which confirms the three-dot PR diff. 10/10 header requests went upstream to `api-gateway-pr-4` and 10/10 to `vets-service-pr-4`; header-less requests stayed on the baseline. Vets' Lua rate limit also applies to lane traffic and shares the baseline's bucket: a 30-request burst with the header gave 3 × 200 / 27 × 429.
+- `restrict-image-registry` now confines each signer to its own images (`petclinic-*` accepts only the fork's `lab-images.yml`; everything else accepts only this repo's workflows). `lab-business-images-from-ghcr` also covers init and ephemeral containers.
+- `tests/test-lanes.sh` compares each lane's whole container (except the image) and pod spec with its baseline.
+- Page 18 also shows an unsigned GHCR image being refused.
+- `k3s-gated-fixable-cves.sh` (inspector) flags a running gated ReplicaSet whose Trivy report gains a fixable CRITICAL, before the vuln gate refuses its next pod.
+- `require-vuln-scan-clean` fails closed on a bare Pod with a gated `app` label (no `ownerReferences` to look up). This is kept on purpose and documented in `k3s/README.md`.
+- The fork dropped the non-functional `tag-fields`, scoped CI permissions to the build job, and diffs PRs from their merge base.
