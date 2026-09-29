@@ -29,10 +29,11 @@
       "Bash(git show:*)",
       "Bash(docker exec npm nginx -t)",
       "Bash(docker exec npm nginx -T)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(kubectl apply --dry-run=client *)",
+      "Bash(kubectl apply --dry-run=server *)"
     ],
     "ask": [
-      "Bash(kubectl apply:*)",
       "Bash(kubectl patch:*)",
       "Bash(kubectl edit:*)",
       "Bash(kubectl delete:*)",
