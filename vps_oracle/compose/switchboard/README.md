@@ -43,7 +43,7 @@ The only isolation anchor left between the two accounts is the login token. Insi
 | `sessions/` `history.jsonl` `session-env/` `shell-snapshots/` `file-history/` | symlink → `~/.claude` | shared | **session index / global history / environment snapshots / file edit history** |
 | `cache/` `telemetry/` `stats-cache.json` `downloads/` `backups/` `auto-job-log/` `channels/` `plans/` `tasks/` `ide/` | symlink → `~/.claude` | shared | caches/logs/app state, safe to overwrite |
 | `daemon/` `daemon.lock` `daemon.log` `daemon.status.json` `jobs/` | symlink → `~/.claude` | shared | background daemon (supervisor/worker process state, `/tmp` socket index) + task queue; runtime state of a single-machine unique process, not account identity |
-| `.last-cleanup` `.last-update-result.json` `.claude-code-notify-hooks.json` | symlink → `~/.claude` | shared | cleanup/update/notify state |
+| `.last-cleanup` `.last-update-result.json` `.claude-code-notify-hooks.json` `mcp-needs-auth-cache.json` | symlink → `~/.claude` | shared | cleanup/update/notify state |
 | `claude-direnv-wrapper.sh` `direnv-bash-env.sh` `direnv-load.sh` | symlink → `~/.claude` | shared | group-injection wrapper and helpers (actually referenced by absolute path, so symlinking them is harmless) |
 
 ### Outside configDir, account-switch related
