@@ -423,7 +423,7 @@ infrastructure output rather than the apps' own logs.
   panel reads "No data" until some cluster actually carries an outlier
   detection config — Envoy only materialises those stats once it does.
 - **Business dashboards.** `Lab Business` (uid `lab-business`) has three
-  tables with a 1m/5m/10m window and a service filter: inbound endpoints
+  tables with a Window of 60/300/600 seconds and a service filter: inbound endpoints
   (calls, QPS, 5xx rate, 429 count, avg/max, p90/p95/p99), caller-to-callee
   outbound calls from the waypoint, and dependency calls (HTTP client, JPA
   repository, Redis, Consul KV poll). Clicking an endpoint or a callee opens
@@ -445,8 +445,10 @@ infrastructure output rather than the apps' own logs.
   reload, so a dashboard edit restarts nothing. Calls and 429 count are exact
   counter differences (value now minus value one Window ago), not `increase()`:
   `increase()` extrapolates to the window edges and read 121 for a 100-request,
-  34 s demo in a 1m Window. QPS, rates and averages still use `rate()` and
-  `increase()`, so under a short burst QPS reads high while Calls stays true.
+  34 s demo in a 1m Window. The QPS column is Calls divided by the Window in seconds (the
+  variable holds a number of seconds for exactly that reason), so the two always
+  agree; the QPS time series, rates, ratios and averages still use `rate()` and
+  `increase()`, which read high for a short burst.
 - **Latency histograms.** Spring publishes no `_bucket` series by default, so
   the bucket lists live in one ConfigMap, `lab-metrics-defaults`
   (`k8s/metrics-defaults.yaml`), which every scraped business Deployment and
