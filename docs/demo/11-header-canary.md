@@ -10,7 +10,7 @@ Preflight passed; 10 reset.
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 git apply k3s/apps/lab-environment/demo/patches/header-canary.patch
 git --no-pager diff
 git commit -m "demo: route marked requests to the customers-service canary" -- k3s/apps/lab-environment/k8s

@@ -13,7 +13,7 @@ throws — and its unit tests passed, because none had two pets.
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 git apply k3s/apps/lab-environment/demo/patches/canary-weight.patch
 git --no-pager diff
 git commit -m "demo: canary customers-service v2-bad at 10%" -- k3s/apps/lab-environment/k8s

@@ -9,7 +9,7 @@ Scenario 02's `demo:` commit is on `main` and deployed.
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 demo-window start gitops-selfheal-rollback
 # 1. Drift: someone scales by hand
 kubectl -n lab-environment scale deploy/customers-service --replicas=1

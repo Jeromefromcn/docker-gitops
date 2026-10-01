@@ -10,7 +10,7 @@ Preflight passed; `kubeseal` on the PATH; working tree clean.
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 demo-window start secret-rotation
 # 1. Seal a new password and ship it through git. The Secret changes; nothing restarts.
 # The password reaches kubectl through a /dev/fd path, never as an argument (ps would show it).

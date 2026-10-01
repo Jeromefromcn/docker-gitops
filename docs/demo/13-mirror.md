@@ -10,7 +10,7 @@ Preflight passed; 11 reset.
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 git apply k3s/apps/lab-environment/demo/patches/mirror.patch
 git --no-pager diff
 git commit -m "demo: mirror customers-service GETs to v2-bad" -- k3s/apps/lab-environment/k8s

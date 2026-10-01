@@ -10,7 +10,7 @@ Preflight passed (`demo-reset preflight` → `baseline OK`; the canary slot is e
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 git apply k3s/apps/lab-environment/demo/patches/canary-instance-ratio.patch
 git --no-pager diff
 git commit -m "demo: canary customers-service by instance ratio (5 + 1)" -- k3s/apps/lab-environment/k8s

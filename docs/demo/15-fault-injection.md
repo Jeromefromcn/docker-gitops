@@ -10,7 +10,7 @@ Preflight passed; 14 reset.
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 git apply k3s/apps/lab-environment/demo/patches/fault-injection.patch
 git --no-pager diff
 git commit -m "demo: inject faults into customers-service for marked requests" -- k3s/apps/lab-environment/k8s

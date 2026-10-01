@@ -9,7 +9,7 @@ Preflight passed. Working tree clean (`git status`).
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 demo-window start rolling-update
 F=k3s/apps/lab-environment/k8s/customers-service.yaml
 cur=$(grep -oP 'lab.jerome/rollout-rev: "\K[0-9]+' $F)

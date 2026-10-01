@@ -12,7 +12,7 @@ vps-oracle2 to make room. No PR lane pod (18) — a lane uses the same memory he
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 git apply k3s/apps/lab-environment/demo/patches/blue-green-up.patch
 git --no-pager diff
 git commit -m "demo: bring up green customers-service (5 x v2)" -- k3s/apps/lab-environment/k8s

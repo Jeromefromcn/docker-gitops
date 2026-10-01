@@ -11,7 +11,7 @@ Preflight passed; 15 reset. Costs two visits-service rollouts (in and out).
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 git apply k3s/apps/lab-environment/demo/patches/toxiproxy.patch
 git --no-pager diff
 git commit -m "demo: route visits-service's data stores through toxiproxy" -- k3s/apps/lab-environment/k8s

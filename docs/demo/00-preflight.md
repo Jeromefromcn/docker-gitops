@@ -8,7 +8,7 @@ On vps_oracle, repo root (`~/jerome/docker-gitops`), kubectl context `default`.
 
 ## Commands
 ```bash
-git pull --ff-only
+git pull --ff-only origin main
 export PATH=$PWD/k3s/apps/lab-environment/demo:$PATH
 demo-reset preflight
 kubectl -n lab-environment get pods | grep -v -E 'Running|Completed'
