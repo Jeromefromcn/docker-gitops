@@ -30,11 +30,14 @@ five pods with non-zero request increases.
 - **App (Spring metrics):** per-pod request increase in the window.
 - Grafana → Lab Mesh Overview → "customers-service RPS per pod".
 - Grafana → Lab Business, Window = 1m, right after the loop: the inbound table
-  shows `customers-service /owners` at about 100 calls, and clicking it opens
+  shows `customers-service /owners` at exactly 100 calls (Calls is a counter
+  difference, not an extrapolation), and clicking it opens
   the endpoint detail with the per-instance QPS split. To get back to exactly
   that minute later, open the link `demo-evidence` prints at its end: it sets an
   absolute time range ending 20 s after the demo (the tables look back one Window
-  from the end of the range) and the Window variable.
+  from the end of the range) and the Window variable. `lab-ingress-istio ->
+  api-gateway` reads 101 and `vets-service /vets` reads 1: the extra call is the
+  `Lab API Down` probe, once a minute, which the pause does not stop.
 
 ## Talking points
 - kube-proxy balances connections; a gateway holding keep-alive connections

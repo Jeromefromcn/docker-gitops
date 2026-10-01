@@ -436,7 +436,11 @@ infrastructure output rather than the apps' own logs.
   traffic has `uri="UNKNOWN"` in `http_server_requests`, so the inbound table
   shows it per route (`spring_cloud_gateway_requests`, `route:<routeId>`).
   The dashboards are generated JSON in `k8s/grafana-dashboards.yaml`; they hot
-  reload, so a dashboard edit restarts nothing.
+  reload, so a dashboard edit restarts nothing. Calls and 429 count are exact
+  counter differences (value now minus value one Window ago), not `increase()`:
+  `increase()` extrapolates to the window edges and read 121 for a 100-request,
+  34 s demo in a 1m Window. QPS, rates and averages still use `rate()` and
+  `increase()`, so under a short burst QPS reads high while Calls stays true.
 - **Latency histograms.** Spring publishes no `_bucket` series by default, so
   the bucket lists live in one ConfigMap, `lab-metrics-defaults`
   (`k8s/metrics-defaults.yaml`), which every scraped business Deployment and
