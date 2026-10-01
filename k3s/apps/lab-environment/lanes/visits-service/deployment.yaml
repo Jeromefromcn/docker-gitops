@@ -42,6 +42,9 @@ spec:
           # Never exists on GHCR: the ApplicationSet's kustomize.images sets
           # the PR head SHA. Unresolved, Kyverno refuses it at admission.
           image: ghcr.io/jeromefromcn/petclinic-visits-service:placeholder
+          envFrom:
+          - configMapRef:
+              name: lab-metrics-defaults
           env:
           - name: TZ
             value: Asia/Hong_Kong

@@ -1,0 +1,31 @@
+# Latency histogram buckets for every business service, loaded with envFrom so a
+# new service gets percentiles on the Lab Business dashboards without copying six
+# env vars. A meter a service does not have (e.g. the gateway timer on customers)
+# is simply ignored by Micrometer.
+#
+# Key names are Spring's relaxed-binding env form, and the name matches the
+# Micrometer meter by prefix. Dashes in a property name are dropped here
+# (percentiles-histogram -> PERCENTILESHISTOGRAM), not turned into underscores;
+# the underscored spelling binds nothing and fails silently. Meter names were
+# read from /actuator/metrics: lettuce, consul.kv.poll,
+# spring.data.repository.invocations.
+#
+# envFrom is read at container start: after editing a bucket list, roll the
+# services (bump any pod-template annotation in git), or the old buckets stay.
+# tests/test-lanes.sh requires lane templates to mirror the baseline container,
+# and .github/scripts/check-lab-metrics-defaults.py fails CI for a scraped
+# Deployment that does not load this ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-metrics-defaults
+  namespace: lab-environment
+data:
+  # HTTP: tens of ms typical, seconds when a timeout fires.
+  MANAGEMENT_METRICS_DISTRIBUTION_SLO_HTTP_SERVER_REQUESTS: "2ms,5ms,10ms,20ms,50ms,100ms,250ms,500ms,1s,2500ms,5s"
+  MANAGEMENT_METRICS_DISTRIBUTION_SLO_HTTP_CLIENT_REQUESTS: "2ms,5ms,10ms,20ms,50ms,100ms,250ms,500ms,1s,2500ms,5s"
+  MANAGEMENT_METRICS_DISTRIBUTION_SLO_SPRING_CLOUD_GATEWAY_REQUESTS: "2ms,5ms,10ms,20ms,50ms,100ms,250ms,500ms,1s,2500ms,5s"
+  # Dependencies: Redis ~1ms, repository calls a few ms, Consul KV poll ~4ms.
+  MANAGEMENT_METRICS_DISTRIBUTION_SLO_SPRING_DATA_REPOSITORY_INVOCATIONS: "500us,1ms,2ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s"
+  MANAGEMENT_METRICS_DISTRIBUTION_SLO_LETTUCE: "500us,1ms,2ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s"
+  MANAGEMENT_METRICS_DISTRIBUTION_SLO_CONSUL_KV_POLL: "500us,1ms,2ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s"
