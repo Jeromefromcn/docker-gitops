@@ -446,8 +446,13 @@ infrastructure output rather than the apps' own logs.
   counter differences (value now minus value one Window ago), not `increase()`:
   `increase()` extrapolates to the window edges and read 121 for a 100-request,
   34 s demo in a 1m Window. The QPS column is Calls divided by the Window in seconds (the
-  variable holds a number of seconds for exactly that reason), so the two always
-  agree; the QPS time series, rates, ratios and averages still use `rate()` and
+  variable, `window_s`, holds a number of seconds for exactly that reason), so
+  the two always agree. It is `window_s` and not `window` on purpose: Grafana
+  keeps an unknown variable value from a bookmark or an open tab, so an old
+  `var-window=5m` turned every query into a PromQL parse error and every panel
+  into No data (reproduced in a headless browser); a renamed variable makes old
+  URLs fall back to the default instead. Do not change what a variable's values
+  mean without renaming it; the QPS time series, rates, ratios and averages still use `rate()` and
   `increase()`, which read high for a short burst.
 - **Latency histograms.** Spring publishes no `_bucket` series by default, so
   the bucket lists live in one ConfigMap, `lab-metrics-defaults`
