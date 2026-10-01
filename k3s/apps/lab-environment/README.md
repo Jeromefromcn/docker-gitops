@@ -433,15 +433,21 @@ infrastructure output rather than the apps' own logs.
   The dashboards are generated JSON in `k8s/grafana-dashboards.yaml`; they hot
   reload, so a dashboard edit restarts nothing.
 - **Latency histograms.** Spring publishes no `_bucket` series by default, so
-  each service sets `MANAGEMENT_METRICS_DISTRIBUTION_SLO_*` env vars
-  (`HTTP_SERVER_REQUESTS`, plus `HTTP_CLIENT_REQUESTS` on customers and
-  `SPRING_CLOUD_GATEWAY_REQUESTS` on api-gateway) with 11 buckets from 2ms to
-  5s. Percentiles are interpolated between those buckets, so anything finer
-  than the bucket spacing is an estimate. Env-var gotcha: Spring drops
-  dashes rather than turning them into underscores, so
-  `percentiles-histogram` is `..._PERCENTILESHISTOGRAM_...`; the
-  underscored spelling binds nothing and fails silently. Measured with
-  `Binder` against a `SystemEnvironmentPropertySource`.
+  the bucket lists live in one ConfigMap, `lab-metrics-defaults`
+  (`k8s/metrics-defaults.yaml`), which every scraped business Deployment and
+  every lane template loads with `envFrom`: 11 buckets from 2ms to 5s for the
+  HTTP timers, and 11 from 500us to 1s for repository calls, Redis (`lettuce`)
+  and the Consul KV poll. Percentiles are interpolated between those buckets,
+  so anything finer than the bucket spacing is an estimate. CI
+  (`.github/scripts/check-lab-metrics-defaults.py`) fails a scraped Deployment
+  that does not load it, so a new service cannot silently lack percentiles.
+  `envFrom` is read at container start: after editing a bucket list, roll the
+  services. Env-var gotcha: Spring drops dashes rather than turning them into
+  underscores, so `percentiles-histogram` is `..._PERCENTILESHISTOGRAM_...`;
+  the underscored spelling binds nothing and fails silently (measured with
+  `Binder` against a `SystemEnvironmentPropertySource`). The key also matches
+  the Micrometer meter name by prefix, so read the real names from
+  `/actuator/metrics` rather than guessing.
   Egress that Spring does not cover is instrumented in the fork:
   `consul.kv.poll` and `consul.kv.poll.last.success` (chaos-toggle poll) and
   `visit.cache.requests` (hit/miss/error). Alert on the poll age with a
