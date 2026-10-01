@@ -38,7 +38,7 @@ grafana_link() {
   local start=$1 end=$2 to dur w
   to=$(( end + 20 )); dur=$(( to - start ))
   if [ "$dur" -le 60 ]; then w=60; elif [ "$dur" -le 300 ]; then w=300; else w=600; fi
-  echo "$GRAFANA_PUBLIC/d/lab-business/lab-business?from=$(( (start - 120) * 1000 ))&to=$(( to * 1000 ))&var-window=$w"
+  echo "$GRAFANA_PUBLIC/d/lab-business/lab-business?from=$(( (start - 120) * 1000 ))&to=$(( to * 1000 ))&var-window_s=$w"
 }
 
 # The traffic generator idles while this Consul KV deadline (unix time) is in the future.
