@@ -430,8 +430,10 @@ infrastructure output rather than the apps' own logs.
   `Lab Endpoint Detail` / `Lab Caller-Callee Detail`. The endpoint page has an
   Instance filter on every panel and a Split by switch: `service` aggregates
   all instances, `pod` makes every aggregate panel (stats, QPS by status, 5xx,
-  latency, percentiles, calls) draw one series per instance. Its dedicated
-  per-instance panels show only pods still running at the end of the range
+  latency, percentiles, calls) draw one series per instance. The dedicated
+  per-instance panels always group by pod and ignore Split by, so they sit in a
+  row that is collapsed by default and the page opens as a service-level view.
+  They show only pods still running at the end of the range
   (`up @ end() == 1`), because every rollout renames the pods and a 30m window
   otherwise holds the old and the new set; Split by = pod keeps the replaced
   pods, so narrow it with the Instance filter.
