@@ -26,6 +26,21 @@ now() { echo "${DEMO_NOW:-$(date +%s)}"; }
 iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
 fn_name() { echo "${1//-/_}"; }
 
+# Where the presenter's browser reaches Grafana (NPM host behind an access list); the API calls
+# above use the NodePort. Override with DEMO_GRAFANA_URL.
+GRAFANA_PUBLIC=${DEMO_GRAFANA_URL:-https://grafana.lab.jerome.cloudns.asia}
+# grafana_link <start> <end> — Lab Business over a demo window, absolute time so no timezone
+# arithmetic. The list tables evaluate at the END of the range and look back one Window, so the
+# range ends 20 s after the demo (the scrape lag settle() also waits out) and the Window is the
+# smallest one that still reaches back to the demo's start. The range starts 2 min early so the
+# time-series panels show the lead-in.
+grafana_link() {
+  local start=$1 end=$2 to dur w
+  to=$(( end + 20 )); dur=$(( to - start ))
+  if [ "$dur" -le 60 ]; then w=1m; elif [ "$dur" -le 300 ]; then w=5m; else w=10m; fi
+  echo "$GRAFANA_PUBLIC/d/lab-business/lab-business?from=$(( (start - 120) * 1000 ))&to=$(( to * 1000 ))&var-window=$w"
+}
+
 # The traffic generator idles while this Consul KV deadline (unix time) is in the future.
 # A scenario that counts its own requests opts in with prepare_<name> (pause) and reset_<name> (resume).
 # demo-window stop deliberately leaves it paused: the evidence queries read up to 20 s past the

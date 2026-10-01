@@ -128,6 +128,18 @@ DEMO_NOW=2000 "$DEMO/demo-window" start one >/dev/null
 if grep -q WINDOW_END "$DEMO_STATE_DIR/one.window"; then echo "FAIL restart clears end"; fails=$((fails+1)); else echo "PASS restart clears end"; fi
 DEMO_NOW=2100 "$DEMO/demo-window" stop one >/dev/null
 
+# --- Grafana link for the window ------------------------------------------
+# The list tables evaluate at the END of the dashboard time range and look back one Window,
+# so the link ends 20 s after the demo (the scrape lag settle() also waits out) and picks the
+# smallest Window that still reaches back to the demo's start.
+printf 'WINDOW_START=3000\nWINDOW_END=3033\n' > "$DEMO_STATE_DIR/t1.window"
+check "evidence prints a Grafana link" 0 "$DEMO/demo-evidence" t1
+has "$WORK/out" "/d/lab-business/lab-business?from=2880000&to=3053000&var-window=1m"
+printf 'WINDOW_START=1000\nWINDOW_END=1300\n' > "$DEMO_STATE_DIR/t1.window"
+check "a 5 min demo gets a 10m Window" 0 "$DEMO/demo-evidence" t1
+has "$WORK/out" "from=880000&to=1320000&var-window=10m"
+has "$WORK/out" "HK time"
+
 # --- generator pause (prepare_ / stop_ hooks) ----------------------------
 # A scenario that counts its own requests pauses the background generator first, so
 # the dashboards and the evidence hold only the demo's traffic.

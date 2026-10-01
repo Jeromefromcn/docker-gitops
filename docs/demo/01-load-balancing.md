@@ -31,7 +31,10 @@ five pods with non-zero request increases.
 - Grafana → Lab Mesh Overview → "customers-service RPS per pod".
 - Grafana → Lab Business, Window = 1m, right after the loop: the inbound table
   shows `customers-service /owners` at about 100 calls, and clicking it opens
-  the endpoint detail with the per-instance QPS split.
+  the endpoint detail with the per-instance QPS split. To get back to exactly
+  that minute later, open the link `demo-evidence` prints at its end: it sets an
+  absolute time range ending 20 s after the demo (the tables look back one Window
+  from the end of the range) and the Window variable.
 
 ## Talking points
 - kube-proxy balances connections; a gateway holding keep-alive connections

@@ -40,4 +40,7 @@ out="$STATE_DIR/$s.evidence.txt"
 } 2>&1 | tee "$out"
 verdict=$(cat "$TALLY.verdict"); rm -f "$TALLY" "$TALLY.verdict"
 if [ "$verdict" -eq 0 ] && [ -n "${DEMO_SAVE_DIR:-}" ]; then cp "$out" "$DEMO_SAVE_DIR/$s.txt"; fi
+# After the saved copy on purpose: a link with timestamps does not belong in the committed evidence.
+echo "Grafana, this window: $(grafana_link "$WINDOW_START" "$WINDOW_END")"
+echo "  HK time: $(TZ=Asia/Hong_Kong date -d "@$WINDOW_START" +%H:%M:%S) -> $(TZ=Asia/Hong_Kong date -d "@$WINDOW_END" +%H:%M:%S)  (the window is $(( WINDOW_END - WINDOW_START ))s)"
 exit "$verdict"
