@@ -458,10 +458,19 @@ infrastructure output rather than the apps' own logs.
   `visit.cache.requests` (hit/miss/error). Alert on the poll age with a
   threshold above ~60s: the poll runs every 5s and Prometheus scrapes every
   15s, so a healthy age already reaches ~20s.
-- **Traffic generator.** A small Deployment drives ≈1 rps through the ingress
-  with a realistic mix (owners list, owner detail, vet list) and logs
-  `timestamp code path`. It is the continuity check: after any change, its log
-  should be all `200`.
+- **Traffic generator.** A small Deployment drives about 2 rps (one request
+  every 0.5 s) through the ingress with a realistic mix (owners list, owner
+  detail, vet list) and logs `timestamp code path`. It is the continuity
+  check: after any change, its log should be all `200`. Every external request
+  fans out into several internal calls (gateway aggregation, repository calls,
+  Redis), and the Consul poll adds a constant background, so the dashboards'
+  call counts are far larger than the request count.
+  A scenario that counts its own requests pauses it through Consul KV
+  (`lab/traffic-generator/pause-until`, a unix deadline), not through git or
+  kubectl, because selfHeal reverts any edit to a managed resource within
+  seconds. The loop fails open: a missing key, a past deadline, garbage or an
+  unreachable Consul all keep the traffic running, and the deadline expires on
+  its own. `tests/test-traffic-generator.sh` covers this.
 
 ## Rollback
 

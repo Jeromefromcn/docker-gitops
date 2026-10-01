@@ -134,6 +134,7 @@ jobs:
         run: |
           python3 -c 'import yaml' 2>/dev/null || pip install pyyaml
           bash k3s/apps/lab-environment/tests/test-lanes.sh
+          bash k3s/apps/lab-environment/tests/test-traffic-generator.sh
 
   # Static checks only — tofu fmt + validate never touch live cloud resources.
   # `tofu init -backend=false` only downloads provider plugins from the

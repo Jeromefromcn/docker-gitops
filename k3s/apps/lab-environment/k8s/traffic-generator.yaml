@@ -15,8 +15,19 @@ data:
     # ~2 rps of browsing traffic: owner list, owner detail (gateway
     # aggregation -> customers -> visits), single owner, vet list. One log
     # line per request so error counts are provable from Loki.
+    #
+    # A demo that counts its own requests pauses this loop: demo-window writes a
+    # unix deadline to Consul KV and the loop idles until it passes. It fails
+    # open - a missing key, a past deadline, garbage or an unreachable Consul all
+    # keep the traffic running - and the deadline expires by itself, so a crashed
+    # demo cannot leave the generator silent. Consul KV, not git or kubectl: any
+    # edit to a managed resource is reverted by selfHeal within seconds.
+    CONSUL_URL=${CONSUL_URL:-http://consul:8500}
+    PAUSE_KEY=lab/traffic-generator/pause-until
     i=0
     while true; do
+      pause_until=$(curl -s -m 2 "$CONSUL_URL/v1/kv/$PAUSE_KEY?raw")
+      if [ "$pause_until" -gt "$(date +%s)" ] 2>/dev/null; then sleep 1; continue; fi
       i=$((i + 1))
       id=$(( (i % 10) + 1 ))
       case $((i % 4)) in
@@ -47,6 +58,9 @@ spec:
       labels:
         app: traffic-generator
         trivy-operator.skip: "true"
+      annotations:
+        # run.sh is read once at start; bump this to roll the pod after editing it.
+        lab.jerome/config-rev: "2"
     spec:
       serviceAccountName: traffic-generator
       enableServiceLinks: false
