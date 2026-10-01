@@ -17,6 +17,7 @@ echo "curl $*" >> "$FAKE_LOG"
 if [ -n "${FAKE_CURL_HOOK:-}" ] && out=$("$FAKE_CURL_HOOK" "$*"); then printf '%s\n' "$out"; exit 0; fi
 case "$*" in
   *FAILME*) exit 22 ;;
+  *"/v1/kv/lab/traffic-generator/"*) [ -z "${FAKE_PAUSE_FAIL:-}" ] || exit 7 ;;&
   *"/v1/kv/chaos/"*) [ -z "${FAKE_CONSUL_DOWN:-}" ] || exit 7 ;;&
   *"/v1/kv/chaos/"*)
     if [ -n "${FAKE_CHAOS_ON:-}" ]; then v=${FAKE_CHAOS_VALUE:-dHJ1ZQ==}; else v=ZmFsc2U=; fi
@@ -126,6 +127,47 @@ DEMO_NOW=1500 "$DEMO/demo-window" stop one >/dev/null
 DEMO_NOW=2000 "$DEMO/demo-window" start one >/dev/null
 if grep -q WINDOW_END "$DEMO_STATE_DIR/one.window"; then echo "FAIL restart clears end"; fails=$((fails+1)); else echo "PASS restart clears end"; fi
 DEMO_NOW=2100 "$DEMO/demo-window" stop one >/dev/null
+
+# --- generator pause (prepare_ / stop_ hooks) ----------------------------
+# A scenario that counts its own requests pauses the background generator first, so
+# the dashboards and the evidence hold only the demo's traffic.
+cp "$DEMO/scenarios/load-balancing.sh" "$DEMO_SCENARIO_DIR/"
+cat > "$WORK/order-hook" <<'HOOK'
+#!/bin/bash
+# Records whether the window file exists yet when the pause lands; fails on purpose
+# so the stub falls through to its normal output.
+case "$1" in
+  *"-X PUT"*"/pause-until"*) if [ -f "$DEMO_STATE_DIR/load-balancing.window" ]; then echo window-first; else echo pause-first; fi >> "$ORDER_LOG" ;;
+esac
+exit 1
+HOOK
+chmod +x "$WORK/order-hook"
+: > "$FAKE_LOG"
+DEMO_NOW=5000 DEMO_PAUSE_DRAIN=0 FAKE_CURL_HOOK=$WORK/order-hook ORDER_LOG=$WORK/order \
+  check "start load-balancing pauses the generator" 0 "$DEMO/demo-window" start load-balancing
+if grep 'pause-until' "$FAKE_LOG" | grep -qF -- '-X PUT -d 5900'; then echo "PASS the pause deadline is 900s ahead"
+else echo "FAIL pause deadline (want PUT 5900 on pause-until)"; grep pause-until "$FAKE_LOG" | sed 's/^/    /'; fails=$((fails+1)); fi
+has "$WORK/order" "pause-first"
+has "$DEMO_STATE_DIR/load-balancing.window" "WINDOW_START=5000"
+: > "$FAKE_LOG"
+DEMO_NOW=5100 check "stop load-balancing" 0 "$DEMO/demo-window" stop load-balancing
+if grep -q 'pause-until' "$FAKE_LOG"; then echo "FAIL stop touched the pause key: evidence still reads 20 s past the window"; fails=$((fails+1))
+else echo "PASS stop leaves the generator paused until demo-reset"; fi
+: > "$FAKE_LOG"
+DEMO_NOW=6000 check "a scenario without prepare_ starts as before" 0 "$DEMO/demo-window" start one
+if grep -q 'pause-until' "$FAKE_LOG"; then echo "FAIL a scenario that did not ask touched the pause key"; fails=$((fails+1))
+else echo "PASS a scenario that did not ask never touches the pause key"; fi
+DEMO_NOW=6100 "$DEMO/demo-window" stop one >/dev/null
+FAKE_PAUSE_FAIL=1 DEMO_NOW=7000 DEMO_PAUSE_DRAIN=0 check "start fails loudly when the generator cannot be paused" 2 "$DEMO/demo-window" start load-balancing
+has "$WORK/out" "could not pause the traffic generator"
+t0=$SECONDS
+DEMO_NOW=8000 DEMO_PAUSE_DRAIN=2 check "start waits out the drain" 0 "$DEMO/demo-window" start load-balancing
+if [ $((SECONDS - t0)) -ge 2 ]; then echo "PASS the window opens only after the drain"; else echo "FAIL no drain wait"; fails=$((fails+1)); fi
+DEMO_NOW=8100 "$DEMO/demo-window" stop load-balancing >/dev/null
+: > "$FAKE_LOG"
+check "reset load-balancing resumes the generator" 0 "$DEMO/demo-reset" load-balancing
+if grep 'pause-until' "$FAKE_LOG" | grep -qF -- '-X DELETE'; then echo "PASS reset deletes the pause key"
+else echo "FAIL reset left the pause key"; fails=$((fails+1)); fi
 
 # --- demo-evidence -------------------------------------------------------
 : > "$FAKE_LOG"

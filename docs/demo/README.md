@@ -20,7 +20,7 @@ order from the repo root on vps_oracle. Main actions (`kubectl`, `git`,
 
 | Helper | Does |
 |---|---|
-| `demo-window start/stop <s>` | Records the scenario's own UTC window — every query is bounded by it |
+| `demo-window start/stop <s>` | Records the scenario's own UTC window — every query is bounded by it. A scenario that counts its own requests (01 so far) first pauses the background traffic generator and waits ~80 s, so the dashboards and the evidence hold only its traffic; `demo-reset` resumes it |
 | `demo-evidence <s>` | Runs the scenario's evidence queries; fails unless ≥ 2 pieces pass, ≥ 1 from the infrastructure layer |
 | `demo-reset <s>` | Undoes the scenario and verifies the lab baseline in the same command |
 

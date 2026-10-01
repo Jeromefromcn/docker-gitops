@@ -7,10 +7,14 @@ f=$(scenario_file "$s")
 WINDOW_FILE=$(window_file "$s")
 case $action in
   start)
-    t=$(now)
-    echo "WINDOW_START=$t" > "$WINDOW_FILE"
     # shellcheck disable=SC1090
     . "$f"
+    # prepare_<name> runs BEFORE the window opens, so what it changes (e.g. pausing the
+    # background traffic) is already in effect for every second of the window.
+    prep="prepare_$(fn_name "$s")"
+    if declare -F "$prep" >/dev/null; then "$prep"; fi
+    t=$(now)
+    echo "WINDOW_START=$t" > "$WINDOW_FILE"
     fn="start_$(fn_name "$s")"
     if declare -F "$fn" >/dev/null; then "$fn"; fi
     echo "window $s started $(iso "$t")" ;;

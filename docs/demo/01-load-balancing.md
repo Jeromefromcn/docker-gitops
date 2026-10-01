@@ -6,7 +6,11 @@ customers-service pods — not per-connection L4 balancing that pins a
 keep-alive client to one pod.
 
 ## Preconditions
-Preflight passed.
+Preflight passed. This page counts its own 100 requests, so `demo-window start`
+**pauses the background traffic generator and waits ~80 s** (`DEMO_PAUSE_DRAIN`)
+before the window opens: a 1m dashboard window then holds only this demo's
+traffic. Run it before you start talking. The generator resumes on
+`demo-reset`, or by itself after 15 min (`DEMO_PAUSE_TTL`) if you forget.
 
 ## Commands
 ```bash
@@ -17,7 +21,7 @@ demo-evidence load-balancing
 ```
 
 ## Expected result
-`100 200`. Evidence lists five upstream pod IPs with similar counts, and
+`100 200`. Evidence lists five upstream pod IPs whose counts add up to 100, and
 five pods with non-zero request increases.
 
 ## Evidence
@@ -25,6 +29,9 @@ five pods with non-zero request increases.
   by `upstream_host` — one line per pod.
 - **App (Spring metrics):** per-pod request increase in the window.
 - Grafana → Lab Mesh Overview → "customers-service RPS per pod".
+- Grafana → Lab Business, Window = 1m, right after the loop: the inbound table
+  shows `customers-service /owners` at about 100 calls, and clicking it opens
+  the endpoint detail with the per-instance QPS split.
 
 ## Talking points
 - kube-proxy balances connections; a gateway holding keep-alive connections
@@ -37,4 +44,5 @@ five pods with non-zero request increases.
   load balancing needs real replicas.
 
 ## Reset
-`demo-reset load-balancing` — nothing was changed; verifies the baseline.
+`demo-reset load-balancing` — resumes the generator, then verifies the baseline
+(which needs 30 s of generator traffic, so give it a moment).

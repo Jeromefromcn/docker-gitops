@@ -26,6 +26,27 @@ now() { echo "${DEMO_NOW:-$(date +%s)}"; }
 iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
 fn_name() { echo "${1//-/_}"; }
 
+# The traffic generator idles while this Consul KV deadline (unix time) is in the future.
+# A scenario that counts its own requests opts in with prepare_<name> (pause) and reset_<name> (resume).
+# demo-window stop deliberately leaves it paused: the evidence queries read up to 20 s past the
+# window, and the presenter usually talks over the dashboards afterwards.
+PAUSE_KEY=lab/traffic-generator/pause-until
+# Pauses the generator, then waits out DEMO_PAUSE_DRAIN seconds: Prometheus scrapes every 15 s
+# and the dashboards' smallest window is 1m, so 80 s is what it takes for a 1m window to hold
+# only the demo's own traffic. The deadline expires on its own after DEMO_PAUSE_TTL seconds.
+pause_generator() {
+  local ttl=${DEMO_PAUSE_TTL:-900} drain=${DEMO_PAUSE_DRAIN:-80}
+  curl -sf -X PUT -d "$(( $(now) + ttl ))" "$CONSUL/v1/kv/$PAUSE_KEY" >/dev/null \
+    || die "could not pause the traffic generator (Consul KV at $CONSUL)"
+  echo "traffic generator paused; waiting ${drain}s so a 1m dashboard window holds only this demo's traffic" >&2
+  if [ "$drain" -gt 0 ]; then sleep "$drain"; fi
+}
+# A failed resume is only a warning: the deadline expires by itself.
+resume_generator() {
+  curl -sf -X DELETE "$CONSUL/v1/kv/$PAUSE_KEY" >/dev/null \
+    || echo "demo: could not resume the traffic generator; it resumes by itself when the pause deadline passes" >&2
+}
+
 scenario_file() {
   local f="$SCENARIO_DIR/$1.sh"
   [ -f "$f" ] || die "unknown scenario '$1' (known: $(cd "$SCENARIO_DIR" && ls ./*.sh | sed 's|^\./||; s|\.sh$||' | tr '\n' ' '))"

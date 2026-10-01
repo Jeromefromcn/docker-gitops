@@ -1,4 +1,9 @@
 # 01 — per-request load balancing across the customers-service replicas.
+# Counts its own 100 requests, so the background generator is paused from the start until
+# demo-reset (or 15 minutes, whichever comes first).
+prepare_load_balancing() { pause_generator; }
+reset_load_balancing() { resume_generator; }
+
 evidence_load_balancing() {
   local want hosts pods n
   want=$(git_replicas customers-service)
