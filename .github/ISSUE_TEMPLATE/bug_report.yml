@@ -1,0 +1,28 @@
+name: Bug report
+description: Something in a stack, script or config does not work as documented
+labels: [bug]
+body:
+  - type: input
+    id: component
+    attributes:
+      label: Component
+      description: Stack or directory affected, e.g. `vps_oracle/compose/<stack>` or `k3s/`
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Actual behaviour and what you expected instead
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: Redact secrets, tokens and private hostnames before pasting
+      render: shell
