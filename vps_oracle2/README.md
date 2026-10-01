@@ -15,6 +15,15 @@ The repo lives only on vps_oracle; this host has no clone. Everything is driven 
 
 This host's k3s agent config and installer are part of the cluster, so they live with it at [`k3s/install/agent-vps-oracle2/`](../k3s/install/agent-vps-oracle2/README.md).
 
+## Node timezone
+
+The instance image defaults to UTC. The node was set to `Asia/Hong_Kong` by hand on 2026-10-01
+(`sudo timedatectl set-timezone Asia/Hong_Kong`); it is not in git. Do not "fix" that by adding
+`user_data` to the tofu instance: that attribute recreates the instance. After a rebuild, run the
+command again. Pods do not inherit the node's timezone, only their own `TZ` and zone file, so this
+affects host logs (journald, cron) and nothing in k3s. The only timers on the node are Ubuntu's own
+(apt, fstrim, dpkg-db-backup, ...), none of which care.
+
 ## Network model
 
 ```mermaid
