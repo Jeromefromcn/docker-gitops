@@ -140,7 +140,8 @@ data:
           {"name": "method", "label": "Method", "type": "textbox", "query": "GET", "current": {"text": "GET", "value": "GET"}},
           {"name": "uri", "label": "Endpoint", "type": "textbox", "query": "/owners/{ownerId}", "current": {"text": "/owners/{ownerId}", "value": "/owners/{ownerId}"}},
           {"name": "route", "label": "Gateway route", "type": "textbox", "query": "-", "current": {"text": "-", "value": "-"}},
-          {"name": "window", "label": "Window", "type": "custom", "query": "1m,5m,10m", "current": {"text": "5m", "value": "5m"}, "options": [{"text": "1m", "value": "1m", "selected": false}, {"text": "5m", "value": "5m", "selected": true}, {"text": "10m", "value": "10m", "selected": false}]}
+          {"name": "window", "label": "Window", "type": "custom", "query": "1m,5m,10m", "current": {"text": "5m", "value": "5m"}, "options": [{"text": "1m", "value": "1m", "selected": false}, {"text": "5m", "value": "5m", "selected": true}, {"text": "10m", "value": "10m", "selected": false}]},
+          {"name": "pod", "label": "Instance", "type": "query", "datasource": {"type": "prometheus", "uid": "prometheus"}, "query": {"query": "query_result(up{job=\"spring-boot-services\", service=\"$service\"} == 1)", "refId": "pod"}, "regex": "/pod=\"([^\"]+)\"/", "refresh": 2, "multi": true, "includeAll": true, "allValue": ".*", "current": {"text": "All", "value": "$__all"}, "sort": 1}
         ]
       },
       "panels": [
@@ -150,7 +151,7 @@ data:
           "title": "Calls",
           "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum(increase(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum(increase(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])))", "legendFormat": "", "instant": true, "range": false}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum(increase(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum(increase(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])))", "legendFormat": "", "instant": true, "range": false}],
           "fieldConfig": {"defaults": {"unit": "none", "decimals": 0}, "overrides": []},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "colorMode": "none", "graphMode": "none"}
         },
@@ -160,7 +161,7 @@ data:
           "title": "QPS",
           "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])))", "legendFormat": "", "instant": true, "range": false}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])))", "legendFormat": "", "instant": true, "range": false}],
           "fieldConfig": {"defaults": {"unit": "reqps", "decimals": 2}, "overrides": []},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "colorMode": "none", "graphMode": "none"}
         },
@@ -170,7 +171,7 @@ data:
           "title": "5xx rate",
           "gridPos": {"x": 8, "y": 0, "w": 4, "h": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(((sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", status=~\"5..\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", httpStatusCode=~\"5..\"}[$window])))) or vector(0)) / ((sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window]))))", "legendFormat": "", "instant": true, "range": false}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(((sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\", status=~\"5..\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\", httpStatusCode=~\"5..\"}[$window])))) or vector(0)) / ((sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window]))))", "legendFormat": "", "instant": true, "range": false}],
           "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 1}, "overrides": []},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "colorMode": "none", "graphMode": "none"}
         },
@@ -180,7 +181,7 @@ data:
           "title": "429 count",
           "gridPos": {"x": 12, "y": 0, "w": 4, "h": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "((sum(increase(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", status=\"429\"}[$window]))) or (sum(increase(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", httpStatusCode=\"429\"}[$window])))) or vector(0)", "legendFormat": "", "instant": true, "range": false}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "((sum(increase(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\", status=\"429\"}[$window]))) or (sum(increase(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\", httpStatusCode=\"429\"}[$window])))) or vector(0)", "legendFormat": "", "instant": true, "range": false}],
           "fieldConfig": {"defaults": {"unit": "none", "decimals": 0}, "overrides": []},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "colorMode": "none", "graphMode": "none"}
         },
@@ -190,7 +191,7 @@ data:
           "title": "Avg latency",
           "gridPos": {"x": 16, "y": 0, "w": 4, "h": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum(rate(http_server_requests_seconds_sum{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window])) / sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_sum{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])) / sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])))", "legendFormat": "", "instant": true, "range": false}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum(rate(http_server_requests_seconds_sum{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window])) / sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_sum{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])) / sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])))", "legendFormat": "", "instant": true, "range": false}],
           "fieldConfig": {"defaults": {"unit": "s", "decimals": 1}, "overrides": []},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "colorMode": "none", "graphMode": "none"}
         },
@@ -200,7 +201,7 @@ data:
           "title": "Max latency",
           "gridPos": {"x": 20, "y": 0, "w": 4, "h": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(max(http_server_requests_seconds_max{service=\"$service\", method=\"$method\", uri=\"$uri\"})) or (max(spring_cloud_gateway_requests_seconds_max{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}))", "legendFormat": "", "instant": true, "range": false}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(max(http_server_requests_seconds_max{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"})) or (max(spring_cloud_gateway_requests_seconds_max{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}))", "legendFormat": "", "instant": true, "range": false}],
           "fieldConfig": {"defaults": {"unit": "s", "decimals": 1}, "overrides": []},
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "values": false}, "colorMode": "none", "graphMode": "none"}
         },
@@ -210,7 +211,7 @@ data:
           "title": "QPS by status code",
           "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum by (status) (rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum by (status) (label_replace(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window]), \"status\", \"$1\", \"httpStatusCode\", \"(.*)\")))", "legendFormat": "{{status}}", "range": true}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum by (status) (rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum by (status) (label_replace(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window]), \"status\", \"$1\", \"httpStatusCode\", \"(.*)\")))", "legendFormat": "{{status}}", "range": true}],
           "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
         },
@@ -220,7 +221,7 @@ data:
           "title": "5xx rate",
           "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(((sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", status=~\"5..\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", httpStatusCode=~\"5..\"}[$window])))) or vector(0)) / ((sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window]))))", "legendFormat": "5xx rate", "range": true}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(((sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\", status=~\"5..\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\", httpStatusCode=~\"5..\"}[$window])))) or vector(0)) / ((sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window]))))", "legendFormat": "5xx rate", "range": true}],
           "fieldConfig": {"defaults": {"unit": "percentunit", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
         },
@@ -230,7 +231,7 @@ data:
           "title": "Latency: average and max",
           "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum(rate(http_server_requests_seconds_sum{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window])) / sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_sum{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])) / sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])))", "legendFormat": "avg", "range": true}, {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(max(http_server_requests_seconds_max{service=\"$service\", method=\"$method\", uri=\"$uri\"})) or (max(spring_cloud_gateway_requests_seconds_max{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}))", "legendFormat": "max (sliding)", "range": true}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum(rate(http_server_requests_seconds_sum{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window])) / sum(rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum(rate(spring_cloud_gateway_requests_seconds_sum{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])) / sum(rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])))", "legendFormat": "avg", "range": true}, {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(max(http_server_requests_seconds_max{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"})) or (max(spring_cloud_gateway_requests_seconds_max{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}))", "legendFormat": "max (sliding)", "range": true}],
           "fieldConfig": {"defaults": {"unit": "s", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
         },
@@ -240,7 +241,7 @@ data:
           "title": "Latency percentiles",
           "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.5, (sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window])) or sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window]))))", "legendFormat": "p50", "range": true}, {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.9, (sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window])) or sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window]))))", "legendFormat": "p90", "range": true}, {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, (sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window])) or sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window]))))", "legendFormat": "p95", "range": true}, {"refId": "D", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.99, (sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window])) or sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window]))))", "legendFormat": "p99", "range": true}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.5, (sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window])) or sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window]))))", "legendFormat": "p50", "range": true}, {"refId": "B", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.9, (sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window])) or sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window]))))", "legendFormat": "p90", "range": true}, {"refId": "C", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, (sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window])) or sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window]))))", "legendFormat": "p95", "range": true}, {"refId": "D", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.99, (sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window])) or sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window]))))", "legendFormat": "p99", "range": true}],
           "fieldConfig": {"defaults": {"unit": "s", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
           "description": "Needs histogram buckets; empty until the service exposes them."
@@ -251,28 +252,63 @@ data:
           "title": "QPS per instance (load balancing)",
           "gridPos": {"x": 0, "y": 20, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum by (pod) (rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum by (pod) (rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])))", "legendFormat": "{{pod}}", "range": true}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "((sum by (pod) (rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum by (pod) (rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])))) and on(pod) (up{job=\"spring-boot-services\", service=\"$service\"} @ end() == 1)", "legendFormat": "{{pod}}", "range": true}],
           "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "description": "Per-instance panels show only pods that are still running at the end of the time range; the Instance filter above applies to every panel."
         },
         {
           "id": 12,
           "type": "timeseries",
-          "title": "Average latency per instance",
+          "title": "5xx rate per instance",
           "gridPos": {"x": 12, "y": 20, "w": 12, "h": 8},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum by (pod) (rate(http_server_requests_seconds_sum{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window])) / sum by (pod) (rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum by (pod) (rate(spring_cloud_gateway_requests_seconds_sum{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])) / sum by (pod) (rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])))", "legendFormat": "{{pod}}", "range": true}],
-          "fieldConfig": {"defaults": {"unit": "s", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
-          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(((sum by (pod) (rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\", status=~\"5..\"}[$window])) or (sum by (pod) (rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window])) * 0)) / sum by (pod) (rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or ((sum by (pod) (rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\", httpStatusCode=~\"5..\"}[$window])) or (sum by (pod) (rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])) * 0)) / sum by (pod) (rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])))) and on(pod) (up{job=\"spring-boot-services\", service=\"$service\"} @ end() == 1)", "legendFormat": "{{pod}}", "range": true}],
+          "fieldConfig": {"defaults": {"unit": "percentunit", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "description": "Per-instance panels show only pods that are still running at the end of the time range; the Instance filter above applies to every panel."
         },
         {
           "id": 13,
+          "type": "timeseries",
+          "title": "Average latency per instance",
+          "gridPos": {"x": 0, "y": 28, "w": 8, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "((sum by (pod) (rate(http_server_requests_seconds_sum{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window])) / sum by (pod) (rate(http_server_requests_seconds_count{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum by (pod) (rate(spring_cloud_gateway_requests_seconds_sum{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])) / sum by (pod) (rate(spring_cloud_gateway_requests_seconds_count{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])))) and on(pod) (up{job=\"spring-boot-services\", service=\"$service\"} @ end() == 1)", "legendFormat": "{{pod}}", "range": true}],
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "description": "Per-instance panels show only pods that are still running at the end of the time range; the Instance filter above applies to every panel."
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "p95 latency per instance",
+          "gridPos": {"x": 8, "y": 28, "w": 8, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "((histogram_quantile(0.95, sum by (le, pod) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window])))) or (histogram_quantile(0.95, sum by (le, pod) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window]))))) and on(pod) (up{job=\"spring-boot-services\", service=\"$service\"} @ end() == 1)", "legendFormat": "{{pod}}", "range": true}],
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "description": "Per-instance panels show only pods that are still running at the end of the time range; the Instance filter above applies to every panel. Needs histogram buckets."
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "Max latency per instance (sliding)",
+          "gridPos": {"x": 16, "y": 28, "w": 8, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "((max by (pod) (http_server_requests_seconds_max{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"})) or (max by (pod) (spring_cloud_gateway_requests_seconds_max{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}))) and on(pod) (up{job=\"spring-boot-services\", service=\"$service\"} @ end() == 1)", "legendFormat": "{{pod}}", "range": true}],
+          "fieldConfig": {"defaults": {"unit": "s", "custom": {"lineWidth": 1, "fillOpacity": 8}}, "overrides": []},
+          "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+          "description": "Per-instance panels show only pods that are still running at the end of the time range; the Instance filter above applies to every panel."
+        },
+        {
+          "id": 16,
           "type": "heatmap",
           "title": "Latency distribution",
           "description": "Share of requests per latency bucket over time; needs histogram buckets.",
-          "gridPos": {"x": 0, "y": 28, "w": 24, "h": 9},
+          "gridPos": {"x": 0, "y": 36, "w": 24, "h": 9},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\"}[$window]))) or (sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\"}[$window])))", "format": "heatmap", "legendFormat": "{{le}}", "range": true}],
+          "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "(sum by (le) (rate(http_server_requests_seconds_bucket{service=\"$service\", method=\"$method\", uri=\"$uri\", pod=~\"$pod\"}[$window]))) or (sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket{service=\"$service\", httpMethod=\"$method\", routeId=\"$route\", pod=~\"$pod\"}[$window])))", "format": "heatmap", "legendFormat": "{{le}}", "range": true}],
           "options": {"calculate": false, "yAxis": {"unit": "s"}, "cellGap": 1, "color": {"scheme": "Spectral", "mode": "scheme"}},
           "fieldConfig": {"defaults": {}, "overrides": []}
         }
