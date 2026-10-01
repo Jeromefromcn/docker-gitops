@@ -427,7 +427,12 @@ infrastructure output rather than the apps' own logs.
   (calls, QPS, 5xx rate, 429 count, avg/max, p90/p95/p99), caller-to-callee
   outbound calls from the waypoint, and dependency calls (HTTP client, JPA
   repository, Redis, Consul KV poll). Clicking an endpoint or a callee opens
-  `Lab Endpoint Detail` / `Lab Caller-Callee Detail`. api-gateway's proxied
+  `Lab Endpoint Detail` / `Lab Caller-Callee Detail`. The endpoint page has an
+  Instance filter on every panel; its per-instance panels show only pods still
+  running at the end of the range (`up @ end() == 1`), because every rollout
+  renames the pods and a 30m window otherwise holds the old and the new set.
+  Mesh metrics carry no app-pod label, so the caller-callee page has no instance
+  view. api-gateway's proxied
   traffic has `uri="UNKNOWN"` in `http_server_requests`, so the inbound table
   shows it per route (`spring_cloud_gateway_requests`, `route:<routeId>`).
   The dashboards are generated JSON in `k8s/grafana-dashboards.yaml`; they hot
