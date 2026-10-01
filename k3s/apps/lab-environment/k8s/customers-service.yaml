@@ -52,6 +52,12 @@ spec:
               value: "2ms,5ms,10ms,20ms,50ms,100ms,250ms,500ms,1s,2500ms,5s"
             - name: MANAGEMENT_METRICS_DISTRIBUTION_SLO_HTTP_CLIENT_REQUESTS
               value: "2ms,5ms,10ms,20ms,50ms,100ms,250ms,500ms,1s,2500ms,5s"
+            # Sub-millisecond buckets: repository calls take a few ms and the Consul poll
+            # about 4ms, so the 2ms-and-up HTTP set above is too coarse for them.
+            - name: MANAGEMENT_METRICS_DISTRIBUTION_SLO_SPRING_DATA_REPOSITORY_INVOCATIONS
+              value: "500us,1ms,2ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s"
+            - name: MANAGEMENT_METRICS_DISTRIBUTION_SLO_CONSUL_KV_POLL
+              value: "500us,1ms,2ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s"
             # Overrides nothing: the Consul KV key config/<svc>/data/db.password
             # is deleted; the password lives only in this SealedSecret.
             - name: DATA_DB_PASSWORD
