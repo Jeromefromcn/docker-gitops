@@ -40,6 +40,11 @@ spec:
               value: "consul"
             - name: SPRING_CLOUD_CONSUL_PORT
               value: "8500"
+            # Histogram buckets for per-endpoint p90/p95/p99 on the Lab Business
+            # dashboard. Env-var form: dashes in the property name are dropped
+            # (percentiles-histogram -> PERCENTILESHISTOGRAM), not underscored.
+            - name: MANAGEMENT_METRICS_DISTRIBUTION_SLO_HTTP_SERVER_REQUESTS
+              value: "2ms,5ms,10ms,20ms,50ms,100ms,250ms,500ms,1s,2500ms,5s"
             # Overrides nothing: the Consul KV key config/<svc>/data/db.password
             # is deleted; the password lives only in this SealedSecret.
             - name: DATA_DB_PASSWORD
