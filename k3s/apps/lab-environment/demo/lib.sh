@@ -32,12 +32,12 @@ GRAFANA_PUBLIC=${DEMO_GRAFANA_URL:-https://grafana.lab.jerome.cloudns.asia}
 # grafana_link <start> <end> — Lab Business over a demo window, absolute time so no timezone
 # arithmetic. The list tables evaluate at the END of the range and look back one Window, so the
 # range ends 20 s after the demo (the scrape lag settle() also waits out) and the Window is the
-# smallest one that still reaches back to the demo's start. The range starts 2 min early so the
+# smallest one (60, 300 or 600 seconds) that still reaches back to the demo's start. The range starts 2 min early so the
 # time-series panels show the lead-in.
 grafana_link() {
   local start=$1 end=$2 to dur w
   to=$(( end + 20 )); dur=$(( to - start ))
-  if [ "$dur" -le 60 ]; then w=1m; elif [ "$dur" -le 300 ]; then w=5m; else w=10m; fi
+  if [ "$dur" -le 60 ]; then w=60; elif [ "$dur" -le 300 ]; then w=300; else w=600; fi
   echo "$GRAFANA_PUBLIC/d/lab-business/lab-business?from=$(( (start - 120) * 1000 ))&to=$(( to * 1000 ))&var-window=$w"
 }
 

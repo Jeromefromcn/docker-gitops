@@ -29,9 +29,9 @@ five pods with non-zero request increases.
   by `upstream_host` — one line per pod.
 - **App (Spring metrics):** per-pod request increase in the window.
 - Grafana → Lab Mesh Overview → "customers-service RPS per pod".
-- Grafana → Lab Business, Window = 1m, right after the loop: the inbound table
+- Grafana → Lab Business, Window = 60 (seconds), right after the loop: the inbound table
   shows `customers-service /owners` at exactly 100 calls (Calls is a counter
-  difference, not an extrapolation), and clicking it opens
+  difference, not an extrapolation) and QPS 1.67 (Calls ÷ 60), and clicking it opens
   the endpoint detail with the per-instance QPS split. To get back to exactly
   that minute later, open the link `demo-evidence` prints at its end: it sets an
   absolute time range ending 20 s after the demo (the tables look back one Window

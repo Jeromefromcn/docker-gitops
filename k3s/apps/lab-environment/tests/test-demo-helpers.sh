@@ -131,13 +131,13 @@ DEMO_NOW=2100 "$DEMO/demo-window" stop one >/dev/null
 # --- Grafana link for the window ------------------------------------------
 # The list tables evaluate at the END of the dashboard time range and look back one Window,
 # so the link ends 20 s after the demo (the scrape lag settle() also waits out) and picks the
-# smallest Window that still reaches back to the demo's start.
+# smallest Window (60, 300 or 600 seconds) that still reaches back to the demo's start.
 printf 'WINDOW_START=3000\nWINDOW_END=3033\n' > "$DEMO_STATE_DIR/t1.window"
 check "evidence prints a Grafana link" 0 "$DEMO/demo-evidence" t1
-has "$WORK/out" "/d/lab-business/lab-business?from=2880000&to=3053000&var-window=1m"
+has "$WORK/out" "/d/lab-business/lab-business?from=2880000&to=3053000&var-window=60"
 printf 'WINDOW_START=1000\nWINDOW_END=1300\n' > "$DEMO_STATE_DIR/t1.window"
-check "a 5 min demo gets a 10m Window" 0 "$DEMO/demo-evidence" t1
-has "$WORK/out" "from=880000&to=1320000&var-window=10m"
+check "a 5 min demo gets a 600 s Window" 0 "$DEMO/demo-evidence" t1
+has "$WORK/out" "from=880000&to=1320000&var-window=600"
 has "$WORK/out" "HK time"
 
 # --- generator pause (prepare_ / stop_ hooks) ----------------------------
