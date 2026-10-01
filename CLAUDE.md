@@ -38,6 +38,7 @@ Path-scoped rules in `.claude/rules/` load automatically when files in their sco
 
 - A `PostToolUse` hook (`.claude/hooks/validate-compose.sh`) runs `docker compose config -q` plus the conventions checker after any compose file edit.
 - CI (`.github/workflows/repo-conventions.yml`) enforces the compose conventions and the inspector's check/test pairing. Run it locally with `python3 .github/scripts/check-compose-conventions.py`.
+- The same workflow requires every lab Deployment that Prometheus scrapes (baseline and lane templates) to load the `lab-metrics-defaults` ConfigMap via `envFrom`; run `python3 .github/scripts/check-lab-metrics-defaults.py`. A new lab service needs that `envFrom` or its latency percentiles stay blank. Changing the buckets needs a rollout, since `envFrom` is read at container start.
 
 ## Other pointers
 

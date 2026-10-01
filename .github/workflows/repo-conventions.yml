@@ -93,6 +93,28 @@ jobs:
           done
           exit $failed
 
+  # A scraped lab Deployment that does not load lab-metrics-defaults exposes no
+  # latency histogram, and its p90/p95/p99 columns stay blank with no error.
+  lab-metrics-defaults:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
+      - name: Check scraped Deployments load lab-metrics-defaults
+        run: python3 .github/scripts/check-lab-metrics-defaults.py
+
+      - name: Test the check
+        run: bash k3s/apps/lab-environment/tests/test-lab-metrics-defaults.sh
+
   # The lab demo helpers, against stubbed kubectl/curl/argocd - no cluster.
   # Among other things it runs `git apply --check` on every demo patch, so an
   # edit to resilience.yaml or the canary manifest that breaks a runbook page
