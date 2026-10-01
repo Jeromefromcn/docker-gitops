@@ -77,6 +77,8 @@ spec:
             # JVM never sees. Cap arena count instead of leaving it unbounded.
             - name: MALLOC_ARENA_MAX
               value: "2"
+          envFrom:
+            - configMapRef: {name: lab-metrics-defaults}
           ports:
             - containerPort: 8081
           resources:

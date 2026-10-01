@@ -38,6 +38,8 @@ spec:
       containers:
         - name: customers-service
           image: ghcr.io/jeromefromcn/petclinic-customers-service@sha256:de9eb07f73b72ae93898918fbb547c33bb82d6993e2cb82b4987222878205230 # fork 6a481fa7561c
+          envFrom:
+            - configMapRef: {name: lab-metrics-defaults}
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
@@ -45,19 +47,6 @@ spec:
               value: "consul"
             - name: SPRING_CLOUD_CONSUL_PORT
               value: "8500"
-            # Histogram buckets for per-endpoint p90/p95/p99 on the Lab Business
-            # dashboard. Env-var form: dashes in the property name are dropped
-            # (percentiles-histogram -> PERCENTILESHISTOGRAM), not underscored.
-            - name: MANAGEMENT_METRICS_DISTRIBUTION_SLO_HTTP_SERVER_REQUESTS
-              value: "2ms,5ms,10ms,20ms,50ms,100ms,250ms,500ms,1s,2500ms,5s"
-            - name: MANAGEMENT_METRICS_DISTRIBUTION_SLO_HTTP_CLIENT_REQUESTS
-              value: "2ms,5ms,10ms,20ms,50ms,100ms,250ms,500ms,1s,2500ms,5s"
-            # Sub-millisecond buckets: repository calls take a few ms and the Consul poll
-            # about 4ms, so the 2ms-and-up HTTP set above is too coarse for them.
-            - name: MANAGEMENT_METRICS_DISTRIBUTION_SLO_SPRING_DATA_REPOSITORY_INVOCATIONS
-              value: "500us,1ms,2ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s"
-            - name: MANAGEMENT_METRICS_DISTRIBUTION_SLO_CONSUL_KV_POLL
-              value: "500us,1ms,2ms,5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s"
             # Overrides nothing: the Consul KV key config/<svc>/data/db.password
             # is deleted; the password lives only in this SealedSecret.
             - name: DATA_DB_PASSWORD
