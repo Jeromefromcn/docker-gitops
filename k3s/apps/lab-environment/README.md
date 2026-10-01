@@ -422,6 +422,31 @@ infrastructure output rather than the apps' own logs.
   P99 by service, active outlier ejections, retry rate. Note the ejections
   panel reads "No data" until some cluster actually carries an outlier
   detection config — Envoy only materialises those stats once it does.
+- **Business dashboards.** `Lab Business` (uid `lab-business`) has three
+  tables with a 1m/5m/10m window and a service filter: inbound endpoints
+  (calls, QPS, 5xx rate, 429 count, avg/max, p90/p95/p99), caller-to-callee
+  outbound calls from the waypoint, and dependency calls (HTTP client, JPA
+  repository, Redis, Consul KV poll). Clicking an endpoint or a callee opens
+  `Lab Endpoint Detail` / `Lab Caller-Callee Detail`. api-gateway's proxied
+  traffic has `uri="UNKNOWN"` in `http_server_requests`, so the inbound table
+  shows it per route (`spring_cloud_gateway_requests`, `route:<routeId>`).
+  The dashboards are generated JSON in `k8s/grafana-dashboards.yaml`; they hot
+  reload, so a dashboard edit restarts nothing.
+- **Latency histograms.** Spring publishes no `_bucket` series by default, so
+  each service sets `MANAGEMENT_METRICS_DISTRIBUTION_SLO_*` env vars
+  (`HTTP_SERVER_REQUESTS`, plus `HTTP_CLIENT_REQUESTS` on customers and
+  `SPRING_CLOUD_GATEWAY_REQUESTS` on api-gateway) with 11 buckets from 2ms to
+  5s. Percentiles are interpolated between those buckets, so anything finer
+  than the bucket spacing is an estimate. Env-var gotcha: Spring drops
+  dashes rather than turning them into underscores, so
+  `percentiles-histogram` is `..._PERCENTILESHISTOGRAM_...`; the
+  underscored spelling binds nothing and fails silently. Measured with
+  `Binder` against a `SystemEnvironmentPropertySource`.
+  Egress that Spring does not cover is instrumented in the fork:
+  `consul.kv.poll` and `consul.kv.poll.last.success` (chaos-toggle poll) and
+  `visit.cache.requests` (hit/miss/error). Alert on the poll age with a
+  threshold above ~60s: the poll runs every 5s and Prometheus scrapes every
+  15s, so a healthy age already reaches ~20s.
 - **Traffic generator.** A small Deployment drives ≈1 rps through the ingress
   with a realistic mix (owners list, owner detail, vet list) and logs
   `timestamp code path`. It is the continuity check: after any change, its log
