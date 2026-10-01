@@ -1,0 +1,42 @@
+# A zone file for images that ship no tzdata. Without /usr/share/zoneinfo/Asia/Hong_Kong the
+# TZ env var silently falls back to UTC (the traffic generator's curl image is one: its log
+# lines printed +00:00). Mount it with subPath so a plain file lands at that path.
+#
+# It only helps programs that format their timestamps in local time. Measured on the same
+# arm64 images (2026-10-01): Loki, promtail and toxiproxy log in UTC whatever TZ says,
+# Envoy and Prometheus likewise, and Jaeger logs epoch seconds, so none of those get it.
+# A hostPath volume would also work in this namespace (no Pod Security enforcement), but this
+# does not depend on what the node ships.
+#
+# Regenerate (only if the Hong Kong zone definition itself ever changes upstream):
+#   kubectl create configmap lab-tzdata -n lab-environment --dry-run=client -o yaml \
+#     --from-file=Hong_Kong=/usr/share/zoneinfo/Asia/Hong_Kong
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-tzdata
+  namespace: lab-environment
+binaryData:
+  Hong_Kong: |
+    VFppZjIAAAAAAAAAAAAAAAAAAAAAAAAIAAAACAAAAAAAAABFAAAACAAAABaFaWOQyk0xMMrbkzDL
+    S3F40qDekNNr14DUk1i41UKwONZzOrjXPkG42C4yuNj5ObjaDhS42tkbuNvt9rjcuP243c3YuN6i
+    GjjftvU44IH8OOGWySjiT2k443arKOQvSzjlX8eo5g8tOOc/qajn+Em46R+LqOnYK7jq/22o67gN
+    uOzfT6jtl++47shsKO930bjwqE4o8VezuPKIMCjzQNA49GgSKPUgsjj2R/Qo9yV+OPgVYSj5BWA4
+    +fVDKPrlQjj73l+o/M5euP2+Qaj+rkC4/54jqACOIrgBfgWoAm4EuANd56gETea4BUcEKAY3AzgH
+    JuYoB4M9OAkGyCgJ9sc4CuaqKAvWqTgMxowoEZs5OBJvbKgBAgMEBwIFBgUGBQIFAgUCBQIFAgcC
+    BwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcAAGsKAAAAAHCA
+    AAQAAH6QAQgAAHeIAQ0AAH6QABIAAHCAAAQAAH6QAQgAAHCAAARMTVQASEtUAEhLU1QASEtXVABK
+    U1QAAAEAAAABAQAAAQAAAAAAAFRaaWYyAAAAAAAAAAAAAAAAAAAAAAAACAAAAAgAAAAAAAAARQAA
+    AAgAAAAW/////4VpY5D/////yk0xMP/////K25Mw/////8tLcXj/////0qDekP/////Ta9eA////
+    /9STWLj/////1UKwOP/////Wczq4/////9c+Qbj/////2C4yuP/////Y+Tm4/////9oOFLj/////
+    2tkbuP/////b7fa4/////9y4/bj/////3c3YuP/////eoho4/////9+29Tj/////4IH8OP/////h
+    lsko/////+JPaTj/////43arKP/////kL0s4/////+Vfx6j/////5g8tOP/////nP6mo/////+f4
+    Sbj/////6R+LqP/////p2Cu4/////+r/baj/////67gNuP/////s30+o/////+2X77j/////7shs
+    KP/////vd9G4//////CoTij/////8VezuP/////yiDAo//////NA0Dj/////9GgSKP/////1ILI4
+    //////ZH9Cj/////9yV+OP/////4FWEo//////kFYDj/////+fVDKP/////65UI4//////veX6j/
+    /////M5euP/////9vkGo//////6uQLj//////54jqAAAAAAAjiK4AAAAAAF+BagAAAAAAm4EuAAA
+    AAADXeeoAAAAAARN5rgAAAAABUcEKAAAAAAGNwM4AAAAAAcm5igAAAAAB4M9OAAAAAAJBsgoAAAA
+    AAn2xzgAAAAACuaqKAAAAAAL1qk4AAAAAAzGjCgAAAAAEZs5OAAAAAASb2yoAQIDBAcCBQYFBgUC
+    BQIFAgUCBQIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIHAgcCBwIH
+    AABrCgAAAABwgAAEAAB+kAEIAAB3iAENAAB+kAASAABwgAAEAAB+kAEIAABwgAAETE1UAEhLVABI
+    S1NUAEhLV1QASlNUAAABAAAAAQEAAAEAAAAAAAAKSEtULTgK

@@ -270,6 +270,9 @@ The root README's convention (`TZ: "Asia/Hong_Kong"`) applies here too, but **wh
 | trilium | `environment.TZ` in its Deployment | `HKT` | ✅ |
 | Cilium (agent/operator/hubble-relay/hubble-ui) | `extraEnv` in `cilium/values.yaml` | `UTC` | ❌ image has no `/usr/share/zoneinfo` — left set anyway (harmless, and future Cilium image bumps may add tzdata) |
 | homepage | `environment.TZ` in its Deployment | `UTC` | ❌ same cause, not investigated further (low priority — see phase C's design doc) |
+| lab-environment: traffic-generator | `env.TZ` + the `lab-tzdata` ConfigMap mounted at `/usr/share/zoneinfo/Asia/Hong_Kong` | `+08:00` in its log lines | ✅ the curl image ships no tzdata; its log lines are the demo evidence, so this one is worth fixing |
+| lab-environment: Loki, promtail, toxiproxy, Envoy (ingress, waypoint), Prometheus | `env.TZ` | `Z` (UTC) | ❌ by design, not a missing zone file: their log libraries format timestamps in UTC. Measured 2026-10-01 on the same arm64 images: mounting the zone file changes nothing for Loki, promtail or toxiproxy. Left as is |
+| lab-environment: Jaeger | `env.TZ` | epoch seconds | n/a, timezone-free |
 | hello (frontend/backend), kube-system system pods (CoreDNS, local-path-provisioner, metrics-server) | not set | `UTC` | expected, never configured |
 
 **This isn't just cosmetic — it's a log-correlation risk.** Once more than one component prints timestamps in different zones, manually cross-referencing raw log text across services (e.g. "did the NPM cutover happen before or after this ArgoCD sync") gets error-prone: the same wall-clock moment prints as two different clock times depending on which service logged it. Two mitigations, deliberately not more:

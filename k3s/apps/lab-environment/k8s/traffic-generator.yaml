@@ -78,6 +78,11 @@ spec:
           volumeMounts:
             - name: script
               mountPath: /opt
+            # The curl image ships no tzdata, so TZ alone leaves the log lines in UTC.
+            - name: tzdata
+              mountPath: /usr/share/zoneinfo/Asia/Hong_Kong
+              subPath: Hong_Kong
+              readOnly: true
           resources:
             requests: {cpu: 20m, memory: 32Mi}
             limits: {cpu: 100m, memory: 64Mi}
@@ -85,3 +90,6 @@ spec:
         - name: script
           configMap:
             name: traffic-generator
+        - name: tzdata
+          configMap:
+            name: lab-tzdata
