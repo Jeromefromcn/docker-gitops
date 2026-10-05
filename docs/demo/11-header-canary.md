@@ -10,30 +10,72 @@ Preflight passed; 10 reset.
 
 ## Commands
 ```bash
+# Bring the checkout up to date with origin/main
 git pull --ff-only origin main
+
+# Apply the scenario's prepared manifest patch to the working tree
 git apply k3s/apps/lab-environment/demo/patches/header-canary.patch
+
+# Review the change before committing it
 git --no-pager diff
+
+# Commit to main with the demo: prefix
 git commit -m "demo: route marked requests to the customers-service canary" -- k3s/apps/lab-environment/k8s
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Wait until the customers-service-canary rollout completes
 kubectl -n lab-environment rollout status deploy/customers-service-canary --timeout=6m
+
+# Lab ingress (lab-ingress-istio NodePort on vps_oracle)
 U=http://10.0.0.95:30097
+
 # Ready is not yet routable: wait until both waypoint replicas have the canary
 # endpoint - 10 marked requests in a row answered by v2.
 end=$((SECONDS + 120)); ok=0; until [ $ok -ge 10 ]; do [ $SECONDS -lt $end ] || { echo "ROUTE WAIT TIMED OUT - stop here"; break; }; if curl -s -o /dev/null -D- -H 'x-canary: true' $U/api/customer/owners/1 | grep -qi '^x-app-version'; then ok=$((ok + 1)); else ok=0; fi; sleep 0.5; done
+
 sleep 20   # quiet gap: keeps the warm-up out of the window's log lines and its first metrics sample
+
+# Open the evidence window: every evidence query is bounded by it
 demo-window start header-canary
+
+# 20 requests with the x-canary header; expect all on v2
 echo "header:";   for i in $(seq 1 20); do curl -s -o /dev/null -D- -H 'x-canary: true' $U/api/customer/owners/1 | tr -d '\r' | awk -F': ' 'tolower($1)=="x-app-version"{v=$2} END{print (v ? v : "none (v1)")}'; done | sort | uniq -c
+
+# 20 requests with the canary cookie; expect all on v2
 echo "cookie:";   for i in $(seq 1 20); do curl -s -o /dev/null -D- -b 'canary=1' $U/api/customer/owners/1 | tr -d '\r' | awk -F': ' 'tolower($1)=="x-app-version"{v=$2} END{print (v ? v : "none (v1)")}'; done | sort | uniq -c
+
+# 20 unmarked requests; expect all on v1
 echo "unmarked:"; for i in $(seq 1 20); do curl -s -o /dev/null -D- $U/api/customer/owners/1 | tr -d '\r' | awk -F': ' 'tolower($1)=="x-app-version"{v=$2} END{print (v ? v : "none (v1)")}'; done | sort | uniq -c
+
+# 10 marked requests via the gateway's aggregation path: the gateway drops the header, so these land on stable
 echo "aggregation path, with header:"; for i in $(seq 1 10); do curl -s -o /dev/null -w '%{http_code}\n' -H 'x-canary: true' $U/api/gateway/owners/1; done | sort | uniq -c
+
 sleep 10   # Envoy flushes its access log in batches: let the window's last lines land inside it
+
+# Close the evidence window
 demo-window stop header-canary
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence header-canary
+
+# Roll back: revert the demo commit
 git revert --no-edit HEAD
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
 ```
 

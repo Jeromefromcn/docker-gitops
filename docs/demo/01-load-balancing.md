@@ -14,9 +14,16 @@ traffic. Run it before you start talking. The generator resumes on
 
 ## Commands
 ```bash
+# Open the window; pauses the background traffic generator and waits ~80 s first
 demo-window start load-balancing
+
+# Send 100 requests through the ingress and count the status codes
 for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' http://10.0.0.95:30097/api/customer/owners; sleep 0.3; done | sort | uniq -c
+
+# Close the evidence window
 demo-window stop load-balancing
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence load-balancing
 ```
 

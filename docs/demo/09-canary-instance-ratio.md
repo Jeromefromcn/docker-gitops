@@ -10,21 +10,52 @@ Preflight passed (`demo-reset preflight` → `baseline OK`; the canary slot is e
 
 ## Commands
 ```bash
+# Bring the checkout up to date with origin/main
 git pull --ff-only origin main
+
+# Apply the scenario's prepared manifest patch to the working tree
 git apply k3s/apps/lab-environment/demo/patches/canary-instance-ratio.patch
+
+# Review the change before committing it
 git --no-pager diff
+
+# Commit to main with the demo: prefix
 git commit -m "demo: canary customers-service by instance ratio (5 + 1)" -- k3s/apps/lab-environment/k8s
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Wait until the customers-service-canary rollout completes
 kubectl -n lab-environment rollout status deploy/customers-service-canary --timeout=6m
+
+# Open the evidence window: every evidence query is bounded by it
 demo-window start canary-instance-ratio
+
+# Send 120 requests and count which build answered (x-app-version header; none = v1)
 for i in $(seq 1 120); do curl -s -o /dev/null -D- http://10.0.0.95:30097/api/customer/owners/1 | tr -d '\r' | awk -F': ' 'tolower($1)=="x-app-version"{v=$2} END{print (v ? v : "none (v1)")}'; sleep 0.3; done | sort | uniq -c
+
+# Close the evidence window
 demo-window stop canary-instance-ratio
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence canary-instance-ratio
+
+# Roll back: revert the demo commit
 git revert --no-edit HEAD
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
 ```
 

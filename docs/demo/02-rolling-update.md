@@ -9,20 +9,44 @@ Preflight passed. Working tree clean (`git status`).
 
 ## Commands
 ```bash
+# Bring the checkout up to date with origin/main
 git pull --ff-only origin main
+
+# Open the evidence window: every evidence query is bounded by it
 demo-window start rolling-update
+
+# The manifest whose rollout-rev annotation gets bumped
 F=k3s/apps/lab-environment/k8s/customers-service.yaml
+
+# Read the current rollout-rev
 cur=$(grep -oP 'lab.jerome/rollout-rev: "\K[0-9]+' $F)
+
+# Bump rollout-rev by one: a pod-template change that forces a rolling restart
 sed -i "s|lab.jerome/rollout-rev: \"$cur\"|lab.jerome/rollout-rev: \"$((cur + 1))\"|" $F
+
+# Review the change before committing it
 git diff
+
+# Commit to main with the demo: prefix
 git commit -m "demo: rolling-restart customers-service" -- $F
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
 # Wait until ArgoCD has synced this commit (the PreSync hook runs first) —
 # otherwise rollout status reports the *old* rollout as done.
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Wait until the customers-service rollout completes
 kubectl -n lab-environment rollout status deploy/customers-service --timeout=6m
+
+# Close the evidence window
 demo-window stop rolling-update
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence rolling-update
 ```
 

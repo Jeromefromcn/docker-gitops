@@ -10,36 +10,73 @@ Preflight passed; `kubeseal` on the PATH; working tree clean.
 
 ## Commands
 ```bash
+# Bring the checkout up to date with origin/main
 git pull --ff-only origin main
+
+# Open the evidence window: every evidence query is bounded by it
 demo-window start secret-rotation
+
 # 1. Seal a new password and ship it through git. The Secret changes; nothing restarts.
 # The password reaches kubectl through a /dev/fd path, never as an argument (ps would show it).
+# Generate the new password; it lives only in this shell
 NEW=$(openssl rand -base64 24 | tr -d '/+=')
+
+# Read the current DB username from the live Secret
 U=$(kubectl -n lab-environment get secret lab-db-credentials -o jsonpath='{.data.username}' | base64 -d)
+
+# Build the new Secret locally and seal it with the controller's public key; only the sealed file is written
 kubectl -n lab-environment create secret generic lab-db-credentials \
   --from-literal=username="$U" --from-file=password=<(printf %s "$NEW") --dry-run=client -o yaml \
   | kubeseal --controller-namespace sealed-secrets --controller-name sealed-secrets --format yaml \
   > k3s/sealed-secrets/secrets/lab-db-credentials.sealed.yaml
+
+# Only the sealed file changed - no plaintext in git
 git diff --stat
+
+# Commit to main with the demo: prefix
 git commit -m "demo: rotate lab-db-credentials" -- k3s/sealed-secrets/secrets/lab-db-credentials.sealed.yaml
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get sealed-secrets --core --refresh >/dev/null
+
+# Wait (up to 2 min) until the controller has unsealed the new password into the Secret
 end=$((SECONDS + 120)); until [ "$(kubectl -n lab-environment get secret lab-db-credentials -o jsonpath='{.data.password}' | base64 -d)" = "$NEW" ]; do [ $SECONDS -lt $end ] || { echo "SECRET WAIT TIMED OUT - stop here"; break; }; sleep 5; done; [ $SECONDS -ge $end ] || echo "Secret updated"
+
 # 2. Switch Postgres to the new password (via stdin, never on a command line).
 printf 'ALTER USER "%s" PASSWORD '"'"'%s'"'"';\n' "$U" "$NEW" | kubectl -n lab-environment exec -i deploy/postgres -- psql -U "$U" -d postgres
+
 # 3. Roll the three DB clients onto the new env.
 for d in customers-service vets-service visits-service; do
   F=k3s/apps/lab-environment/k8s/$d.yaml
   cur=$(grep -oP 'lab.jerome/rollout-rev: "\K[0-9]+' $F)
   sed -i "s|lab.jerome/rollout-rev: \"$cur\"|lab.jerome/rollout-rev: \"$((cur + 1))\"|" $F
 done
+
+# Commit to main with the demo: prefix
 git commit -m "demo: roll services onto the rotated DB password" -- k3s/apps/lab-environment/k8s/{customers,vets,visits}-service.yaml
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Wait for all three rollouts to finish
 for d in customers-service vets-service visits-service; do kubectl -n lab-environment rollout status deploy/$d --timeout=8m; done
+
+# Drop the password from the shell
 unset NEW
+
+# Close the evidence window
 demo-window stop secret-rotation
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence secret-rotation
 ```
 

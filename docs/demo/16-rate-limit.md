@@ -12,12 +12,25 @@ relies on the limiter this page introduces.
 
 ## Commands
 ```bash
+# Open the evidence window: every evidence query is bounded by it
 demo-window start rate-limit
+
+# Lab ingress (lab-ingress-istio NodePort on vps_oracle)
 U=http://10.0.0.95:30097
+
+# Burst of 60 requests at /api/vet/vets; count the status codes and which were rate-limited
 for i in $(seq 1 60); do curl -s -o /dev/null -D- $U/api/vet/vets | tr -d '\r' | awk 'NR==1{c=$2} tolower($1)=="x-envoy-ratelimited:"{r=$2} END{print c, (r ? "ratelimited" : "-")}'; done | sort | uniq -c
+
+# Let the window's last access-log lines land inside it
 sleep 10
+
+# Close the evidence window
 demo-window stop rate-limit
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence rate-limit
+
+# Show the start of the Lua limiter that did it
 kubectl -n lab-environment get trafficextension vets-service-ratelimit -o jsonpath='{.spec.lua.inlineCode}' | head -3
 ```
 

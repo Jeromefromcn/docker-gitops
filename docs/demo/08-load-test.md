@@ -17,11 +17,18 @@ measuring.
 
 ## Commands
 ```bash
+# Open the evidence window: every evidence query is bounded by it
 demo-window start load-test
+
+# Run the k6 step load test from a container on the host network
 docker run --rm --name lab-k6 --network host \
   -v "$PWD/k3s/apps/lab-environment/demo/load:/scripts:ro" \
   grafana/k6:2.3.0 run /scripts/k6-steps.js
+
+# Close the evidence window
 demo-window stop load-test
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence load-test
 ```
 (`--network host`: a Docker-bridge container cannot reach a k3s NodePort

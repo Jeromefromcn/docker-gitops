@@ -14,24 +14,54 @@ the current fork `main` (`git -C ../spring-petclinic-microservices log --oneline
 
 ## Commands
 ```bash
+# The fork the PR is opened on
 F=Jeromefromcn/spring-petclinic-microservices
+
+# Open the PR from demo/pr-lane and export its number (demo-evidence reads LANE_PR)
 LANE_PR=$(gh pr create -R $F --head demo/pr-lane --base main --title "demo: PR lane" --body "Lab PR lane demo (docker-gitops docs/demo/18). Closed, never merged." | grep -oP '/pull/\K[0-9]+'); export LANE_PR; echo "PR $LANE_PR"
+
+# Wait (up to 15 min) until CI has built, scanned and signed the visits-service image
 end=$((SECONDS + 900)); until gh pr checks $LANE_PR -R $F 2>/dev/null | grep -qP '^build-scan-sign \(visits-service\)\s+pass'; do [ $SECONDS -lt $end ] || { echo "CI WAIT TIMED OUT - stop here"; break; }; sleep 15; done
+
+# Label the PR to ask for a visits-service lane
 gh pr edit $LANE_PR -R $F --add-label lane:visits-service
+
+# Wait (up to 10 min) until the lane pod is Ready
 end=$((SECONDS + 600)); until [ "$(kubectl -n lab-environment get pods -l lab.jerome/lane=pr-$LANE_PR -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)" = True ]; do [ $SECONDS -lt $end ] || { echo "LANE WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Show the lane's ArgoCD app: synced and healthy
 argocd app get lab-visits-service-pr-$LANE_PR --core | grep -E '^(Name|Sync Status|Health Status)'
+
+# Lab ingress (lab-ingress-istio NodePort on vps_oracle)
 U=http://10.0.0.95:30097
+
 # Ready is not yet warm: a fresh JVM's first calls can exceed the lane's 3 s
 # timeout (504). Warm up until 10 header requests in a row come from the lane.
 end=$((SECONDS + 180)); ok=0; until [ $ok -ge 10 ]; do [ $SECONDS -lt $end ] || { echo "LANE WARM-UP TIMED OUT - stop here"; break; }; if curl -s -m 5 -o /dev/null -D- -H "x-pr-lane: $LANE_PR" "$U/api/visit/pets/visits?petId=1" | grep -qi '^x-visits-build'; then ok=$((ok + 1)); else ok=0; fi; sleep 0.5; done
+
 sleep 20   # quiet gap: keeps the warm-up out of the window's log lines
+
+# Open the evidence window: every evidence query is bounded by it
 demo-window start pr-lane
+
+# 10 requests with x-pr-lane; expect all served by the lane
 for i in $(seq 1 10); do curl -s -D- -o /dev/null -H "x-pr-lane: $LANE_PR" "$U/api/visit/pets/visits?petId=1" | tr -d '\r' | awk 'NR==1{c=$2} tolower($1)=="x-visits-build:"{b=$2} END{print c, (b ? "lane" : "baseline")}'; done | sort | uniq -c
+
+# 10 requests without the header; expect all on the baseline
 for i in $(seq 1 10); do curl -s -D- -o /dev/null "$U/api/visit/pets/visits?petId=1" | tr -d '\r' | awk 'NR==1{c=$2} tolower($1)=="x-visits-build:"{b=$2} END{print c, (b ? "lane" : "baseline")}'; done | sort | uniq -c
+
+# 5 marked requests via customers-service; the header crosses the hop to visits
 for i in $(seq 1 5); do curl -s -o /dev/null -w '%{http_code}\n' -H "x-pr-lane: $LANE_PR" "$U/api/customer/owners/1/visits"; done | sort | uniq -c
+
 sleep 10   # Envoy flushes its access log in batches: let the window's last lines land inside it
+
+# Close the evidence window
 demo-window stop pr-lane
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence pr-lane
+
+# Close the PR; the lane is torn down
 gh pr close $LANE_PR -R $F
 ```
 

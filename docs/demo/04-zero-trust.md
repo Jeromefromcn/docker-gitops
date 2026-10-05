@@ -9,19 +9,32 @@ Preflight passed.
 
 ## Commands
 ```bash
+# Open the evidence window: every evidence query is bounded by it
 demo-window start zero-trust
+
 # a. Right network, wrong identity: the generator may not call customers-service
 kubectl -n lab-environment exec deploy/traffic-generator -- curl -s -o /dev/null -w 'wrong caller -> %{http_code}\n' http://customers-service:8081/owners
+
 # b. Actuator is locked at the edge
 curl -s -o /dev/null -w 'actuator via ingress -> %{http_code}\n' http://10.0.0.95:30097/actuator/env
+
 # c. Plaintext from outside the mesh to a STRICT pod
+# Pick a customers-service pod IP for c and d
 CIP=$(kubectl -n lab-environment get pod -l app=customers-service -o jsonpath='{.items[0].status.podIP}')
+
+# Plaintext curl from a throwaway pod in default, outside the mesh; expect curl exit 52 or 56
 kubectl run -n default mtls-probe --rm -i --restart=Never --image=curlimages/curl:8.10.1 -- curl -s -m 5 -o /dev/null -w 'plaintext from outside the mesh -> %{http_code}\n' http://$CIP:8081/actuator/health; echo "exit=$?"
+
 # d. Inside the mesh, bypassing the waypoint by pod IP
 kubectl -n lab-environment exec deploy/traffic-generator -- curl -s -m 5 -o /dev/null http://$CIP:8081/owners; echo "pod IP bypass exit=$?"
+
 # e. Data stores accept only their clients
 kubectl -n lab-environment exec deploy/traffic-generator -- curl -s -m 5 http://postgres:5432; echo "postgres exit=$?"
+
+# Close the evidence window
 demo-window stop zero-trust
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence zero-trust
 ```
 

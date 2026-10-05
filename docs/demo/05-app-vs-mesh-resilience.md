@@ -11,13 +11,28 @@ Preflight passed.
 
 ## Commands
 ```bash
+# Open the evidence window: every evidence query is bounded by it
 demo-window start app-vs-mesh-resilience
+
+# Turn on the Consul chaos toggle: visits-service's Redis calls now time out
 curl -s -X PUT -d true http://10.0.0.95:30092/v1/kv/chaos/visits-service/redis-timeout; echo
+
+# Give the app time to pick up the toggle (it polls every 5 s)
 sleep 10
+
+# Five calls to the gateway's aggregation endpoint; expect 200 from the Resilience4j fallback
 for i in 1 2 3 4 5; do curl -s -o /dev/null -w 'gateway aggregation   %{http_code} %{time_total}s\n' http://10.0.0.95:30097/api/gateway/owners/6; done
+
+# Five calls to customers-service's aggregation endpoint; expect 504 from Envoy's per-try timeout
 for i in 1 2 3 4 5; do curl -s -o /dev/null -w 'customers aggregation %{http_code} %{time_total}s\n' http://10.0.0.95:30097/api/customer/owners/6/visits; done
+
+# Close the evidence window
 demo-window stop app-vs-mesh-resilience
+
+# Turn the chaos toggle off and verify the lab baseline
 demo-reset app-vs-mesh-resilience
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence app-vs-mesh-resilience
 ```
 (The reset runs before the evidence on purpose: the toggle must not stay on

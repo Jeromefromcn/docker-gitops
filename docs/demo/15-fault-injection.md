@@ -10,28 +10,68 @@ Preflight passed; 14 reset.
 
 ## Commands
 ```bash
+# Bring the checkout up to date with origin/main
 git pull --ff-only origin main
+
+# Apply the scenario's prepared manifest patch to the working tree
 git apply k3s/apps/lab-environment/demo/patches/fault-injection.patch
+
+# Review the change before committing it
 git --no-pager diff
+
+# Commit to main with the demo: prefix
 git commit -m "demo: inject faults into customers-service for marked requests" -- k3s/apps/lab-environment/k8s
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Lab ingress (lab-ingress-istio NodePort on vps_oracle)
 U=http://10.0.0.95:30097
+
 # Both waypoint replicas must have the new route before the window opens.
 end=$((SECONDS + 120)); ok=0; until [ $ok -ge 10 ]; do [ $SECONDS -lt $end ] || { echo "ROUTE WAIT TIMED OUT - stop here"; break; }; if [ "$(curl -s -o /dev/null -w '%{http_code}' -H 'x-fault: abort' $U/api/customer/owners/1)" != 200 ]; then ok=$((ok + 1)); else ok=0; fi; sleep 0.5; done
+
 sleep 20   # quiet gap: keeps the warm-up out of the window
+
+# Open the evidence window: every evidence query is bounded by it
 demo-window start fault-injection
+
+# 10 requests with x-fault: delay; expect 200 after ~2 s
 echo "delay:";    for i in $(seq 1 10); do curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' -H 'x-fault: delay' $U/api/customer/owners/1; done
+
+# 10 requests with x-fault: abort; expect fast 503s
 echo "abort:";    for i in $(seq 1 10); do curl -s -o /dev/null -w '%{http_code}\n' -H 'x-fault: abort' $U/api/customer/owners/1; done | sort | uniq -c
+
+# 10 unmarked requests; expect 200
 echo "unmarked:"; for i in $(seq 1 10); do curl -s -o /dev/null -w '%{http_code}\n' $U/api/customer/owners/1; done | sort | uniq -c
+
 sleep 10   # let the window's last access-log lines land inside it
+
+# Close the evidence window
 demo-window stop fault-injection
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence fault-injection
+
+# Roll back: revert the demo commit
 git revert --no-edit HEAD
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Undo the scenario and verify the lab baseline
 demo-reset fault-injection
 ```
 

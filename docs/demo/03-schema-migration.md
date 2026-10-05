@@ -10,8 +10,13 @@ the ArgoCD check reads the app's last operation.
 
 ## Commands
 ```bash
+# List the PreSync hooks of the last sync (02's) and their phase
 argocd app get lab-environment --core -o json | jq -r '.status.operationState.syncResult.resources[] | select(.hookPhase) | select(.syncPhase=="PreSync") | "\(.syncPhase) \(.kind)/\(.name) \(.hookPhase)"'
+
+# Show the migration job's log: which SQL files it applied
 kubectl -n lab-environment logs job/db-init
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence schema-migration
 ```
 

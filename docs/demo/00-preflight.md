@@ -8,10 +8,19 @@ On vps_oracle, repo root (`~/jerome/docker-gitops`), kubectl context `default`.
 
 ## Commands
 ```bash
+# Bring the checkout up to date with origin/main
 git pull --ff-only origin main
+
+# Put the demo helpers (demo-window, demo-evidence, demo-reset) on the PATH
 export PATH=$PWD/k3s/apps/lab-environment/demo:$PATH
+
+# Verify the lab baseline; expect "baseline OK"
 demo-reset preflight
+
+# List lab pods that are not Running or Completed; expect only the header line
 kubectl -n lab-environment get pods | grep -v -E 'Running|Completed'
+
+# Check the three apps are Synced and Healthy
 argocd app list --core | grep -E 'lab-environment|sealed-secrets|kube-state-metrics'
 ```
 

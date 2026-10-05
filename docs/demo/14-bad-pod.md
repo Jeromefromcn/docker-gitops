@@ -11,17 +11,39 @@ resilience scenarios: an ejection lasts 30 s and grows on each repeat.
 
 ## Commands
 ```bash
+# Pick one stable customers-service pod to be the bad one
 BAD=$(kubectl -n lab-environment get pods -l app=customers-service,track=stable -o jsonpath='{.items[0].metadata.name}'); echo "bad pod: $BAD"
+
+# Save its name for demo-evidence and demo-reset
 echo "$BAD" > ~/.local/state/lab-demo/bad-pod.name
+
+# Open the evidence window: every evidence query is bounded by it
 demo-window start bad-pod
+
+# Set the Consul chaos toggle: that pod now fails every request
 curl -s -X PUT -d "$BAD" http://10.0.0.95:30092/v1/kv/chaos/customers-service/fail-instance; echo
+
 sleep 6   # the app polls its chaos toggles every 5 s
+
+# Lab ingress (lab-ingress-istio NodePort on vps_oracle)
 U=http://10.0.0.95:30097
+
+# 120 requests through the ingress; expect all 200 - retries and ejection hide the bad pod
 for i in $(seq 1 120); do curl -s -o /dev/null -w '%{http_code}\n' $U/api/customer/owners/1; sleep 0.25; done | sort | uniq -c
+
+# Read the waypoint's outlier-detection counters for customers-service
 kubectl -n lab-environment exec deploy/waypoint -- pilot-agent request GET stats | grep -E 'customers-service.*outlier_detection.ejections_(active|enforced_total)'
+
+# The bad pod still reports Ready - only the mesh took it out of rotation
 kubectl -n lab-environment exec "$BAD" -- curl -s -o /dev/null -w 'bad pod readiness %{http_code}\n' localhost:8081/actuator/health/readiness
+
+# Close the evidence window
 demo-window stop bad-pod
+
+# Undo the scenario and verify the lab baseline
 demo-reset bad-pod
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence bad-pod
 ```
 (The reset runs before the evidence on purpose, as in 05: the toggle must

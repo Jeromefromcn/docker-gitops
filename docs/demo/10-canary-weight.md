@@ -13,21 +13,52 @@ throws — and its unit tests passed, because none had two pets.
 
 ## Commands
 ```bash
+# Bring the checkout up to date with origin/main
 git pull --ff-only origin main
+
+# Apply the scenario's prepared manifest patch to the working tree
 git apply k3s/apps/lab-environment/demo/patches/canary-weight.patch
+
+# Review the change before committing it
 git --no-pager diff
+
+# Commit to main with the demo: prefix
 git commit -m "demo: canary customers-service v2-bad at 10%" -- k3s/apps/lab-environment/k8s
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Wait until the customers-service-canary rollout completes
 kubectl -n lab-environment rollout status deploy/customers-service-canary --timeout=6m
+
+# Open the evidence window: every evidence query is bounded by it
 demo-window start canary-weight
+
+# Send 200 requests for owner 3 (two pets: v2-bad fails on it) and count the status codes
 for i in $(seq 1 200); do curl -s -o /dev/null -w '%{http_code}\n' http://10.0.0.95:30097/api/customer/owners/3; sleep 0.3; done | sort | uniq -c
+
+# Close the evidence window
 demo-window stop canary-weight
+
+# Roll back: revert the demo commit
 git revert --no-edit HEAD
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence canary-weight
 ```
 

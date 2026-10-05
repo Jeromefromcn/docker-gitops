@@ -11,41 +11,99 @@ Preflight passed; 15 reset. Costs two visits-service rollouts (in and out).
 
 ## Commands
 ```bash
+# Bring the checkout up to date with origin/main
 git pull --ff-only origin main
+
+# Apply the scenario's prepared manifest patch to the working tree
 git apply k3s/apps/lab-environment/demo/patches/toxiproxy.patch
+
+# Review the change before committing it
 git --no-pager diff
+
+# Commit to main with the demo: prefix
 git commit -m "demo: route visits-service's data stores through toxiproxy" -- k3s/apps/lab-environment/k8s
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Wait until the toxiproxy rollout completes
 kubectl -n lab-environment rollout status deploy/toxiproxy --timeout=3m
+
+# Wait until the visits-service rollout completes
 kubectl -n lab-environment rollout status deploy/visits-service --timeout=6m
+
+# Shortcut for toxiproxy-cli inside the toxiproxy pod
 T="kubectl -n lab-environment exec deploy/toxiproxy -- /toxiproxy-cli"
+
+# Base URL of the owners API, via the lab ingress
 U=http://10.0.0.95:30097/api/customer/owners
+
+# List the proxies; expect postgres and redis, no toxics
 $T list
+
 # visits just restarted: a cold JVM's first requests can take over 1 s and
 # would 504 before any toxic. Warm it on owners the steps below do not use
 # (3, 5, 7 must stay out of the 60 s Redis cache).
 for i in $(seq 1 10); do curl -s -o /dev/null $U/6/visits; curl -s -o /dev/null $U/9/visits; done
+
+# Open the evidence window: every evidence query is bounded by it
 demo-window start toxiproxy
+
+# Through the proxy, no toxic yet: expect 200 in ~0.2 s
 echo "through the proxy, no toxic:"; for i in 1 2 3; do curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' $U/6/visits; done
+
+# Add 1.5 s of latency to Redis
 $T toxic add -t latency -a latency=1500 redis
+
+# Expect 504 at ~1 s: the mesh's per-try timeout answers for the caller
 echo "redis +1.5 s:";             for i in 1 2 3; do curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' $U/6/visits; done
+
+# Remove the Redis latency
 $T toxic remove -n latency_downstream redis
+
+# Black-hole Postgres: connections hang and no data flows
 $T toxic add -t timeout -a timeout=0 postgres
+
 # Owners the traffic generator never reads: their visits are not in the
 # 60 s Redis cache, so the request really goes to Postgres.
 echo "postgres black hole:";      for o in 3 5 7; do curl -s -o /dev/null -w "owner $o %{http_code} %{time_total}s\n" $U/$o/visits; done
+
+# Remove the Postgres black hole
 $T toxic remove -n timeout_downstream postgres
+
+# Same owners again: expect 200 at once, no rollout needed
 echo "toxic removed:";            for o in 3 5 7; do curl -s -o /dev/null -w "owner $o %{http_code} %{time_total}s\n" $U/$o/visits; done
+
+# Count ztunnel connections from the toxiproxy identity to postgres on vps-oracle2
 kubectl -n istio-system logs "$(kubectl -n istio-system get pods -l app=ztunnel --field-selector spec.nodeName=vps-oracle2 -o name)" --since=3m | grep -c 'src.identity="spiffe://cluster.local/ns/lab-environment/sa/toxiproxy".*dst.service="postgres'
+
 sleep 10   # let the window's last access-log lines land inside it
+
+# Close the evidence window
 demo-window stop toxiproxy
+
+# Run the evidence queries for the window; ends with a Grafana link
 demo-evidence toxiproxy
+
+# Roll back: revert the demo commit
 git revert --no-edit HEAD
+
+# Push to main; ArgoCD deploys from git
 git push || echo "PUSH FAILED - stop here"
+
+# Make ArgoCD re-read git now instead of waiting for its next poll
 argocd app get lab-environment --core --refresh >/dev/null
+
+# Wait (up to 5 min) until ArgoCD has synced this commit successfully
 end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+
+# Undo the scenario and verify the lab baseline
 demo-reset toxiproxy
 ```
 
