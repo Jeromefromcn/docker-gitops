@@ -151,9 +151,11 @@ traffic and exactly one for a deliberate illegal call.
 
 **Resilience (resident).** Per business Service, a `VirtualService` with
 `timeout: 3s` and `retries {attempts: 2, perTryTimeout: 1s, retryOn:
-connect-failure,refused-stream,unavailable,503}` for GET, and no retries with
-`timeout: 5s` otherwise; the edge (`api-gateway`) never retries, so attempts
-cannot multiply across hops. 500 is deliberately *not* retried. A
+connect-failure,refused-stream,unavailable,reset,503}` for GET, and no retries
+with `timeout: 5s` otherwise; the edge (`api-gateway`) never retries, so
+attempts cannot multiply across hops. 500 is deliberately *not* retried.
+`reset` was added 2026-10-06: a connection closed under a request (`503 UC`,
+seen when traffic moved onto freshly started pods) is not matched by `503`. A
 `DestinationRule` per service adds `outlierDetection {consecutive5xxErrors: 5,
 interval: 10s, baseEjectionTime: 30s, maxEjectionPercent: 50}` and a generous
 connection pool. With one replica (vets, visits) 50 % of one host rounds down

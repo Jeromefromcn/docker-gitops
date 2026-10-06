@@ -5,6 +5,12 @@
 # transient failures. 500 is deliberately not in retryOn: that is an
 # application bug, and retrying it just multiplies the damage.
 #
+# reset covers a connection the upstream closes under a request, which the
+# waypoint logs as 503 UC. "503" alone does not: it matches a 503 the upstream
+# returned, and UC is the waypoint's own reply. Without reset, a switch onto
+# freshly started pods failed users with 503 UC (docs/demo/12 and 06,
+# 2026-10-06).
+#
 # Retries do not compound across hops here — measured, not assumed (ledger C,
 # 2026-09-29): with visits-service answering 503 to everything
 # (chaos/visits-service/fail-instance), one external GET produced exactly
@@ -58,7 +64,7 @@ spec:
       retries:
         attempts: 2
         perTryTimeout: 1s
-        retryOn: connect-failure,refused-stream,unavailable,503
+        retryOn: connect-failure,refused-stream,unavailable,reset,503
     # Anything that is not an idempotent GET: no retry, looser timeout.
     - route:
         - destination:
@@ -87,7 +93,7 @@ spec:
       retries:
         attempts: 2
         perTryTimeout: 1s
-        retryOn: connect-failure,refused-stream,unavailable,503
+        retryOn: connect-failure,refused-stream,unavailable,reset,503
     - route:
         - destination:
             host: visits-service.lab-environment.svc.cluster.local
@@ -114,7 +120,7 @@ spec:
       retries:
         attempts: 2
         perTryTimeout: 1s
-        retryOn: connect-failure,refused-stream,unavailable,503
+        retryOn: connect-failure,refused-stream,unavailable,reset,503
     - route:
         - destination:
             host: vets-service.lab-environment.svc.cluster.local

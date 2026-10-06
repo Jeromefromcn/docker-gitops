@@ -56,7 +56,7 @@ policy and adds a `fault`:
       retries:
         attempts: 2
         perTryTimeout: 1s
-        retryOn: connect-failure,refused-stream,unavailable,503
+        retryOn: connect-failure,refused-stream,unavailable,reset,503
     - match:
         - headers:
             x-fault:
@@ -74,7 +74,7 @@ policy and adds a `fault`:
       retries:
         attempts: 2
         perTryTimeout: 1s
-        retryOn: connect-failure,refused-stream,unavailable,503
+        retryOn: connect-failure,refused-stream,unavailable,reset,503
 ```
 
 ```bash
