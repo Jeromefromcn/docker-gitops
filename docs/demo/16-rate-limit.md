@@ -2,52 +2,66 @@
 
 ## Purpose
 Send a burst at `/api/vet/vets` and show the resident limiter in front of
-vets-service — the lab's bottleneck — turn the excess into immediate 429s,
-while vets itself only sees what was admitted and steady traffic is never
+vets-service, the lab's bottleneck, turn the excess into immediate 429s.
+vets itself only sees what was admitted, and steady traffic is never
 touched.
 
 ## Preconditions
-Preflight passed (it checks the limiter is present). Runs after 06; 08
-relies on the limiter this page introduces.
+Preflight passed. Runs after 06; 08 relies on the limiter this page
+introduces. Nothing is changed: the limiter is resident.
 
-## Commands
+## Before you start: open the views
+1. **Grafana — Lab Business**, Window 300, last 15 minutes, auto-refresh
+   10 s:
+   <https://grafana.lab.jerome.cloudns.asia/d/lab-business/lab-business?var-window_s=300&from=now-15m&to=now&refresh=10s>
+   In **Inbound endpoints**, find the api-gateway row for the
+   `vets-service` route. Its **429 count** is 0.
+2. **Grafana — Explore**, data source **Loki**, last 5 minutes, **Query
+   type Instant**. vets-service requests per waypoint replica and status:
+   ```logql
+   sum by (pod_name, response_code) (count_over_time({service="istio-proxy"} | json | authority=~"vets-service.*" [1m]))
+   ```
+   Only `200`, from both waypoint replicas.
+
+## Steps
+
+### 1. The limiter is already there
 ```bash
-# Open the evidence window: every evidence query is bounded by it
-demo-window start rate-limit
-
-# Lab ingress (lab-ingress-istio NodePort on vps_oracle)
-U=http://10.0.0.95:30097
-
-# Burst of 60 requests at /api/vet/vets; count the status codes and which were rate-limited
-for i in $(seq 1 60); do curl -s -o /dev/null -D- $U/api/vet/vets | tr -d '\r' | awk 'NR==1{c=$2} tolower($1)=="x-envoy-ratelimited:"{r=$2} END{print c, (r ? "ratelimited" : "-")}'; done | sort | uniq -c
-
-# Let the window's last access-log lines land inside it
-sleep 10
-
-# Close the evidence window
-demo-window stop rate-limit
-
-# Run the evidence queries for the window; ends with a Grafana link
-demo-evidence rate-limit
-
-# Show the start of the Lua limiter that did it
+# The Lua limiter attached to vets-service's traffic at the waypoint
 kubectl -n lab-environment get trafficextension vets-service-ratelimit -o jsonpath='{.spec.lua.inlineCode}' | head -3
 ```
 
-## Expected result
-About `6 200 -` and `54 429 ratelimited` — each waypoint replica admits 3
-per second the burst spans and limits the rest (rehearsals 2026-09-29:
-6 / 54 in one second, 11 / 49 when it spilled into a second one). The evidence lists the 429s per waypoint
-replica (uneven — 17 and 37 in the rehearsal — because each replica keeps
-its own bucket).
+### 2. Send a burst
+```bash
+# Lab ingress (lab-ingress-istio NodePort on vps_oracle)
+U=http://10.0.0.95:30097
 
-## Evidence
-- **Envoy (waypoint access log):** 429s from the Lua limiter, per waypoint
-  replica.
-- **App (Spring metrics):** vets-service's own request count stays below the
-  60 sent — the limited requests never arrived; the traffic generator saw
-  no non-200 on its other paths. A note counts the generator's own
-  `/api/vet/vets` calls that fell inside the burst and were limited too.
+# 60 requests as fast as curl can send them; print the status and whether Envoy rate-limited it
+for i in $(seq 1 60); do curl -s -o /dev/null -w '%{http_code} %header{x-envoy-ratelimited}\n' $U/api/vet/vets; done | sort | uniq -c
+```
+About `9 200` and `51 429 true`. Each waypoint replica admits 3 per
+second, and the burst spans a second or two. `x-envoy-ratelimited: true`
+is set by the limiter, not by vets.
+
+### 3. Who said no
+Run the Loki query again. Both waypoint replicas now have a `429` row
+(25 and 26 in the rehearsal). Each keeps its own bucket, so the split is
+uneven.
+
+On **Lab Business**, the api-gateway `vets-service` row's **429 count**
+reaches the number of 429s curl printed (51 in the rehearsal). Click the
+row: the endpoint detail's **QPS by status code** shows the 429 spike
+next to the steady 200s.
+
+### 4. vets only saw what was admitted
+Explore, **Prometheus**, **Query type Instant**. vets-service's own count
+of `/vets` requests in the last minute:
+```promql
+sum(increase(http_server_requests_seconds_count{service="vets-service", uri="/vets"}[1m]))
+```
+Well below the 60 sent plus the generator's calls (~37 in the
+rehearsal). The limited requests were refused at the waypoint and never
+reached a pod.
 
 ## Talking points
 - **The limit is derived, not guessed.** 2a's load test put the knee at
@@ -77,5 +91,4 @@ its own bucket).
   what closes that door.
 
 ## Reset
-Nothing to undo — the limiter is resident. `demo-reset rate-limit` verifies
-the baseline, including that the limiter is still there.
+Nothing to undo: the limiter is resident.
