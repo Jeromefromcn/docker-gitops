@@ -37,9 +37,13 @@ spec:
                       - vets-service
                       - visits-service
       context:
+        # Trivy Operator names a report after the Pod's owner (the ReplicaSet),
+        # or after the Pod itself when it has none. Without the fallback a
+        # bare Pod failed the lookup ("Unknown key ownerReferences") and was
+        # refused for that, not for a CVE (found 2026-10-06, docs/demo/18).
         - name: vulnreports
           apiCall:
-            urlPath: "/apis/aquasecurity.github.io/v1alpha1/namespaces/{{request.object.metadata.namespace}}/vulnerabilityreports?labelSelector=trivy-operator.resource.name={{request.object.metadata.ownerReferences[0].name}}"
+            urlPath: "/apis/aquasecurity.github.io/v1alpha1/namespaces/{{request.object.metadata.namespace}}/vulnerabilityreports?labelSelector=trivy-operator.resource.name={{request.object.metadata.ownerReferences[0].name || request.object.metadata.name}}"
             jmesPath: "items[]"
       validate:
         message: >-
