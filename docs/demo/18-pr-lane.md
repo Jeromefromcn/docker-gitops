@@ -94,7 +94,7 @@ U=http://10.0.0.95:30097
 
 # A fresh JVM's first calls can exceed the lane's 3 s timeout: warm up
 # until 10 header requests in a row come from the lane
-n=0; until [ $n -ge 10 ]; do b=$(curl -s -m 5 -o /dev/null -w '%header{x-visits-build}' -H "x-pr-lane: $N" "$U/api/visit/pets/visits?petId=1"); [ -n "$b" ] && n=$((n+1)) || n=0; sleep 0.5; done; echo "lane warm"
+end=$((SECONDS + 180)); n=0; until [ $n -ge 10 ]; do [ $SECONDS -lt $end ] || { echo "LANE WARM-UP TIMED OUT - stop here"; break; }; b=$(curl -s -m 5 -o /dev/null -w '%header{x-visits-build}' -H "x-pr-lane: $N" "$U/api/visit/pets/visits?petId=1"); [ -n "$b" ] && n=$((n+1)) || n=0; sleep 0.5; done; echo "lane warm"
 
 # 10 requests with x-pr-lane; the lane build marks its responses with x-visits-build
 for i in $(seq 1 10); do curl -s -o /dev/null -w '%{http_code} [%header{x-visits-build}]\n' -H "x-pr-lane: $N" "$U/api/visit/pets/visits?petId=1"; done | sort | uniq -c

@@ -16,8 +16,8 @@ Scenario 02's `demo:` commit is on `main` and deployed.
    <https://grafana.lab.jerome.cloudns.asia/d/lab-mesh-overview/lab-mesh-overview?from=now-15m&to=now&refresh=10s>
 3. **A second terminal pane**, watching the Deployment:
    ```bash
-   # READY / UP-TO-DATE / AVAILABLE for customers-service; leave it running
-   kubectl -n lab-environment get deploy customers-service -w
+   # READY / UP-TO-DATE / AVAILABLE for customers-service, every 2 s; leave it running
+   watch -n 2 kubectl -n lab-environment get deploy customers-service
    ```
 
 ## Steps
@@ -84,5 +84,5 @@ git, the rollback is reviewable, audited and permanent.
   consult PDBs — only evictions do); selfHeal is what bounded the damage.
 
 ## Reset
-Nothing to reset once the revert is deployed. Stop the `-w` watch with
+Nothing to reset once the revert is deployed. Stop the `watch` with
 Ctrl-C.

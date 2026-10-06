@@ -25,8 +25,8 @@ generator keeps running throughout: it is the live traffic.
    - **customers-service RPS per pod (load balancing)** — five lines.
 3. **A second terminal pane**, watching the pods:
    ```bash
-   # Watch customers-service pods appear and go; leave it running
-   kubectl -n lab-environment get pods -l app=customers-service -w
+   # Refresh the customers-service pod list every 2 s; leave it running
+   watch -n 2 kubectl -n lab-environment get pods -l app=customers-service
    ```
 
 ## Steps
@@ -113,4 +113,4 @@ time. Leave it there: scenario 07 rolls it back.
   derived from the release peak.
 
 ## Reset
-Leave the commit: scenario 07 reverts it. Stop the `-w` watch with Ctrl-C.
+Leave the commit: scenario 07 reverts it. Stop the `watch` with Ctrl-C.

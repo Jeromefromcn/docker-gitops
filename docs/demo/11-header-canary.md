@@ -83,7 +83,7 @@ endpoints fails rather than falling back to stable.
 U=http://10.0.0.95:30097
 
 # Send marked requests until v2 has answered 10 in a row
-n=0; until [ $n -ge 10 ]; do v=$(curl -s -o /dev/null -w '%header{x-app-version}' -H 'x-canary: true' $U/api/customer/owners/1); [ -n "$v" ] && n=$((n+1)) || n=0; sleep 0.5; done; echo "route live"
+end=$((SECONDS + 120)); n=0; until [ $n -ge 10 ]; do [ $SECONDS -lt $end ] || { echo "ROUTE WAIT TIMED OUT - stop here"; break; }; v=$(curl -s -o /dev/null -w '%header{x-app-version}' -H 'x-canary: true' $U/api/customer/owners/1); [ -n "$v" ] && n=$((n+1)) || n=0; sleep 0.5; done; echo "route live"
 ```
 
 ### 3. Marked and unmarked requests

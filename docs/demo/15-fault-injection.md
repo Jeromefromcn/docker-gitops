@@ -96,7 +96,7 @@ Each of the two waypoint replicas picks up the new rules on its own.
 U=http://10.0.0.95:30097
 
 # Send abort requests until 10 in a row are aborted
-n=0; until [ $n -ge 10 ]; do c=$(curl -s -o /dev/null -w '%{http_code}' -H 'x-fault: abort' $U/api/customer/owners/1); [ "$c" != 200 ] && n=$((n+1)) || n=0; sleep 0.5; done; echo "route live"
+end=$((SECONDS + 120)); n=0; until [ $n -ge 10 ]; do [ $SECONDS -lt $end ] || { echo "ROUTE WAIT TIMED OUT - stop here"; break; }; c=$(curl -s -o /dev/null -w '%{http_code}' -H 'x-fault: abort' $U/api/customer/owners/1); [ "$c" != 200 ] && n=$((n+1)) || n=0; sleep 0.5; done; echo "route live"
 ```
 
 ### 3. Marked and unmarked requests
