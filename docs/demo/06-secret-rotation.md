@@ -128,6 +128,7 @@ The old pods' failed logins did not reach users: the old pods kept
 serving on the connections they already had. The
 cost of this rotation is restarting three services at once, the same
 `503 UC` to freshly started pods seen in 12, not the password switch.
+Since 2026-10-06 the GET routes retry on `reset`, which covers `503 UC`.
 
 ## Talking points
 - Order is forced by the platform, not chosen: the `db-init` PreSync hook

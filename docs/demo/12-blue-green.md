@@ -113,17 +113,23 @@ sum by (code) (count_over_time({service="traffic-generator"} | regexp `^\S+ (?P<
 Expect one row, `code="200"`: the generator called the lab every half
 second through both switches.
 
-This is not guaranteed to be zero. The first rehearsal (2026-09-28) had
-0 errors in 523 requests. The 2026-10-06 rehearsal had 2 errors, both
-within 15 s of the switch to green. To see them:
+| Rehearsal | Generator errors | Note |
+|---|---|---|
+| 2026-09-28 | 0 / 523 | |
+| 2026-10-06, first run | 2 / ~600 | `503 UC`, within 15 s of the switch to green |
+| 2026-10-06, after adding `reset` to `retryOn` | 0 / 900 | no connection was reset, so the new retry was not exercised |
+
+To look for any 5xx at customers-service during the switches:
 ```logql
 {service="istio-proxy"} | json | response_code=~"5.." | authority=~"customers-service.*"
 ```
 Both were `503` with `response_flags="UC"` on the canary (green) subset:
 the waypoint's connection to a green pod was closed under the request.
 One reached the generator as a 503, and the other as a 500 through the
-gateway's aggregation path. The GET route's `retryOn` does not include
-`reset`, so the waypoint does not retry this.
+gateway's aggregation path. The GET route's `retryOn` then lacked
+`reset`: its `503` matches a 503 the upstream returns, not the waypoint's
+own `503 UC`, so nothing retried them. `reset` has been in `retryOn` since;
+a reset GET is now retried on another pod and logged with `attempts=2`.
 
 ### 5. Tear down green
 ```bash
