@@ -13,7 +13,7 @@ metadata:
   labels:
     app: customers-service
 spec:
-  replicas: 1
+  replicas: 0
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -42,7 +42,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: customers-service
-          image: ghcr.io/jeromefromcn/petclinic-customers-service@sha256:51479efaae977a7069e05836180344281910c9531808646fc05fcb638a32c315 # fork 77962eada66c
+          image: ghcr.io/jeromefromcn/petclinic-customers-service@sha256:2ef0a31895e16dcf59b5f2eb9e8b675dee2c1bc5a25ff681cae9e4f5af617389 # fork c44d33230743
           env:
             - name: TZ
               value: "Asia/Hong_Kong"

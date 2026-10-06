@@ -54,11 +54,6 @@ spec:
         - destination:
             host: customers-service.lab-environment.svc.cluster.local
             subset: stable
-          weight: 90
-        - destination:
-            host: customers-service.lab-environment.svc.cluster.local
-            subset: canary
-          weight: 10
       timeout: 3s
       retries:
         attempts: 2
@@ -69,11 +64,6 @@ spec:
         - destination:
             host: customers-service.lab-environment.svc.cluster.local
             subset: stable
-          weight: 90
-        - destination:
-            host: customers-service.lab-environment.svc.cluster.local
-            subset: canary
-          weight: 10
       timeout: 5s
       retries:
         attempts: 0
