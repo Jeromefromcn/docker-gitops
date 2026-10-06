@@ -45,7 +45,10 @@ Rules every page keeps:
   `/dev/fd` path.
 
 `tests/test-demo-baseline.sh` in `k3s/apps/lab-environment/` checks these
-rules on every page (CI job `lab-demo-baseline`).
+rules on every page (CI job `lab-demo-baseline`). It also checks that every
+line a page tells the presenter to find in a manifest is still there, once,
+in the shape the page describes — so a manifest change that would make a
+page's edit instructions wrong fails CI, not the demo.
 
 ## The one helper
 `k3s/apps/lab-environment/demo/demo-baseline` checks the lab is at its

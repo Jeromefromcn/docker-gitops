@@ -143,4 +143,57 @@ if grep -nE 'demo-(window|evidence|reset)|demo/patches/' "$DOCS/"*.md; then
   echo "FAIL a runbook page uses a removed demo helper"; fails=$((fails+1))
 else echo "PASS no removed demo helper in the runbook pages"; fi
 
+# --- manifest anchors the pages' hand edits rely on --------------------------
+# A page tells the presenter to find a line and change it. If a manifest edit
+# removes or reshapes that line, the page is wrong, and nothing else would
+# notice before the demo.
+K8S=$HERE/../k8s
+anchor() { # anchor <name> <file> <fixed-string> [<count>]
+  local n; n=$(grep -cF -- "$3" "$2" || true)
+  if [ "$n" -eq "${4:-1}" ]; then echo "PASS anchor: $1"
+  else echo "FAIL anchor: $1 - '$3' appears $n times in $(basename "$2"), want ${4:-1}"; fails=$((fails+1)); fi
+}
+# The customers-service VirtualService alone, so lines in its neighbours do not count.
+CUST_VS=$WORK/customers-vs.yaml
+awk '/^kind: VirtualService/ { vs = 1 } /^---/ { vs = 0; inside = 0 }
+  vs && /^  name: customers-service$/ { inside = 1 } inside' "$K8S/resilience.yaml" > "$CUST_VS"
+GET_RETRY=$(grep -m1 -oP 'retryOn: \K\S+' "$CUST_VS")
+
+# 02, 06: the rollout-rev annotation bumped by hand.
+for d in customers-service vets-service visits-service; do
+  anchor "02/06 $d has a rollout-rev annotation" "$K8S/$d.yaml" 'lab.jerome/rollout-rev: "'
+done
+# 09-13: the canary slot at rest, on the v2-good build.
+anchor "09-13 canary slot is at replicas: 0" "$K8S/customers-service-canary.yaml" '  replicas: 0'
+anchor "09-13 canary image is v2-good c44d33230743" "$K8S/customers-service-canary.yaml" '# fork c44d33230743'
+# 09, 10, 12: both customers-service routes pin subset stable.
+anchor "09/10/12 customers-service routes pin stable twice" "$CUST_VS" 'subset: stable' 2
+# 11, 15: new rules go above the GET rule, the first under http:.
+if awk '/^  http:/ { getline a; getline b; exit !(a ~ /- match:/ && b ~ /- method:/) }' "$CUST_VS"
+then echo "PASS anchor: 11/15 the GET rule is first under http:"
+else echo "FAIL anchor: 11/15 the GET rule is not first under http:"; fails=$((fails+1)); fi
+# 13: the mirror goes before the GET rule's timeout.
+anchor "13 the GET rule has timeout: 3s" "$CUST_VS" '      timeout: 3s'
+# 10, 13: the v2-bad image line both pages give is the same, from the same repository.
+bad10=$(grep -m1 -oP 'image: \K\S+ # fork 77962eada66c' "$DOCS/10-canary-weight.md" || true)
+bad13=$(grep -m1 -oP 'image: \K\S+ # fork 77962eada66c' "$DOCS/13-mirror.md" || true)
+repo=$(grep -m1 -oP 'image: \K[^@ ]+' "$K8S/customers-service-canary.yaml")
+if [ -n "$bad10" ] && [ "$bad10" = "$bad13" ] && [ "${bad10%%@*}" = "$repo" ]
+then echo "PASS anchor: 10/13 give the same v2-bad image, in the canary's repository"
+else echo "FAIL anchor: 10/13 v2-bad image lines differ or leave $repo"; fails=$((fails+1)); fi
+# 15: the fault rules copy the GET rule's retry policy.
+n=$(grep -cF "retryOn: $GET_RETRY" "$DOCS/15-fault-injection.md" || true)
+if [ "$n" -eq 2 ]; then echo "PASS anchor: 15 copies the GET rule's retryOn ($GET_RETRY)"
+else echo "FAIL anchor: 15 has $n copies of the GET rule's retryOn '$GET_RETRY', want 2"; fails=$((fails+1)); fi
+# 17: every line the wiring is added next to.
+anchor "17 toxiproxy pod spec has enableServiceLinks: false" "$K8S/toxiproxy.yaml" 'enableServiceLinks: false'
+anchor "17 toxiproxy image line" "$K8S/toxiproxy.yaml" 'image: ghcr.io/shopify/toxiproxy:'
+anchor "17 toxiproxy cpu limit 25m" "$K8S/toxiproxy.yaml" 'cpu: 25m'
+anchor "17 toxiproxy Service has the api port" "$K8S/toxiproxy.yaml" 'name: api'
+anchor "17 visits env has SPRING_CLOUD_CONSUL_PORT" "$K8S/visits-service.yaml" 'name: SPRING_CLOUD_CONSUL_PORT'
+for p in postgres-clients redis-clients; do
+  anchor "17 authz has the $p policy" "$K8S/authz.yaml" "name: $p"
+done
+anchor "17 postgres-clients admits sa/db-init" "$K8S/authz.yaml" 'cluster.local/ns/lab-environment/sa/db-init'
+
 [ $fails -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

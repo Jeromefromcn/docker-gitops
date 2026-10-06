@@ -48,8 +48,9 @@ DestinationRule defines `stable` / `canary` subsets on `track`, and the
 VirtualService pins every route to `stable` — the baseline the routing demos
 (docs/demo/09-13) return to and `demo/demo-baseline` checks. A routing demo
 is a hand edit described on its page, committed and later reverted; a change
-to `resilience.yaml` or the canary manifest must keep those pages' edit
-instructions true. Adding the pin
+to a manifest a page edits must keep that page's instructions true, which
+`tests/test-demo-baseline.sh` (CI job `lab-demo-baseline`) checks by looking
+for every line the pages tell the presenter to find. Adding the pin
 took two pushes: the labels first, the pin only once all five stable pods
 carried `track: stable` — pinned to an empty subset, every
 customers-service request would fail. The waypoint does not access-log
