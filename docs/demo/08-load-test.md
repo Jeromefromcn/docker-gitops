@@ -10,11 +10,12 @@ is the same load that broke the lab in 2a.
 Scenarios 01–06 and 16 are done (this overloads the node; nothing runs
 after it). Give the JVMs a few minutes after 06's restarts: a cold JVM's
 latency would be mistaken for load. **Say before the run:** the production
-`Lab API Down` probe reads `/api/vet/vets`, the very path the limiter
-protects, so under this load the probe itself gets 429s and may page
-(Telegram). That is a real limiter protecting a real bottleneck, under
-real alerting. The load comes from vps_oracle: a generator on vps-oracle2
-would share the 2 cores it is measuring.
+`Lab API Down` probe (the host monitoring stack's Grafana) reads
+`/api/vet/vets`, the very path the limiter protects, so under this load
+the probe itself can be refused with a 429. The alert needs 5 minutes of
+failed probes; the limiter only refuses some of them, so it has not fired
+in any rehearsal. The load comes from vps_oracle: a generator on
+vps-oracle2 would share the 2 cores it is measuring.
 
 ## Before you start: open the views
 1. **Grafana — Lab Mesh Overview**, last 15 minutes, auto-refresh 10 s:
@@ -126,9 +127,10 @@ up to 3 s for a connection, while the node still had CPU to spare (peak
   `503 UO` would come from vets' DestinationRule (`http1MaxPendingRequests:
   5` — queue depth). In the rehearsal the limiter held the rate low enough
   that the queue never overflowed.
-- **The probe got limited too.** `Lab API Down` probes `/api/vet/vets`; in
-  the last minutes of the rehearsal its checks got 429s. The limiter does
-  not know a monitor from a user — which is the honest trade-off to say out
+- **The probe can be limited too.** `Lab API Down` probes `/api/vet/vets`;
+  in the last minutes of the 2026-09-29 rehearsal some of its checks got
+  429s (on 2026-10-06 every sampled check passed). The limiter does not
+  know a monitor from a user — which is the honest trade-off to say out
   loud.
 - Envoy is cheap: at ~68 req/s the waypoint peaked at ~80m and the
   ingress at ~36m, unthrottled (measured 2026-09-28, after CPU requests
