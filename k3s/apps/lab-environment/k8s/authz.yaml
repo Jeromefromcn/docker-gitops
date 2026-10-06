@@ -260,6 +260,7 @@ spec:
               - cluster.local/ns/lab-environment/sa/vets-service
               - cluster.local/ns/lab-environment/sa/visits-service
               - cluster.local/ns/lab-environment/sa/db-init
+              - cluster.local/ns/lab-environment/sa/toxiproxy
 ---
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
@@ -276,3 +277,4 @@ spec:
         - source:
             principals:
               - cluster.local/ns/lab-environment/sa/visits-service
+              - cluster.local/ns/lab-environment/sa/toxiproxy
