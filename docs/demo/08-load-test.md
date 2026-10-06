@@ -20,7 +20,7 @@ would share the 2 cores it is measuring.
 1. **Grafana — Lab Mesh Overview**, last 15 minutes, auto-refresh 10 s:
    <https://grafana.lab.jerome.cloudns.asia/d/lab-mesh-overview/lab-mesh-overview?from=now-15m&to=now&refresh=10s>
    - **Mesh requests by service and code (waypoint)**: the load, and the
-     `vets-service 429` line when the limiter starts refusing.
+     `429` lines when the limiter starts refusing.
    - **P99 latency (ms) by service**: what the admitted requests cost.
    - **CPU throttling ratio by container**.
 2. **Grafana — Explore**, data source **Prometheus**, last 15 minutes,
@@ -55,28 +55,42 @@ latency, so a knee shows as P99 departing while the rate keeps its target.
 Each minute the request rate steps up (5, 10, 20, 40, 60, 80 req/s). On
 the dashboards:
 - **Mesh requests by service and code**: all services rise together. From
-  around the 20 req/s step, a `vets-service 429` line appears and grows
-  with every step. That is the limiter from 16 shedding the excess.
-- **P99 latency**: stays in the low hundreds of ms. The rehearsal's
-  per-minute waypoint P99 for api-gateway was 38, 42, 44, 90 and 214 ms at
-  9, 17, 31, 51 and 71 req/s.
-- **Explore A**: node CPU stays well under 2 cores (peak 1.06 in the
-  rehearsal).
+  around the 20 req/s step, `429` lines appear and grow with every step:
+  `unknown 429` (the limiter answers before the request is handed to
+  vets, so the waypoint records no destination) and `api-gateway 429`
+  (the same refusals, passed back to the caller). That is the limiter
+  from 16 shedding the excess. `vets-service` stays at `200` only.
+- **P99 latency**: stays in the low hundreds of ms.
+- **Explore A**: node CPU stays well under 2 cores.
 - **Explore B**: the longest DB-connection wait stays at a few hundredths
-  of a second (0.06 s in the rehearsal).
+  of a second.
 - **Explore C**: the admitted requests' P99 stays low.
 
+Two rehearsals, per minute, waypoint RPS and P99 for api-gateway:
+
+| step | 2026-09-29 RPS / P99 (ms) | 2026-10-06 RPS / P99 (ms) |
+|---|---|---|
+| 1 | 9 / 38 | 8 / 46 |
+| 2 | 17 / 42 | 15 / 73 |
+| 3 | 31 / 44 | 30 / 47 |
+| 4 | 51 / 90 | 50 / 79 |
+| 5 | 71 / 214 | 70 / 158 |
+
+Peak node CPU 1.06 and 1.31 cores; longest DB-connection wait 0.06 s and
+0.05 s; admitted (`200`) P99 over the whole run 162 ms and 139 ms.
+
 ### 3. k6's own summary
-When k6 finishes it prints its summary. In the rehearsal (2026-09-29):
-10 647 requests, 12.9 % "failed", and every one of those was a 429 from
-the limiter. k6 P99 153 ms, max 565 ms.
+When k6 finishes it prints its summary. 2026-09-29: 10 647 requests,
+12.9 % "failed", k6 P99 153 ms, max 565 ms. 2026-10-06: 10 649 requests,
+12.89 % "failed", k6 P99 123 ms, max 327 ms. Every "failure" was a 429
+from the limiter.
 
 Confirm the failures were all fast refusals, at the waypoint. Explore,
 Loki, last 15 minutes, **Query type Instant**:
 ```logql
 sum by (response_code, response_flags) (count_over_time({service="istio-proxy"} | json | authority=~"vets-service.*" | response_code!="200" [10m]))
 ```
-`429` with no flag (1 430 in the rehearsal). No `503 UO`: the pool's
+`429` with no flag (1 430 and 1 411 in the rehearsals). No `503 UO`: the pool's
 queue limit was never needed, because the rate limiter kept the load
 below it.
 
