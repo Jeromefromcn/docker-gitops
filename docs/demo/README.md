@@ -5,31 +5,56 @@ directory by [`demo-site/`](https://github.com/Jeromefromcn/docker-gitops/tree/m
 
 Live demonstrations of SDLC capabilities on `lab-environment` (PetClinic
 microservices on vps-oracle2). Each scenario is real platform behaviour,
-backed by evidence from the infrastructure layer — Envoy, ztunnel, ArgoCD,
-sealed-secrets, cAdvisor, Kubernetes — not by the app's own logs alone.
+shown as it happens in the platform's own tools — ArgoCD, Grafana, Loki,
+Jaeger, ztunnel's log, Kubernetes — not in the app's own logs alone, and
+not in a summary a script collected.
 
 This directory describes **current state**: when the lab changes, the pages
 change with it.
 
-## How to run a scenario
+## How a page works
+Every scenario page has the same shape:
 
-Every page has the same sections: purpose → preconditions → commands →
-expected result → evidence → talking points → reset. Paste the commands in
-order from the repo root on vps_oracle. Main actions (`kubectl`, `git`,
-`curl`) are written out in full; the bookkeeping is one helper call each:
+1. **Purpose** and **Preconditions**.
+2. **Before you start: open the views.** The exact ArgoCD app, Grafana
+   dashboard (with a link that sets its time range and refresh), Loki or
+   Prometheus query in Explore, or Jaeger search to have open *before*
+   anything happens, and what it shows at rest.
+3. **Steps.** Each step is a native action — `git` (edit, commit, push),
+   ArgoCD's **Refresh** button, `kubectl`, `curl`, `gh`, a Consul KV
+   toggle — followed by where to look and what appears there.
+4. **Talking points** and **Reset**.
 
-| Helper | Does |
-|---|---|
-| `demo-window start/stop <s>` | Records the scenario's own UTC window — every query is bounded by it. A scenario that counts its own requests (01 so far) first pauses the background traffic generator and waits ~80 s, so the dashboards and the evidence hold only its traffic; `demo-reset` resumes it |
-| `demo-evidence <s>` | Runs the scenario's evidence queries; fails unless ≥ 2 pieces pass, ≥ 1 from the infrastructure layer. Ends with a Grafana link on `Lab Business` for the window (absolute time, with the smallest Window that reaches back to the start), and the window in HK time |
-| `demo-reset <s>` | Undoes the scenario and verifies the lab baseline in the same command |
+Rules every page keeps:
 
-Run `demo-evidence` straight after `demo-window stop`: Jaeger keeps only
-the last 5000 traces (~1 h at the generator's rate).
+- **No helper collects the evidence.** The audience watches the change land
+  in the tool that records it. Numbers quoted on a page come from a real
+  rehearsal and are dated.
+- **Manifest edits are made by hand.** A page names the file, the field and
+  the new value (or gives the YAML block to add), then `git diff` shows the
+  change before it is committed. There are no prepared patches.
+- **Git changes go to `main` for real**, with a `demo:` subject prefix —
+  there is no demo branch. ArgoCD's `selfHeal` would revert a bare
+  `kubectl` change anyway, which scenario 07 demonstrates. Click
+  **Refresh** in ArgoCD after a push; without it ArgoCD finds the commit on
+  its next poll, up to ~3 minutes later.
+- **Nothing in a pasted block can hang the demo:** every wait loop has a
+  `SECONDS` deadline, and pods are watched with `watch -n 2 kubectl …`
+  in a second pane, never `kubectl get -w`.
+- **No secret on a command line.** Passwords travel through stdin or a
+  `/dev/fd` path.
 
-Git changes go to `main` for real, with a `demo:` subject prefix — there is
-no demo branch. ArgoCD's `selfHeal` would revert a bare `kubectl` change
-anyway, which scenario 07 demonstrates.
+`tests/test-demo-baseline.sh` in `k3s/apps/lab-environment/` checks these
+rules on every page (CI job `lab-demo-baseline`).
+
+## The one helper
+`k3s/apps/lab-environment/demo/demo-baseline` checks the lab is at its
+known-good baseline: no chaos toggle on, replicas as git declares, ArgoCD
+synced, generator traffic all 200, no canary, PR lane or toxiproxy wiring
+left behind, the rate limiter present. It waits up to 3 minutes for that to
+hold. Preflight runs it; run it again between scenarios whenever a page's
+reset is in doubt. It is the only script: a scenario that ends off the
+baseline would break the next one in front of the audience.
 
 ## Order
 
@@ -55,5 +80,4 @@ anyway, which scenario 07 demonstrates.
 | 16 | [Rate limiting at the waypoint](16-rate-limit.md) | Rate limiting last; 08 relies on it |
 | 08 | [Load test: capacity and overload protection](08-load-test.md) | Overloads the node — always last |
 
-`evidence/` holds the last rehearsal's `demo-evidence` output for every
-scenario — the fallback if the live cluster misbehaves mid-interview.
+Every page was rehearsed live in this form on 2026-10-06.

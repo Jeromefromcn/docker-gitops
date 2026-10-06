@@ -37,7 +37,7 @@ spec:
     # and the sync stalled on "waiting for completion of hook" for 10 minutes.
     # PR lanes (docs/demo/18) have no reservation of their own: up to 2 lane
     # pods (2 x 384Mi / 20m) use the 5-replica green's headroom, so a lane and
-    # page 12's green never run at once - demo-reset refuses a leftover lane.
+    # page 12's green never run at once - demo-baseline refuses a leftover lane.
     #
     # CPU, derived the same way (2026-09-28). Requests sit at measured
     # steady-state usage (JVMs 20m, Envoys 50m, infra 10-20m), so:

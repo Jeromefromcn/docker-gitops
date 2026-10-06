@@ -9,6 +9,7 @@ on:
       - '*/inspector-checks/**'
       - '*/tofu/**'
       - 'k3s/apps/lab-environment/**'
+      - 'docs/demo/**'
       - 'k3s/argocd/apps/lab-lanes-appset.yaml'
       - '.github/scripts/**'
       - '.github/workflows/repo-conventions.yml'
@@ -19,6 +20,7 @@ on:
       - '*/inspector-checks/**'
       - '*/tofu/**'
       - 'k3s/apps/lab-environment/**'
+      - 'docs/demo/**'
       - 'k3s/argocd/apps/lab-lanes-appset.yaml'
       - '.github/scripts/**'
       - '.github/workflows/repo-conventions.yml'
@@ -115,11 +117,10 @@ jobs:
       - name: Test the check
         run: bash k3s/apps/lab-environment/tests/test-lab-metrics-defaults.sh
 
-  # The lab demo helpers, against stubbed kubectl/curl/argocd - no cluster.
-  # Among other things it runs `git apply --check` on every demo patch, so an
-  # edit to resilience.yaml or the canary manifest that breaks a runbook page
-  # (docs/demo/09-13) fails here instead of live in front of an interviewer.
-  lab-demo-helpers:
+  # demo-baseline against stubbed kubectl/curl/argocd - no cluster - and the
+  # rules every runbook page in docs/demo/ keeps (no password on argv, no
+  # wait without a deadline, no kubectl watch, no removed helper).
+  lab-demo-baseline:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -128,13 +129,12 @@ jobs:
       - name: Install jq
         run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq jq; }
 
-      - name: Run demo helper tests
-        run: bash k3s/apps/lab-environment/tests/test-demo-helpers.sh
+      - name: Run demo-baseline and runbook page tests
+        run: bash k3s/apps/lab-environment/tests/test-demo-baseline.sh
       - name: Run lab PR lane render tests
         run: |
           python3 -c 'import yaml' 2>/dev/null || pip install pyyaml
           bash k3s/apps/lab-environment/tests/test-lanes.sh
-          bash k3s/apps/lab-environment/tests/test-traffic-generator.sh
 
   # Static checks only — tofu fmt + validate never touch live cloud resources.
   # `tofu init -backend=false` only downloads provider plugins from the

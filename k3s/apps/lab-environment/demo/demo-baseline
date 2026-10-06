@@ -1,0 +1,8 @@
+#!/bin/bash
+# demo-baseline — checks the lab is at its known-good baseline: no chaos
+# toggle on, replicas as git declares, ArgoCD synced, generator traffic all
+# 200, no canary, lane or toxiproxy wiring left, rate limiter present.
+# Waits up to DEMO_BASELINE_TIMEOUT seconds (default 180) for it to hold.
+. "$(dirname "$(readlink -f "$0")")/lib.sh"
+[ $# -eq 0 ] || die "usage: demo-baseline"
+wait_baseline

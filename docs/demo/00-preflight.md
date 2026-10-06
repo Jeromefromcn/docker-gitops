@@ -11,11 +11,8 @@ On vps_oracle, repo root (`~/jerome/docker-gitops`), kubectl context `default`.
 # Bring the checkout up to date with origin/main
 git pull --ff-only origin main
 
-# Put the demo helpers (demo-window, demo-evidence, demo-reset) on the PATH
-export PATH=$PWD/k3s/apps/lab-environment/demo:$PATH
-
 # Verify the lab baseline; expect "baseline OK"
-demo-reset preflight
+k3s/apps/lab-environment/demo/demo-baseline
 
 # List lab pods that are not Running or Completed; expect only the header line
 kubectl -n lab-environment get pods | grep -v -E 'Running|Completed'
@@ -28,17 +25,23 @@ argocd app list --core | grep -E 'lab-environment|sealed-secrets|kube-state-metr
 `baseline OK`; only the header line from the pod filter; the three apps
 `Synced  Healthy`.
 
-## Evidence
-None — this is the baseline every scenario is measured against. Open
-Grafana (Lab Mesh Overview), Jaeger and the Grafana Alerting page in
-browser tabs now.
+## Open the views
+Every scenario is shown in these tools, so log in to each now:
+- ArgoCD: <https://argocd.jerome.cloudns.asia>
+- Grafana: <https://grafana.lab.jerome.cloudns.asia> (Lab Mesh Overview,
+  Lab Business, Explore)
+- Jaeger: <https://jaeger.lab.jerome.cloudns.asia>
+
+Each page lists the exact views it needs under "Before you start".
 
 ## Talking points
 - The lab is production-shaped on purpose: 5 customers / 3 gateway
   replicas, Istio ambient with a waypoint, STRICT mTLS, least-privilege
   authorization, resident timeouts/retries/outlier detection.
 - Baseline is checked, not assumed: chaos toggles, replica counts vs git,
-  ArgoCD sync, and 30 s of generator traffic.
+  ArgoCD sync, the routing pin, leftover lanes or toxiproxy wiring, the
+  rate limiter, and 30 s of generator traffic.
 
 ## Reset
-Nothing to reset.
+Nothing to reset. Run `demo-baseline` again between scenarios whenever a
+page's reset is in doubt.

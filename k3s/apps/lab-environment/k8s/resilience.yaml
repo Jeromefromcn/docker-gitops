@@ -45,7 +45,7 @@ spec:
   hosts:
     - customers-service.lab-environment.svc.cluster.local
   # Pinned to the stable subset: this pin is the routing baseline every
-  # routing demo (docs/demo/09-13) returns to, and demo-reset checks it.
+  # routing demo (docs/demo/09-13) returns to, and demo-baseline checks it.
   http:
     - match:
         - method:

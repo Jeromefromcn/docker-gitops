@@ -46,11 +46,10 @@ carry `app: customers-service` (so the Service selects them) and
 `track: canary`; stable pods carry `track: stable`. The customers-service
 DestinationRule defines `stable` / `canary` subsets on `track`, and the
 VirtualService pins every route to `stable` — the baseline the routing demos
-(docs/demo/09-13) return to and `demo-reset` checks. A routing demo is one
-patch from `demo/patches/`, committed and later reverted; editing
-`resilience.yaml` or the canary manifest can break a patch, which
-`tests/test-demo-helpers.sh` (CI job `lab-demo-helpers`) catches with
-`git apply --check`. Adding the pin
+(docs/demo/09-13) return to and `demo/demo-baseline` checks. A routing demo
+is a hand edit described on its page, committed and later reverted; a change
+to `resilience.yaml` or the canary manifest must keep those pages' edit
+instructions true. Adding the pin
 took two pushes: the labels first, the pin only once all five stable pods
 carried `track: stable` — pinned to an empty subset, every
 customers-service request would fail. The waypoint does not access-log
@@ -66,7 +65,7 @@ was counted twice).
 The lab Prometheus has no volume, so **its history ends at its last restart**
 — every `config-rev` bump or resources change to `prometheus.yaml` wipes it
 (2026-09-28: the per-pod numbers from the first 08 run were lost that way).
-Capture any measurement you need (`demo-evidence` does) before touching it.
+Capture any measurement you need before touching it.
 
 A PodDisruptionBudget exists only for the two multi-replica services
 (`customers-service` `minAvailable: 3`, `api-gateway` `minAvailable: 2`) —
@@ -215,7 +214,7 @@ data, and `lab.jerome/lane-pod: "true"` for the `lane-direct` L4 policy.
 At most 2 lane pods, never alongside page 12's green (see the quota);
 Waypoint policy on the baseline host still applies to lane traffic: vets'
 Lua rate limit counts lane requests in the same bucket (measured
-2026-09-29). `demo-reset` refuses a leftover lane pod or Deployment. Runbook: docs/demo/18.
+2026-09-29). `demo/demo-baseline` refuses a leftover lane pod or Deployment. Runbook: docs/demo/18.
 To push to a labelled PR, remove its `lane:` label first and relabel once
 CI's `build-scan-sign` has passed: the generator follows the new head SHA
 within 30 s, long before its image is signed, and the lane pod would be
@@ -481,13 +480,9 @@ infrastructure output rather than the apps' own logs.
   check: after any change, its log should be all `200`. Every external request
   fans out into several internal calls (gateway aggregation, repository calls,
   Redis), and the Consul poll adds a constant background, so the dashboards'
-  call counts are far larger than the request count.
-  A scenario that counts its own requests pauses it through Consul KV
-  (`lab/traffic-generator/pause-until`, a unix deadline), not through git or
-  kubectl, because selfHeal reverts any edit to a managed resource within
-  seconds. The loop fails open: a missing key, a past deadline, garbage or an
-  unreachable Consul all keep the traffic running, and the deadline expires on
-  its own. `tests/test-traffic-generator.sh` covers this.
+  call counts are far larger than the request count. It never pauses: a
+  demo that counts its own requests calls an endpoint the generator never
+  calls (01 uses `/petTypes`) or a header it never sends.
 
 ## Rollback
 
