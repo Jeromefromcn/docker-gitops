@@ -1,6 +1,0 @@
-== toxiproxy  window 2026-09-29T04:23:47Z → 2026-09-29T04:24:06Z (19s)
-      6 inbound-vip|8081|http/stable|customers-service.lab-environment.svc.cluster.local;
-      8 inbound-vip|8082|http|visits-service.lab-environment.svc.cluster.local;
-  [envoy         ] PASS  upstream timeouts (UT, 1 s per-try) against visits-service: 8 (want > 0)
-  [app           ] PASS  visits-service's slowest request in the window: 3.607427888s (want > 1 - it kept waiting after the mesh gave up)
-== OK: 2 passed (1 infrastructure-layer)

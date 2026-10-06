@@ -1,5 +1,0 @@
-== fault-injection  window 2026-09-29T03:54:39Z → 2026-09-29T03:55:10Z (31s)
-  [envoy         ] PASS  waypoint delayed 10 (want 10) and aborted 10 (want 10) requests - exactly the marked ones
-  [envoy         ] PASS  5xx answered by customers-service pods in the window: 0 (want 0 - the 10 aborts were local replies)
-  [app           ] PASS  generator: 0 non-200 of 59 (want 0 of > 0)
-== OK: 3 passed (2 infrastructure-layer)

@@ -1,6 +1,0 @@
-== pr-lane  window 2026-09-29T09:37:10Z → 2026-09-29T09:37:21Z (11s)
-  [envoy         ] PASS  waypoint sent 15 requests to visits-service-pr-1 (want exactly 15: every header request, nothing else) and 15 to the baseline (want >= 10)
-  [kyverno       ] PASS  lane pod visits-service-pr-1-5dbbc78447-5tfb5 signature: {"ghcr.io/jeromefromcn/petclinic-visits-service:91b70073d0e3bb74369fc5351fc48f78e1901d3c":"pass"} (want ghcr.io/jeromefromcn/petclinic-visits-service:<sha> pass)
-  [kyverno       ] PASS  a local ops-lab/* image is refused: lab-business-images-from-ghcr
-  [app           ] PASS  a trace through the lane's waypoint route spans customers -> visits: 14 spans: api-gateway, customers-service, lab-ingress-istio.lab-environment, visits-service, waypoint.lab-environment
-== OK: 4 passed (3 infrastructure-layer)

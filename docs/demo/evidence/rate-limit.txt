@@ -1,7 +1,0 @@
-== rate-limit  window 2026-09-29T04:27:19Z → 2026-09-29T04:27:30Z (11s)
-      waypoint-5585ddd4d5-c6h9j 17
-      waypoint-5585ddd4d5-mswxw 33
-  [envoy         ] PASS  429 from the waypoint's Lua limiter: 50 of the 60 sent (want > 0), per replica above
-  [app           ] PASS  vets-service counted 26 requests itself (want < 60 - the limited ones never arrived); generator 0 non-200 of 20 on other paths (want 0)
-  [note          ]       generator's own /api/vet/vets calls limited in the burst: 1 (the bucket does not know who is calling)
-== OK: 2 passed (1 infrastructure-layer)

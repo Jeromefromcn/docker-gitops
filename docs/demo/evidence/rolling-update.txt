@@ -1,6 +1,0 @@
-== rolling-update  window 2026-09-27T14:55:14Z → 2026-09-27T14:58:04Z (170s)
-  [argocd        ] PASS  ArgoCD deployed the demo commit c1bbca0 inside the window
-  [kubernetes    ] PASS  customers-service pods replaced in the window and Ready: 5 (want 5)
-  [envoy         ] PASS  non-2xx at ingress + waypoint during the rollout: 0 of 958 logged (want 0 of > 0)
-  [app           ] PASS  generator requests during the rollout: 293, non-200: 0 (want 0)
-== OK: 4 passed (3 infrastructure-layer)

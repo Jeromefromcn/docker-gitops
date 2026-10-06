@@ -1,4 +1,0 @@
-== canary-instance-ratio  window 2026-09-28T06:50:50Z → 2026-09-28T06:51:30Z (40s)
-  [envoy         ] PASS  waypoint sent 26 of 172 customers-service requests to the canary pod: 15% (want 8-30; 1 pod of 6)
-  [app           ] PASS  canary pod's own count: 30 of 202 requests, 14% (want 8-30)
-== OK: 2 passed (1 infrastructure-layer)

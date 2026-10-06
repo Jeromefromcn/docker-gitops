@@ -1,5 +1,0 @@
-== canary-weight  window 2026-09-28T06:54:02Z → 2026-09-28T06:55:08Z (66s)
-  [envoy         ] PASS  canary took 10% of customers-service requests (want 3-20); 5xx: canary 28, stable 0 (want > 0 and 0)
-  [argocd        ] PASS  ArgoCD deployed the rollback 2c13177
-  [app           ] PASS  Spring 500s by the pods' own count: canary 30, stable 0 (want > 0 and 0)
-== OK: 3 passed (2 infrastructure-layer)

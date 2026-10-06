@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Turn docs/demo/ into a site build directory without touching the source.
 
-Writes <out>/docs/ -- a copy of every page, each scenario page with its
-rehearsal evidence appended as a collapsed block -- and <out>/mkdocs.yml,
-the hand-written base plus a nav in README's demo order. Standard library
-only. Nothing here is MkDocs-specific except the `???` admonition syntax and
-the nav format, so moving to another generator (Zensical) changes only
-those two.
+Writes <out>/docs/ -- a copy of every page -- and <out>/mkdocs.yml, the
+hand-written base plus a nav in README's demo order. Standard library only.
+Nothing here is MkDocs-specific except the nav format, so moving to another
+generator (Zensical) changes only that.
 """
 import argparse
 import json
@@ -20,9 +18,6 @@ HERE = Path(__file__).resolve().parent
 # | 07 | [GitOps self-heal and rollback](07-gitops-selfheal-rollback.md) | why |
 ORDER_ROW = re.compile(r"^\|\s*(\d{2})\s*\|\s*\[([^\]]+)\]\(((\d{2})-[a-z0-9-]+\.md)\)\s*\|")
 PAGE_NAME = re.compile(r"^(\d{2})-([a-z0-9-]+)\.md$")
-# == bad-pod  window 2026-09-29T03:52:24Z → 2026-09-29T03:53:03Z (39s)
-WINDOW = re.compile(r"\bwindow\s+(.+?)\s*$")
-EXEMPT = {"00"}  # preflight runs no scenario, so it has no evidence
 
 
 class PrepareError(Exception):
@@ -47,22 +42,6 @@ def parse_order(readme: str) -> list[tuple[str, str, str]]:
     return rows
 
 
-def evidence_block(evidence: str, name: str) -> str:
-    lines = evidence.replace("\r\n", "\n").rstrip("\n").split("\n")
-    if lines == [""]:
-        raise PrepareError(f"evidence/{name} is empty")
-    m = WINDOW.search(lines[0])
-    if not m:
-        raise PrepareError(f"evidence/{name}: first line has no 'window ...': {lines[0]!r}")
-    title = f"Rehearsal evidence — window {m.group(1)}".replace('"', "'")
-    # A fence longer than any backtick run inside, so the evidence cannot close it.
-    longest = max((len(r) for r in re.findall(r"`+", evidence)), default=0)
-    fence = "`" * max(3, longest + 1)
-    body = [f"{fence}text", *lines, fence]
-    indented = "\n".join(f"    {line}" if line else "" for line in body)
-    return f'\n??? note "{title}"\n\n{indented}\n'
-
-
 def prepare(src: Path, out: Path, base: Path) -> list[str]:
     order = parse_order((src / "README.md").read_text())
     base_text = base.read_text()
@@ -73,52 +52,27 @@ def prepare(src: Path, out: Path, base: Path) -> list[str]:
 
     # Every markdown file is checked, not only NN-*.md: the copy below
     # publishes all of them, so a stray or misnamed page would otherwise go
-    # live with no nav entry and no evidence check.
-    pages = {}
+    # live with no nav entry.
+    pages = set()
     for path in sorted(src.glob("*.md")):
         if path.name == "README.md":
             continue
-        m = PAGE_NAME.match(path.name)
-        if not m:
+        if not PAGE_NAME.match(path.name):
             errors.append(f"{path.name}: page names must be NN-lowercase-slug.md")
             continue
-        pages[path.name] = (m.group(1), m.group(2))
+        pages.add(path.name)
 
     listed = [f for _, _, f in order]
     errors += [f"README Order table links {f}, which does not exist" for f in listed if f not in pages]
-    errors += [f"{f} is not in README's Order table" for f in pages if f not in listed]
+    errors += [f"{f} is not in README's Order table" for f in sorted(pages) if f not in listed]
 
-    slugs = {}
-    for name, (_, slug) in pages.items():
-        if slug in slugs:
-            errors.append(f"{slugs[slug]} and {name} share the slug {slug!r}: evidence would be ambiguous")
-        slugs[slug] = name
-    evidence_dir = src / "evidence"
-    evidence = {p.stem: p for p in evidence_dir.glob("*.txt")} if evidence_dir.is_dir() else {}
-    errors += [f"evidence/{s}.txt has no page NN-{s}.md" for s in sorted(evidence) if s not in slugs]
-    errors += [
-        f"{name} has no evidence/{slug}.txt"
-        for name, (num, slug) in pages.items()
-        if num not in EXEMPT and slug not in evidence
-    ]
-
-    blocks = {}
-    for name, (num, slug) in pages.items():
-        if slug in evidence and num not in EXEMPT:
-            try:
-                blocks[name] = evidence_block(evidence[slug].read_text(), f"{slug}.txt")
-            except PrepareError as e:
-                errors.append(str(e))
     if errors:
         raise PrepareError("\n".join(errors))
 
     docs = out / "docs"
     if docs.exists():
         shutil.rmtree(docs)
-    shutil.copytree(src, docs, ignore=shutil.ignore_patterns("evidence"))
-    for name, block in blocks.items():
-        page = docs / name
-        page.write_text(page.read_text().rstrip("\n") + "\n" + block)
+    shutil.copytree(src, docs)
 
     nav = "".join(
         f"  - {json.dumps(f'{num} — {title}', ensure_ascii=False)}: {filename}\n"

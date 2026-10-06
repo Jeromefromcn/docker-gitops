@@ -1,8 +1,0 @@
-== zero-trust  window 2026-09-27T14:37:56Z → 2026-09-27T14:38:00Z (4s)
-  [envoy         ] PASS  403s logged at ingress/waypoint: 3 (want >= 2: wrong caller, actuator)
-  [envoy         ] PASS  Envoy RBAC enforce denials: 5.333333333333333 (want > 0)
-      10.42.0.128:46922 -> customers-service.lab-environment.svc.cluster.local
-      traffic-generator-7c6766f56b-j4ltb -> customers-service.lab-environment.svc.cluster.local
-      traffic-generator-7c6766f56b-j4ltb -> postgres.lab-environment.svc.cluster.local
-  [ztunnel       ] PASS  ztunnel L4 policy rejections: 3 (want >= 3: plaintext from outside, pod-IP bypass, postgres)
-== OK: 3 passed (3 infrastructure-layer)

@@ -1,4 +1,0 @@
-== mirror  window 2026-09-28T07:10:30Z → 2026-09-28T07:11:02Z (32s)
-  [envoy         ] PASS  waypoint canary cluster answered 102 mirrored requests with 5xx (want > 0); users were served by stable 103, canary 0 (want > 0 and 0)
-  [app           ] PASS  canary pod's own 500s: 93 (want > 0); generator: 0 non-200 of 60 (want 0 of > 0)
-== OK: 2 passed (1 infrastructure-layer)

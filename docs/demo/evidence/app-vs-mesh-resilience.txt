@@ -1,8 +1,0 @@
-== app-vs-mesh-resilience  window 2026-09-27T14:38:21Z → 2026-09-27T14:38:41Z (20s)
-      3 inbound-vip|8081|http|customers-service.lab-environment.svc.cluster.local;
-      14 inbound-vip|8082|http|visits-service.lab-environment.svc.cluster.local;
-  [envoy         ] PASS  UT logged against both customers-service and visits-service (the reporting hop is not only the faulty one)
-  [app           ] PASS  api-gateway circuit-breaker non-successful calls: 16 (want > 0)
-  [app           ] PASS  slow api-gateway trace in Jaeger: 5fc2ed2c5ef2297ad61b3c245cb546fd
-  [note          ]       13 spans: api-gateway, customers-service, lab-ingress-istio.lab-environment, visits-service, waypoint.lab-environment
-== OK: 3 passed (1 infrastructure-layer)

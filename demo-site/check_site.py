@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check a built runbook site: evidence blocks, noindex, prev/next order.
+"""Check a built runbook site: every page present, noindex, prev/next order.
 
 Checks the generated HTML rather than prepare.py's output, so it also
 catches a generator or theme upgrade that silently drops one of them.
@@ -12,10 +12,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from prepare import EXEMPT, parse_order  # noqa: E402
+from prepare import parse_order  # noqa: E402
 
 NOINDEX = '<meta name="robots" content="noindex, nofollow">'
-EVIDENCE = re.compile(r'<details class="note">\s*<summary>Rehearsal evidence')
 NEXT = re.compile(r'<a href="([^"]+)" class="md-footer__link md-footer__link--next"')
 
 
@@ -32,17 +31,10 @@ def check(site: Path, src: Path) -> list[str]:
         if NOINDEX not in html.read_text():
             errors.append(f"{html.relative_to(site).as_posix()}: no noindex meta")
 
-    for num, _, filename in order:
+    for _, _, filename in order:
         rel = f"{filename[:-3]}/index.html"
-        path = site / rel
-        if not path.is_file():
+        if not (site / rel).is_file():
             errors.append(f"{rel}: missing")
-            continue
-        has = bool(EVIDENCE.search(path.read_text()))
-        if num in EXEMPT and has:
-            errors.append(f"{rel}: has an evidence block but needs none")
-        elif num not in EXEMPT and not has:
-            errors.append(f"{rel}: no rehearsal evidence block")
 
     expected = ["index.html"] + [f"{f[:-3]}/index.html" for _, _, f in order]
     chain, current = [], "index.html"

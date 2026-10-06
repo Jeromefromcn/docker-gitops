@@ -17,16 +17,11 @@ carry `noindex`.
 
 - **Nav in demo order** — generated from README's *Order* table, not from file
   numbers (07 runs right after 03).
-- **Rehearsal evidence** — each scenario page gets `evidence/<slug>.txt`
-  appended as a collapsed block titled with its window. Open it only when the
-  live run fails.
 
 ## The build refuses when
 
 - an Order-table row links a page that does not exist, or its number disagrees with the file;
-- a page `NN-*.md` is missing from the Order table;
-- a scenario page (any but `00`) has no `evidence/<slug>.txt`, or an evidence file has no page;
-- an evidence file is empty or its first line has no `window …`;
+- a page `NN-*.md` is missing from the Order table, or a markdown file is not named `NN-slug.md`;
 - a relative link is broken (`mkdocs build --strict`).
 
 ## Build locally
