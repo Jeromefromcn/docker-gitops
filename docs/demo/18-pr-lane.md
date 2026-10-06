@@ -1,87 +1,132 @@
 # 18 — PR lane: a pull request running next to production
 
 ## Purpose
-Open a pull request on the fork and show it running in the lab next to the
-baseline, reached only by requests that ask for it — across every hop —
-built, scanned and signed by CI, admitted only because its signature
+Open a pull request on the fork and watch it run in the lab next to the
+baseline, reached only by requests that ask for it, across every hop. It
+is built, scanned and signed by CI, admitted only because its signature
 checks out, and gone when the PR closes.
 
 ## Preconditions
-Preflight passed; 12 reset (the green is at 0 — a lane uses the same
-memory headroom, so the two never run together); no Rollout of
-visits-service in progress. The fork's `demo/pr-lane` branch is based on
-the current fork `main` (`git -C ../spring-petclinic-microservices log --oneline main..demo/pr-lane` shows exactly one commit; rebase it if `main` moved). The fork has the `lane:<service>` labels (created 2026-09-29; `gh label list -R Jeromefromcn/spring-petclinic-microservices | grep lane:`).
+Preflight passed; 12 reset (the green is at 0: a lane uses the same memory
+headroom, so the two never run together); no Rollout of visits-service in
+progress. The fork has the `lane:<service>` labels
+(`gh label list -R Jeromefromcn/spring-petclinic-microservices | grep lane:`).
 
-## Commands
+The fork's `demo/pr-lane` branch must be one commit on top of the fork's
+current `main`:
+```bash
+# In the fork checkout: expect exactly one commit
+git -C ../spring-petclinic-microservices fetch origin
+git -C ../spring-petclinic-microservices log --oneline origin/main..origin/demo/pr-lane
+```
+If `main` has moved past the branch's base, rebase `demo/pr-lane` onto it
+and force-push it before the demo (last done 2026-10-06).
+
+## Before you start: open the views
+1. **ArgoCD — the application list**, search `lab-`:
+   <https://argocd.jerome.cloudns.asia/applications?search=lab->
+   The `lab-lanes` ApplicationSet creates one Application per labelled PR
+   and service. None exists yet.
+2. **Grafana — Explore**, data source **Loki**, last 5 minutes, **Query
+   type Instant**. visits-service requests at the waypoint, by where it
+   sent them:
+   ```logql
+   sum by (upstream_cluster) (count_over_time({service="istio-proxy"} | json | authority=~"visits-service.*" [2m]))
+   ```
+   One row: `inbound-vip|8082|http|visits-service…`, the baseline.
+3. **Jaeger**: <https://jaeger.lab.jerome.cloudns.asia>, service
+   `customers-service`, operation `http get /owners/{ownerId}/visits`.
+
+## Steps
+
+### 1. Open the pull request
 ```bash
 # The fork the PR is opened on
 F=Jeromefromcn/spring-petclinic-microservices
 
-# Open the PR from demo/pr-lane and export its number (demo-evidence reads LANE_PR)
-LANE_PR=$(gh pr create -R $F --head demo/pr-lane --base main --title "demo: PR lane" --body "Lab PR lane demo (docker-gitops docs/demo/18). Closed, never merged." | grep -oP '/pull/\K[0-9]+'); export LANE_PR; echo "PR $LANE_PR"
+# Open the PR from demo/pr-lane; note its number
+gh pr create -R $F --head demo/pr-lane --base main --title "demo: PR lane" --body "Lab PR lane demo (docker-gitops docs/demo/18). Closed, never merged."
 
-# Wait (up to 15 min) until CI has built, scanned and signed the visits-service image
-end=$((SECONDS + 900)); until gh pr checks $LANE_PR -R $F 2>/dev/null | grep -qP '^build-scan-sign \(visits-service\)\s+pass'; do [ $SECONDS -lt $end ] || { echo "CI WAIT TIMED OUT - stop here"; break; }; sleep 15; done
+# The PR number from the URL above
+N=<number>
+```
+Open the PR's **Checks** tab on GitHub. `build-scan-sign (visits-service)`
+builds the image, scans it with Trivy (a fixable CRITICAL CVE fails the
+build), and signs it keylessly with the PR's identity. ~2 minutes.
 
+```bash
+# Or wait for it in the terminal
+gh pr checks $N -R $F --watch
+```
+
+### 2. Ask for a lane
+```bash
 # Label the PR to ask for a visits-service lane
-gh pr edit $LANE_PR -R $F --add-label lane:visits-service
+gh pr edit $N -R $F --add-label lane:visits-service
+```
+Within 30 s, `lab-visits-service-pr-<N>` appears in the ArgoCD list.
+Open it: one Deployment and its Service, syncing. The pod is Ready after
+~90 s.
 
-# Wait (up to 10 min) until the lane pod is Ready
-end=$((SECONDS + 600)); until [ "$(kubectl -n lab-environment get pods -l lab.jerome/lane=pr-$LANE_PR -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)" = True ]; do [ $SECONDS -lt $end ] || { echo "LANE WAIT TIMED OUT - stop here"; break; }; sleep 5; done
+The pod ran because Kyverno verified its image signature:
+```bash
+# Kyverno's verdict, recorded on the pod: expect the PR's image tag and "pass"
+kubectl -n lab-environment get pods -l lab.jerome/lane=pr-$N -o jsonpath='{.items[0].metadata.annotations.kyverno\.io/verify-images}'; echo
+```
 
-# Show the lane's ArgoCD app: synced and healthy
-argocd app get lab-visits-service-pr-$LANE_PR --core | grep -E '^(Name|Sync Status|Health Status)'
+### 3. Anything else is refused
+The same admission check, asked about two images that must not run:
+```bash
+# A local build: refused by lab-business-images-from-ghcr
+kubectl -n lab-environment run probe-local --image=ops-lab/visits-service:21d8461c6ce4 --labels=app=visits-service --dry-run=server
 
+# An image CI pushed but never signed: refused by restrict-image-registry
+kubectl -n lab-environment run probe-unsigned --image=ghcr.io/jeromefromcn/petclinic-unsigned@sha256:b5b9d0eacd284190ca95f06c3f04cd9ddcc9020eb763d510a95c12b84ecaf21c --dry-run=server
+```
+The first is refused with `a local ops-lab/* build is refused`. The second
+is refused with `no matching signatures found`. `--dry-run=server` runs
+the real admission webhooks and then creates nothing.
+
+### 4. Only requests that ask reach the lane
+```bash
 # Lab ingress (lab-ingress-istio NodePort on vps_oracle)
 U=http://10.0.0.95:30097
 
-# Ready is not yet warm: a fresh JVM's first calls can exceed the lane's 3 s
-# timeout (504). Warm up until 10 header requests in a row come from the lane.
-end=$((SECONDS + 180)); ok=0; until [ $ok -ge 10 ]; do [ $SECONDS -lt $end ] || { echo "LANE WARM-UP TIMED OUT - stop here"; break; }; if curl -s -m 5 -o /dev/null -D- -H "x-pr-lane: $LANE_PR" "$U/api/visit/pets/visits?petId=1" | grep -qi '^x-visits-build'; then ok=$((ok + 1)); else ok=0; fi; sleep 0.5; done
+# A fresh JVM's first calls can exceed the lane's 3 s timeout: warm up
+# until 10 header requests in a row come from the lane
+n=0; until [ $n -ge 10 ]; do b=$(curl -s -m 5 -o /dev/null -w '%header{x-visits-build}' -H "x-pr-lane: $N" "$U/api/visit/pets/visits?petId=1"); [ -n "$b" ] && n=$((n+1)) || n=0; sleep 0.5; done; echo "lane warm"
 
-sleep 20   # quiet gap: keeps the warm-up out of the window's log lines
+# 10 requests with x-pr-lane; the lane build marks its responses with x-visits-build
+for i in $(seq 1 10); do curl -s -o /dev/null -w '%{http_code} [%header{x-visits-build}]\n' -H "x-pr-lane: $N" "$U/api/visit/pets/visits?petId=1"; done | sort | uniq -c
 
-# Open the evidence window: every evidence query is bounded by it
-demo-window start pr-lane
+# 10 requests without the header; expect the baseline (no mark)
+for i in $(seq 1 10); do curl -s -o /dev/null -w '%{http_code} [%header{x-visits-build}]\n' "$U/api/visit/pets/visits?petId=1"; done | sort | uniq -c
 
-# 10 requests with x-pr-lane; expect all served by the lane
-for i in $(seq 1 10); do curl -s -D- -o /dev/null -H "x-pr-lane: $LANE_PR" "$U/api/visit/pets/visits?petId=1" | tr -d '\r' | awk 'NR==1{c=$2} tolower($1)=="x-visits-build:"{b=$2} END{print c, (b ? "lane" : "baseline")}'; done | sort | uniq -c
-
-# 10 requests without the header; expect all on the baseline
-for i in $(seq 1 10); do curl -s -D- -o /dev/null "$U/api/visit/pets/visits?petId=1" | tr -d '\r' | awk 'NR==1{c=$2} tolower($1)=="x-visits-build:"{b=$2} END{print c, (b ? "lane" : "baseline")}'; done | sort | uniq -c
-
-# 5 marked requests via customers-service; the header crosses the hop to visits
-for i in $(seq 1 5); do curl -s -o /dev/null -w '%{http_code}\n' -H "x-pr-lane: $LANE_PR" "$U/api/customer/owners/1/visits"; done | sort | uniq -c
-
-sleep 10   # Envoy flushes its access log in batches: let the window's last lines land inside it
-
-# Close the evidence window
-demo-window stop pr-lane
-
-# Run the evidence queries for the window; ends with a Grafana link
-demo-evidence pr-lane
-
-# Close the PR; the lane is torn down
-gh pr close $LANE_PR -R $F
+# 5 marked requests via customers-service: the header has to cross a hop to reach visits
+for i in $(seq 1 5); do curl -s -o /dev/null -w '%{http_code}\n' -H "x-pr-lane: $N" "$U/api/customer/owners/1/visits"; done | sort | uniq -c
 ```
+`10 200 [lane]`, `10 200 []`, `5 200`.
 
-## Expected result
-`10 200 lane`, then `10 200 baseline`, then `5 200`. The evidence shows
-exactly 15 requests on `visits-service-pr-<N>` — the 10 direct ones and the
-5 that reached visits through customers-service — and none of the
-generator's traffic.
+Run the Loki query again. A second row:
+`outbound|8082||visits-service-pr-<N>…`, with exactly the marked requests:
+10 warm-up + 10 direct + 5 through customers = 25 in the rehearsal. The
+generator's traffic is all in the baseline row.
 
-## Evidence
-- **Envoy (waypoint access log):** 15 requests upstream to the lane, every
-  other visits request to the baseline.
-- **Kyverno:** the lane pod's `kyverno.io/verify-images` annotation shows
-  its PR image `pass`; server-side dry-runs are refused - a local `ops-lab/*`
-  image by `lab-business-images-from-ghcr`, and an unsigned GHCR image
-  (`petclinic-unsigned`, pushed by CI but never signed) by
-  `restrict-image-registry`.
-- **App (Jaeger):** a trace holding customers-service's spans and the
-  waypoint's span named after `visits-service-pr-<N>` — the header crossed
-  a hop the client never saw, and the waypoint picked the lane there.
+### 5. The header crossed a hop
+In Jaeger, **Find Traces**, and open one of the 5 requests through
+customers-service. The trace holds customers-service's spans, and below
+them a waypoint span named `visits-service-pr-<N>…:8082/*`. The client
+never talked to visits. customers-service propagated the header on its own
+call, and the waypoint picked the lane there.
+
+### 6. Close the PR
+```bash
+# Close the PR; the lane is torn down
+gh pr close $N -R $F
+```
+Within a minute, `lab-visits-service-pr-<N>` disappears from the ArgoCD
+list and its pod terminates (46 s in the rehearsal). Nothing in git
+changed: the lane existed because a labelled PR was open.
 
 ## Talking points
 - **Only the changed service runs in the lane.** Every other hop is the
@@ -112,10 +157,11 @@ generator's traffic.
 - **Head SHA, not merge SHA.** The image is tagged with the PR's head commit;
   the signature's subject is the merge ref GitHub builds PRs on.
 - **Capacity is shared in time.** Lanes use the headroom page 12's green
-  needs: at most two lane pods, and never while page 12's green runs — the
-  reset refuses a leftover lane.
+  needs: at most two lane pods, and never while page 12's green runs.
 
 ## Reset
-`gh pr close` (last command) makes the generator drop the PR; ArgoCD deletes
-the Application and its resources. `demo-reset pr-lane` waits for the lane
-pod to go and verifies the baseline.
+Step 6 is the reset. Before the next page, check no lane is left:
+```bash
+# Expect no output
+kubectl -n lab-environment get deploy,pods -l lab.jerome/lane
+```
