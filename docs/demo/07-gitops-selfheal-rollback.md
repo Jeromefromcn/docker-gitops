@@ -3,76 +3,77 @@
 ## Purpose
 Show that git is the only way to change the lab: a manual change is undone
 within seconds, and rollback is a `git revert`, not a `kubectl` command.
+ArgoCD's own event log and history are the record of both.
 
 ## Preconditions
 Scenario 02's `demo:` commit is on `main` and deployed.
 
-## Commands
+## Before you start: open the views
+1. **ArgoCD — the `lab-environment` app**, tree view, name filter
+   `customers-service`:
+   <https://argocd.jerome.cloudns.asia/applications/argocd/lab-environment>
+2. **Grafana — Lab Mesh Overview**, last 15 minutes, auto-refresh 10 s:
+   <https://grafana.lab.jerome.cloudns.asia/d/lab-mesh-overview/lab-mesh-overview?from=now-15m&to=now&refresh=10s>
+3. **A second terminal pane**, watching the Deployment:
+   ```bash
+   # READY / UP-TO-DATE / AVAILABLE for customers-service; leave it running
+   kubectl -n lab-environment get deploy customers-service -w
+   ```
+
+## Steps
+
+### 1. Drift: someone scales by hand
+```bash
+# A manual change that bypasses git
+kubectl -n lab-environment scale deploy/customers-service --replicas=1
+```
+Watch the second pane. Within ~2 s the Deployment is back to `5`
+replicas. ArgoCD did that, not you. Four pods were already terminated,
+though, so READY reads `1/5` and climbs back to `5/5` over ~65 s while
+the new JVMs start.
+
+In ArgoCD, open the app's **Events** (the app details panel, **Events**
+tab). The newest entries, all within the same two seconds:
+- `Updated sync status: Synced -> OutOfSync`. ArgoCD saw the live object
+  differ from git.
+- `Initiated automated sync to '<SHA>'`. selfHeal synced it back, at the
+  commit already deployed.
+- `Partial sync operation ... succeeded`. Only the drifted Deployment was
+  re-applied, not the whole app.
+
+In Grafana, **customers-service RPS per pod**: four lines stop at the same
+moment and one carries all the traffic until the new pods' lines start.
+**Mesh requests by service and code** stays at `200`: one pod carried the
+load.
+
+### 2. Rollback: revert 02's commit through git
 ```bash
 # Bring the checkout up to date with origin/main
 git pull --ff-only origin main
 
-# Open the evidence window: every evidence query is bounded by it
-demo-window start gitops-selfheal-rollback
+# Find 02's demo commit and show what it changed
+git log --oneline --grep='^demo: rolling-restart customers-service$' -1
+git show <SHA>
 
-# 1. Drift: someone scales by hand
-kubectl -n lab-environment scale deploy/customers-service --replicas=1
+# Revert it: the rollback is a new commit, deployed like any other
+git revert --no-edit <SHA>
 
-# Watch READY drop and climb back to 5/5 (no Ctrl-C: it would drop the rest of this block)
-# Give up after 5 min; low/last track the READY dip and the last value printed
-end=$((SECONDS + 300)); low=; last=
-
-# Poll READY every 2 s, print each change, stop once it is back at 5/5 after the dip
-while :; do
-  r=$(kubectl -n lab-environment get deploy customers-service -o jsonpath='{.status.readyReplicas}/{.spec.replicas}')
-  [ "$r" = "$last" ] || { echo "READY $r"; last=$r; }
-  if [ "$r" = 5/5 ]; then [ -z "$low" ] || break; else low=1; fi
-  [ $SECONDS -lt $end ] || { echo "READY WAIT TIMED OUT - stop here"; break; }
-  sleep 2
-done
-
-# 2. Rollback: revert 02's commit through git
-# Find 02's demo commit
-SHA=$(git log -1 --grep='^demo: rolling-restart customers-service$' --format=%H)
-
-# Show what that commit changed
-git show --stat $SHA
-
-# Revert it - the rollback is a new commit, deployed like any other
-git revert --no-edit $SHA
-
-# Push to main; ArgoCD deploys from git
-git push || echo "PUSH FAILED - stop here"
-
-# Make ArgoCD re-read git now instead of waiting for its next poll
-argocd app get lab-environment --core --refresh >/dev/null
-
-# Wait (up to 5 min) until ArgoCD has synced this commit successfully
-end=$((SECONDS + 300)); until argocd app get lab-environment --core -o json | jq -e --arg r "$(git rev-parse HEAD)" '.status.operationState.syncResult.revision == $r and .status.operationState.phase == "Succeeded"' >/dev/null; do [ $SECONDS -lt $end ] || { echo "SYNC WAIT TIMED OUT - stop here"; break; }; sleep 5; done
-
-# Wait until the customers-service rollout completes
-kubectl -n lab-environment rollout status deploy/customers-service --timeout=6m
-
-# Close the evidence window
-demo-window stop gitops-selfheal-rollback
-
-# Run the evidence queries for the window; ends with a Grafana link
-demo-evidence gitops-selfheal-rollback
+# Push; ArgoCD deploys the rollback from git
+git push
 ```
+In ArgoCD, click **Refresh**. The app syncs the revert commit, and the tree
+shows the same one-pod-at-a-time rollout as in 02, back to the previous
+`rollout-rev`. The second pane shows UP-TO-DATE climbing to 5 again.
 
-## Expected result
-ArgoCD sets `replicas` back to 5 within a second of the scale; READY climbs
-from 1/5 to 5/5 over ~70 s (JVM startup), with no generator errors — one
-pod carries the traffic meanwhile. The revert then rolls the pods again and
-restores the previous `rollout-rev`.
+### 3. Both are on record
+In ArgoCD, open **History and rollback**. The top two entries are the
+`Revert "demo: rolling-restart customers-service"` commit and, under it,
+02's commit. The selfHeal in step 1 is not in this list, because it
+deployed no new revision. Its record is the Events tab.
 
-## Evidence
-- **Kubernetes (kube-state-metrics):** available replicas dipped to 1 in the window.
-- **ArgoCD (controller log):** a sync limited to `Deployment/customers-service`
-  at the already-deployed revision — that is selfHeal; the app history does
-  not record it.
-- **ArgoCD:** the revert commit in the app history inside the window.
-- **Kubernetes:** live `rollout-rev` and ready count equal git's.
+ArgoCD's own **Rollback** button is not an option: it is refused while
+automated sync is on, because git would win again on the next sync. In
+git, the rollback is reviewable, audited and permanent.
 
 ## Talking points
 - `selfHeal: true` makes git the source of truth for *runtime* state, not
@@ -83,4 +84,5 @@ restores the previous `rollout-rev`.
   consult PDBs — only evictions do); selfHeal is what bounded the damage.
 
 ## Reset
-`demo-reset gitops-selfheal-rollback` — waits for the rollout, verifies the baseline.
+Nothing to reset once the revert is deployed. Stop the `-w` watch with
+Ctrl-C.
