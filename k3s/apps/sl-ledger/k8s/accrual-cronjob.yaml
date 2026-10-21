@@ -36,7 +36,7 @@ spec:
           containers:
             - name: accrual
               # Same digest as the Deployment: promotion moves both in one commit.
-              image: ghcr.io/jeromefromcn/sl-ledger@sha256:273f98bdfb4f1f480a70e0aa3c0cf8e43550f5798185078e185dbda4d96a9b4a
+              image: ghcr.io/jeromefromcn/sl-ledger@sha256:72d1ee5b5a738ffc0354b4eb2b98ff2c9d3635cc59d1c8561c466566778ffb01
               env:
                 - name: TZ
                   value: "Asia/Hong_Kong"
