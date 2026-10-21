@@ -18,6 +18,8 @@ spec:
                     values:
                       - hello-frontend
                       - hello-backend
+                      - sl-ledger
+                      - sl-ledger-accrual
       validate:
         message: >-
           Self-built workload {{ request.object.metadata.name }} does not

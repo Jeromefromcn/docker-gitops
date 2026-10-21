@@ -1,0 +1,56 @@
+# The shared cache tier and the rebuild lock (java-hands-on stage 9). No persistence, as in that
+# repository's compose: a cache and a lock lease are worth nothing after a restart.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: sl-ledger
+  labels:
+    app: sl-ledger-redis
+spec:
+  selector:
+    app: sl-ledger-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: sl-ledger
+  labels:
+    app: sl-ledger-redis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: sl-ledger-redis
+  template:
+    metadata:
+      labels:
+        app: sl-ledger-redis
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          command: ["sh", "-c", "exec redis-server --requirepass \"$REDIS_PASSWORD\" --save '' --appendonly no"]
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sl-ledger-credentials
+                  key: redis-password
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi

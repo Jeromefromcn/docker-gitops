@@ -1,0 +1,175 @@
+# The ledger (java-hands-on, stage 14). The image is pinned by digest and signed by that
+# repository's ci workflow; Kyverno's restrict-image-registry refuses it otherwise. Promotion is a
+# commit that changes the digest below, nothing else.
+#
+# Shutdown, in order, inside terminationGracePeriodSeconds (45 s):
+#   1. preStop sleeps 10 s while the endpoint removal reaches every node's Service routing; the
+#      pod still serves whatever reaches it meanwhile.
+#   2. SIGTERM: Spring's graceful shutdown. Readiness goes REFUSING_TRAFFIC, Tomcat stops
+#      accepting, in-flight requests get up to 20 s (spring.lifecycle.timeout-per-shutdown-phase),
+#      the Kafka consumers finish the record in hand and commit it.
+#   3. 10 + 20 = 30 s, leaving 15 s for the rest of the close before the kubelet's SIGKILL.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sl-ledger
+  namespace: sl-ledger
+  labels:
+    app: sl-ledger
+spec:
+  selector:
+    app: sl-ledger
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sl-ledger
+  namespace: sl-ledger
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sl-ledger
+  namespace: sl-ledger
+  labels:
+    app: sl-ledger
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never below two ready pods: a new one has to be ready before an old one goes.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: sl-ledger
+  template:
+    metadata:
+      labels:
+        app: sl-ledger
+    spec:
+      serviceAccountName: sl-ledger
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ledger
+          image: ghcr.io/jeromefromcn/sl-ledger@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 8081
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            - name: SPRING_PROFILES_ACTIVE
+              value: prod
+            - name: INFO_APP_ENVIRONMENT
+              value: k3s
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres:5432/ledger
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: sl-ledger-credentials
+                  key: db-user
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sl-ledger-credentials
+                  key: db-password
+            # Synthetic counterparties and securities, so the API has something to answer with.
+            - name: SPRING_FLYWAY_LOCATIONS
+              value: classpath:db/migration,classpath:db/seed-local
+            - name: LEDGER_MARKETDATA_URL
+              value: http://stubs:8080
+            - name: LEDGER_JWT_ISSUER
+              value: https://sl-ledger.k3s.invalid
+            - name: LEDGER_JWK_SET_URI
+              value: http://stubs:8080/jwks.json
+            # No trace collector in this namespace: export off, the URL is only there because the
+            # prod profile requires one.
+            - name: MANAGEMENT_TRACING_EXPORT_OTLP_ENABLED
+              value: "false"
+            - name: LEDGER_OTLP_TRACES_URL
+              value: http://localhost:4318/v1/traces
+            - name: LEDGER_CACHE_ENABLED
+              value: "true"
+            - name: SPRING_DATA_REDIS_HOST
+              value: redis
+            - name: SPRING_DATA_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sl-ledger-credentials
+                  key: redis-password
+            - name: LEDGER_MESSAGING_ENABLED
+              value: "true"
+            - name: LEDGER_MESSAGING_BOOTSTRAP_SERVERS
+              value: kafka:9092
+            - name: LEDGER_BATCH_ENABLED
+              value: "true"
+            - name: LEDGER_ROLLOUT_OBSERVATION
+              value: 10m
+          # Startup: has it finished starting. Up to 60 s (30 x 2 s) before the kubelet gives up;
+          # liveness and readiness are not asked until it answers, so a slow start is not a
+          # liveness kill.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            periodSeconds: 2
+            failureThreshold: 30
+          # Liveness: is the process wedged. Never a dependency: a database outage must not
+          # restart every pod at once.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            periodSeconds: 10
+            failureThreshold: 3
+          # Readiness: should it get traffic. Includes the database (stage 12). Every 2 s, one
+          # failure removes it: on shutdown it goes false at once.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+            periodSeconds: 2
+            failureThreshold: 1
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          # Heap is 70% of the limit (the image's MaxRAMPercentage): 717 MB of 1 GiB, about
+          # 300 MB for metaspace, code cache, threads and buffers (measured 205-211 MB).
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

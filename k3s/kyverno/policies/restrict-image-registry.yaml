@@ -30,11 +30,16 @@ spec:
         # Two signers, each confined to its own images: this repo's workflows
         # sign everything under ghcr.io/jeromefromcn/ except the lab's
         # petclinic-* images, which only the lab fork's lab-images workflow
-        # signs. A fork workflow run can therefore never vouch for hello.
+        # signs. A fork workflow run can therefore never vouch for hello. The
+        # same holds for the java-hands-on ledger's sl-ledger image, which only
+        # that repository's ci workflow signs, from main or a drill/* branch
+        # (its stage 14 rollback drill builds the broken release there, so it
+        # never lands on main).
         - imageReferences:
             - "ghcr.io/jeromefromcn/*"
           skipImageReferences:
             - "ghcr.io/jeromefromcn/petclinic-*"
+            - "ghcr.io/jeromefromcn/sl-ledger*"
           # CI signs with cosign v3 keyless, which stores signatures as
           # Sigstore bundles in OCI referrers (no legacy sha256-<digest>.sig
           # tag). The default type "Cosign" only reads the legacy tag and
@@ -58,6 +63,17 @@ spec:
             - entries:
                 - keyless:
                     subjectRegExp: "^https://github\\.com/Jeromefromcn/spring-petclinic-microservices/\\.github/workflows/lab-images\\.yml@refs/heads/(main|lab-v2)$"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+        - imageReferences:
+            - "ghcr.io/jeromefromcn/sl-ledger*"
+          type: SigstoreBundle
+          mutateDigest: false
+          attestors:
+            - entries:
+                - keyless:
+                    subjectRegExp: "^https://github\\.com/Jeromefromcn/java-hands-on/\\.github/workflows/ci\\.yml@refs/heads/(main|drill/[a-z0-9-]+)$"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev

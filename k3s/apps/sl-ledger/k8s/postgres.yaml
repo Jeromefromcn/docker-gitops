@@ -1,0 +1,79 @@
+# The ledger's database. One instance, data on a local-path volume of the server node: a lab, not
+# a model of a production database (no replica, no backup).
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: sl-ledger
+  labels:
+    app: sl-ledger-postgres
+spec:
+  selector:
+    app: sl-ledger-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: sl-ledger
+  labels:
+    app: sl-ledger-postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sl-ledger-postgres
+  template:
+    metadata:
+      labels:
+        app: sl-ledger-postgres
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+            - name: POSTGRES_DB
+              value: ledger
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: sl-ledger-credentials
+                  key: db-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sl-ledger-credentials
+                  key: db-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d ledger"]
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 2Gi

@@ -14,3 +14,4 @@ never hand-written.
 |---|---|---|
 | `github-pr-generator-token.sealed.yaml` | `argocd` | Fine-grained GitHub PAT for the `pr-lanes` and `lab-lanes` ApplicationSet PR generators |
 | `lab-db-credentials.sealed.yaml` | `lab-environment` | PostgreSQL user/password for the lab (postgres, business services, `db-init` Job) |
+| `sl-ledger-credentials.sealed.yaml` | `sl-ledger` | Postgres user/password and Redis password for the java-hands-on ledger (`k3s/apps/sl-ledger`) |

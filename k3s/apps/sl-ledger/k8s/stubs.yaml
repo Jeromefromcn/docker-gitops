@@ -1,0 +1,117 @@
+# Two stand-ins in one WireMock: the market-data source the ledger's prod profile calls
+# (synthetic prices, the mappings of java-hands-on's infra/wiremock), and the identity provider's
+# key set. The ledger verifies tokens against the public key served at /jwks.json; the matching
+# private key is held outside every repository and signs test tokens with java-hands-on's
+# infra/delivery/token.sh. Rotating it means a new keys.json here, nothing in the ledger.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stubs-mappings
+  namespace: sl-ledger
+data:
+  prices.json: |
+    {
+      "mappings": [
+        {
+          "request": { "method": "GET", "urlPathPattern": "/prices/HK[A-Z0-9]{10}" },
+          "response": {
+            "status": 200,
+            "headers": { "Content-Type": "application/json" },
+            "jsonBody": {
+              "isin": "{{request.path.[1]}}",
+              "price": { "amount": "41.30", "currency": "HKD" }
+            },
+            "transformers": ["response-template"]
+          }
+        },
+        {
+          "request": { "method": "GET", "urlPathPattern": "/prices/US[A-Z0-9]{10}" },
+          "response": {
+            "status": 200,
+            "headers": { "Content-Type": "application/json" },
+            "jsonBody": {
+              "isin": "{{request.path.[1]}}",
+              "price": { "amount": "10.05", "currency": "USD" }
+            },
+            "transformers": ["response-template"]
+          }
+        }
+      ]
+    }
+  keys.json: |
+    {
+      "mappings": [
+        {
+          "request": { "method": "GET", "urlPath": "/jwks.json" },
+          "response": {
+            "status": 200,
+            "headers": { "Content-Type": "application/json" },
+            "jsonBody": {"keys":[{"kty":"RSA","use":"sig","alg":"RS256","kid":"k3s-1","n":"p8njvnr6CsIUfeeSVhZifhRrsAZXEbqh-VO3UUJ-_L2Kfhu8CgPH29qGxAkPvplRV5Y8N8ZjFqgr01X-taiG19iDl57toAzQmg1r-8i1nffP2EHI37hjq-2GS7j2CXMP-kmYZrvEb8oTPFEPl1fl4i8RdA1D0hHvTLOq3H8VgQ7xyUvr6DL4zuFyOdMa5dqtoPKIwJPBlLQx1LUoeP7hHwLBHUoHzX2pzaZDtiVX85XYN1CL0vvOcXIgwn_45W4lqcMdUDvpx9qlwgxbfMyk1AeGqBOJigtqCXO1Tj2VkZVPtVGX17UdMCXLClwQ4C5Jvyp-1a-MzSl3zj8LfqAt2Q","e":"AQAB"}]}
+          }
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stubs
+  namespace: sl-ledger
+  labels:
+    app: sl-ledger-stubs
+spec:
+  selector:
+    app: sl-ledger-stubs
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stubs
+  namespace: sl-ledger
+  labels:
+    app: sl-ledger-stubs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sl-ledger-stubs
+  template:
+    metadata:
+      labels:
+        app: sl-ledger-stubs
+      annotations:
+        # A new key or price set is a new pod: WireMock reads its mappings at start.
+        sl-ledger/mappings-revision: "1"
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: wiremock
+          image: wiremock/wiremock:3.13.1
+          args: ["--disable-banner", "--global-response-templating"]
+          env:
+            - name: TZ
+              value: "Asia/Hong_Kong"
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /__admin/health
+              port: 8080
+            periodSeconds: 5
+          volumeMounts:
+            - name: mappings
+              mountPath: /home/wiremock/mappings
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 192Mi
+            limits:
+              memory: 384Mi
+      volumes:
+        - name: mappings
+          configMap:
+            name: stubs-mappings

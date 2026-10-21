@@ -1,0 +1,11 @@
+# sl-ledger: the securities-lending ledger of github.com/Jeromefromcn/java-hands-on (stage 14),
+# with its own Postgres, Redis, Kafka and stubs; it shares nothing with any other namespace.
+# Baseline is enforced for the namespace (the upstream Postgres, Redis and Kafka images expect to
+# start as root); the ledger itself is held to restricted by Kyverno's restricted-self-built.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sl-ledger
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
