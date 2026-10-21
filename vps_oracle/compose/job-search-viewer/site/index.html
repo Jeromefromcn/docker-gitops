@@ -12,52 +12,42 @@
     --bg: #ffffff; --bg-side: #f6f7f9; --fg: #1f2328; --muted: #656d76;
     --border: #d0d7de; --accent: #0969da; --code-bg: #f2f4f6; --hover: #e8ebef;
     --active: #ddf4ff;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #0d1117; --bg-side: #161b22; --fg: #e6edf3; --muted: #8d96a0;
-      --border: #30363d; --accent: #4493f8; --code-bg: #1c2128; --hover: #21262d;
-      --active: #1f3047;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #0d1117; --bg-side: #161b22; --fg: #e6edf3; --muted: #8d96a0;
-    --border: #30363d; --accent: #4493f8; --code-bg: #1c2128; --hover: #21262d;
-    --active: #1f3047;
+    color-scheme: light;
   }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   html, body { margin: 0; height: 100%; }
   body {
     background: var(--bg); color: var(--fg);
-    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+    font: 17px/1.75 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
       "PingFang HK", "Microsoft JhengHei", sans-serif;
     display: flex;
   }
   #side {
-    width: 300px; flex: none; height: 100vh; overflow: auto;
+    width: 320px; flex: none; height: 100vh; overflow: auto;
     background: var(--bg-side); border-right: 1px solid var(--border);
-    font-size: 13.5px;
+    font-size: 15px;
   }
   #side header {
-    position: sticky; top: 0; background: var(--bg-side); padding: 12px;
+    position: sticky; top: 0; z-index: 1; background: var(--bg-side); padding: 12px;
     border-bottom: 1px solid var(--border); display: flex; gap: 6px;
   }
   #filter {
-    flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border);
-    border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit;
+    flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-size: 16px;
   }
   button {
     border: 1px solid var(--border); background: var(--bg); color: var(--fg);
-    border-radius: 6px; padding: 4px 9px; cursor: pointer; font: inherit;
+    border-radius: 6px; padding: 5px 11px; cursor: pointer; font: inherit;
   }
   button:hover { background: var(--hover); }
   #tree { padding: 6px 4px 24px; }
   #tree ul { list-style: none; margin: 0; padding-left: 12px; }
   #tree > ul { padding-left: 0; }
-  #tree summary { cursor: pointer; padding: 2px 6px; border-radius: 4px; color: var(--muted); }
+  #tree summary { cursor: pointer; padding: 3px 6px; border-radius: 4px; color: var(--muted); }
   #tree summary:hover, #tree a:hover { background: var(--hover); }
   #tree a {
-    display: block; padding: 2px 6px 2px 18px; border-radius: 4px;
+    display: block; padding: 3px 6px 3px 18px; border-radius: 4px;
     color: var(--fg); text-decoration: none; overflow-wrap: anywhere;
   }
   #tree a.active { background: var(--active); color: var(--accent); }
@@ -66,11 +56,12 @@
   #bar {
     position: sticky; top: 0; z-index: 1; background: var(--bg);
     border-bottom: 1px solid var(--border); padding: 8px 16px;
-    display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted);
+    display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted);
   }
   #path { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   #toggle { display: none; }
-  #doc { max-width: 900px; padding: 24px 32px 80px; margin: 0 auto; overflow-wrap: break-word; }
+  #backdrop { display: none; }
+  #doc { max-width: 960px; padding: 28px 40px 80px; margin: 0 auto; overflow-wrap: break-word; }
   #doc a { color: var(--accent); }
   #doc h1, #doc h2 { border-bottom: 1px solid var(--border); padding-bottom: .3em; }
   #doc code {
@@ -87,15 +78,28 @@
   #doc hr { border: 0; border-top: 1px solid var(--border); }
   #doc a.blocked { color: var(--muted); text-decoration: line-through; cursor: not-allowed; }
   @media (max-width: 760px) {
-    body { display: block; }
+    body { display: block; height: auto; }
     #side {
-      position: fixed; inset: 0 auto 0 0; width: 85vw; max-width: 340px; z-index: 10;
+      position: fixed; top: 0; bottom: 0; left: 0; height: 100%;
+      width: 85vw; max-width: 360px; z-index: 20; font-size: 16px;
       transform: translateX(-100%); transition: transform .2s;
+      overscroll-behavior: contain;
     }
-    body.side-open #side { transform: none; box-shadow: 0 0 24px rgba(0,0,0,.3); }
-    #toggle { display: inline-block; }
+    body.side-open #side { transform: none; box-shadow: 0 0 24px rgba(0,0,0,.25); }
+    body.side-open #backdrop {
+      display: block; position: fixed; inset: 0; z-index: 15; background: rgba(0,0,0,.3);
+    }
+    body.side-open { overflow: hidden; }
+    #tree summary { padding: 8px 8px; }
+    #tree a { padding: 8px 8px 8px 20px; }
+    #toggle { display: inline-block; font-size: 18px; padding: 4px 12px; }
     main { height: auto; overflow: visible; }
+    #bar { padding: 8px 12px; font-size: 13px; }
     #doc { padding: 16px 16px 60px; }
+    #doc h1 { font-size: 1.6em; }
+    #doc h2 { font-size: 1.35em; }
+    #doc pre { font-size: 14px; }
+    #doc th, #doc td { padding: 5px 8px; }
   }
 </style>
 </head>
@@ -104,11 +108,11 @@
   <header>
     <input id="filter" type="search" placeholder="Filter files…" autocomplete="off">
     <button id="reload" title="Rebuild file tree">↻</button>
-    <button id="theme" title="Toggle theme">◐</button>
   </header>
   <div id="status">Loading…</div>
   <div id="tree"></div>
 </nav>
+<div id="backdrop"></div>
 <main>
   <div id="bar"><button id="toggle">☰</button><span id="path"></span></div>
   <article id="doc"></article>
@@ -122,20 +126,6 @@
   const $ = (id) => document.getElementById(id);
   const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
   let files = [];
-
-  // ---- theme ----
-  try {
-    const t = localStorage.getItem('theme');
-    if (t) document.documentElement.dataset.theme = t;
-  } catch (e) {}
-  $('theme').onclick = () => {
-    const dark = document.documentElement.dataset.theme
-      ? document.documentElement.dataset.theme === 'dark'
-      : matchMedia('(prefers-color-scheme: dark)').matches;
-    const next = dark ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    try { localStorage.setItem('theme', next); } catch (e) {}
-  };
 
   // ---- tree crawl over nginx JSON autoindex ----
   async function listDir(dir) {
@@ -296,6 +286,7 @@
   $('filter').addEventListener('input', drawTree);
   $('reload').onclick = loadTree;
   $('toggle').onclick = () => document.body.classList.toggle('side-open');
+  $('backdrop').onclick = () => document.body.classList.remove('side-open');
   window.addEventListener('hashchange', show);
 
   show();
