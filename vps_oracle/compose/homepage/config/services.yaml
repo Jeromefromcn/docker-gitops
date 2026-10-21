@@ -149,6 +149,11 @@
         href: https://dosgame.jerome.cloudns.asia
         description: Classic DOS games in the browser
 
+    - Job Search Notes:
+        icon: si-markdown
+        href: https://job-search.jerome.cloudns.asia
+        description: Read-only markdown viewer for the job-search repo
+
 - Dev:
     - BOSS (dev):
         icon: si-mariadb

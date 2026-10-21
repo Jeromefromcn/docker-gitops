@@ -1,0 +1,29 @@
+services:
+  job-search-viewer:
+    image: nginxinc/nginx-unprivileged:1.30.6-alpine
+    container_name: job-search-viewer
+    hostname: job-search-viewer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./site:/srv/site:ro
+      # Live working tree of the private repo, read-only. No fallback if it moves —
+      # update this path together with the repo location.
+      - /home/ubuntu/jerome/job-search:/srv/files:ro
+    networks:
+      - proxy
+    # NPM reverse proxy: Forward Hostname/IP = job-search-viewer, Forward Port = 8080,
+    # Access List = self-only-and-auth (no built-in auth)
+
+networks:
+  proxy:
+    external: true

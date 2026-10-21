@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Job Search Notes</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --bg-side: #f6f7f9; --fg: #1f2328; --muted: #656d76;
+    --border: #d0d7de; --accent: #0969da; --code-bg: #f2f4f6; --hover: #e8ebef;
+    --active: #ddf4ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1117; --bg-side: #161b22; --fg: #e6edf3; --muted: #8d96a0;
+      --border: #30363d; --accent: #4493f8; --code-bg: #1c2128; --hover: #21262d;
+      --active: #1f3047;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1117; --bg-side: #161b22; --fg: #e6edf3; --muted: #8d96a0;
+    --border: #30363d; --accent: #4493f8; --code-bg: #1c2128; --hover: #21262d;
+    --active: #1f3047;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+      "PingFang HK", "Microsoft JhengHei", sans-serif;
+    display: flex;
+  }
+  #side {
+    width: 300px; flex: none; height: 100vh; overflow: auto;
+    background: var(--bg-side); border-right: 1px solid var(--border);
+    font-size: 13.5px;
+  }
+  #side header {
+    position: sticky; top: 0; background: var(--bg-side); padding: 12px;
+    border-bottom: 1px solid var(--border); display: flex; gap: 6px;
+  }
+  #filter {
+    flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit;
+  }
+  button {
+    border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+    border-radius: 6px; padding: 4px 9px; cursor: pointer; font: inherit;
+  }
+  button:hover { background: var(--hover); }
+  #tree { padding: 6px 4px 24px; }
+  #tree ul { list-style: none; margin: 0; padding-left: 12px; }
+  #tree > ul { padding-left: 0; }
+  #tree summary { cursor: pointer; padding: 2px 6px; border-radius: 4px; color: var(--muted); }
+  #tree summary:hover, #tree a:hover { background: var(--hover); }
+  #tree a {
+    display: block; padding: 2px 6px 2px 18px; border-radius: 4px;
+    color: var(--fg); text-decoration: none; overflow-wrap: anywhere;
+  }
+  #tree a.active { background: var(--active); color: var(--accent); }
+  #status { padding: 8px 12px; color: var(--muted); }
+  main { flex: 1; min-width: 0; height: 100vh; overflow: auto; }
+  #bar {
+    position: sticky; top: 0; z-index: 1; background: var(--bg);
+    border-bottom: 1px solid var(--border); padding: 8px 16px;
+    display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted);
+  }
+  #path { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  #toggle { display: none; }
+  #doc { max-width: 900px; padding: 24px 32px 80px; margin: 0 auto; overflow-wrap: break-word; }
+  #doc a { color: var(--accent); }
+  #doc h1, #doc h2 { border-bottom: 1px solid var(--border); padding-bottom: .3em; }
+  #doc code {
+    background: var(--code-bg); padding: .15em .35em; border-radius: 4px;
+    font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  #doc pre { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow: auto; }
+  #doc pre code { background: none; padding: 0; }
+  #doc table { border-collapse: collapse; display: block; overflow: auto; max-width: 100%; }
+  #doc th, #doc td { border: 1px solid var(--border); padding: 5px 10px; vertical-align: top; }
+  #doc th { background: var(--bg-side); }
+  #doc blockquote { margin: 0; padding: 0 1em; color: var(--muted); border-left: 4px solid var(--border); }
+  #doc img { max-width: 100%; }
+  #doc hr { border: 0; border-top: 1px solid var(--border); }
+  #doc a.blocked { color: var(--muted); text-decoration: line-through; cursor: not-allowed; }
+  @media (max-width: 760px) {
+    body { display: block; }
+    #side {
+      position: fixed; inset: 0 auto 0 0; width: 85vw; max-width: 340px; z-index: 10;
+      transform: translateX(-100%); transition: transform .2s;
+    }
+    body.side-open #side { transform: none; box-shadow: 0 0 24px rgba(0,0,0,.3); }
+    #toggle { display: inline-block; }
+    main { height: auto; overflow: visible; }
+    #doc { padding: 16px 16px 60px; }
+  }
+</style>
+</head>
+<body>
+<nav id="side">
+  <header>
+    <input id="filter" type="search" placeholder="Filter files…" autocomplete="off">
+    <button id="reload" title="Rebuild file tree">↻</button>
+    <button id="theme" title="Toggle theme">◐</button>
+  </header>
+  <div id="status">Loading…</div>
+  <div id="tree"></div>
+</nav>
+<main>
+  <div id="bar"><button id="toggle">☰</button><span id="path"></span></div>
+  <article id="doc"></article>
+</main>
+<script>
+(() => {
+  const BASE = '/files/';
+  const DEFAULT_DOC = 'README.md';
+  const CONCURRENCY = 16;
+
+  const $ = (id) => document.getElementById(id);
+  const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
+  let files = [];
+
+  // ---- theme ----
+  try {
+    const t = localStorage.getItem('theme');
+    if (t) document.documentElement.dataset.theme = t;
+  } catch (e) {}
+  $('theme').onclick = () => {
+    const dark = document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === 'dark'
+      : matchMedia('(prefers-color-scheme: dark)').matches;
+    const next = dark ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  };
+
+  // ---- tree crawl over nginx JSON autoindex ----
+  async function listDir(dir) {
+    const r = await fetch(BASE + enc(dir) + (dir ? '/' : ''), { cache: 'no-store' });
+    if (!r.ok) return [];
+    return r.json();
+  }
+
+  async function crawl() {
+    const found = [];
+    const queue = [''];
+    let active = 0;
+    await new Promise((resolve) => {
+      const pump = () => {
+        if (!queue.length && !active) return resolve();
+        while (active < CONCURRENCY && queue.length) {
+          const dir = queue.shift();
+          active++;
+          listDir(dir).then((entries) => {
+            for (const e of entries) {
+              const p = dir ? dir + '/' + e.name : e.name;
+              if (e.type === 'directory') queue.push(p);
+              else if (e.type === 'file' && e.name.endsWith('.md')) found.push(p);
+            }
+          }).catch(() => {}).finally(() => { active--; pump(); });
+        }
+      };
+      pump();
+    });
+    return found.sort((a, b) => a.localeCompare(b));
+  }
+
+  function buildTree(paths) {
+    const root = { dirs: new Map(), files: [] };
+    for (const p of paths) {
+      const parts = p.split('/');
+      let node = root;
+      for (const d of parts.slice(0, -1)) {
+        if (!node.dirs.has(d)) node.dirs.set(d, { dirs: new Map(), files: [] });
+        node = node.dirs.get(d);
+      }
+      node.files.push(p);
+    }
+    return root;
+  }
+
+  function renderTree(node, prefix, openAll) {
+    const ul = document.createElement('ul');
+    const dirNames = [...node.dirs.keys()].sort((a, b) => a.localeCompare(b));
+    for (const name of dirNames) {
+      const li = document.createElement('li');
+      const det = document.createElement('details');
+      const path = prefix ? prefix + '/' + name : name;
+      det.dataset.path = path;
+      if (openAll) det.open = true;
+      const sum = document.createElement('summary');
+      sum.textContent = name;
+      det.append(sum, renderTree(node.dirs.get(name), path, openAll));
+      li.append(det);
+      ul.append(li);
+    }
+    for (const p of node.files) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '#/' + p;
+      a.dataset.path = p;
+      a.textContent = p.split('/').pop();
+      li.append(a);
+      ul.append(li);
+    }
+    return ul;
+  }
+
+  function drawTree() {
+    const q = $('filter').value.trim().toLowerCase();
+    const shown = q ? files.filter((p) => p.toLowerCase().includes(q)) : files;
+    $('tree').replaceChildren(renderTree(buildTree(shown), '', !!q));
+    $('status').textContent = q ? `${shown.length} / ${files.length} files` : `${files.length} files`;
+    markActive();
+  }
+
+  async function loadTree() {
+    $('status').textContent = 'Loading…';
+    files = await crawl();
+    drawTree();
+  }
+
+  // ---- document view ----
+  function current() {
+    const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
+    return h || DEFAULT_DOC;
+  }
+
+  function markActive() {
+    const cur = current();
+    document.querySelectorAll('#tree a').forEach((a) => {
+      const on = a.dataset.path === cur;
+      a.classList.toggle('active', on);
+      if (on) {
+        for (let el = a.parentElement; el && el.id !== 'tree'; el = el.parentElement) {
+          if (el.tagName === 'DETAILS') el.open = true;
+        }
+      }
+    });
+  }
+
+  function slug(text) {
+    return text.trim().toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, '-');
+  }
+
+  function fixLinks(doc, path) {
+    const dirUrl = new URL(BASE + enc(path), location.origin);
+    doc.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((h) => { if (!h.id) h.id = slug(h.textContent); });
+    doc.querySelectorAll('a[href]').forEach((a) => {
+      const href = a.getAttribute('href');
+      if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) {
+        a.target = '_blank'; a.rel = 'noopener noreferrer';
+        return;
+      }
+      if (href.startsWith('#')) {
+        a.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          const el = document.getElementById(decodeURIComponent(href.slice(1)));
+          if (el) el.scrollIntoView();
+        });
+        return;
+      }
+      const u = new URL(href, dirUrl);
+      const rel = decodeURIComponent(u.pathname.slice(BASE.length)).replace(/\/$/, '');
+      if (rel.endsWith('.md')) a.href = '#/' + rel;
+      else if (files.includes(rel + '/README.md')) a.href = '#/' + rel + '/README.md';
+      else { a.removeAttribute('href'); a.classList.add('blocked'); a.title = 'Only markdown files are served'; }
+    });
+  }
+
+  async function show() {
+    const path = current();
+    $('path').textContent = path;
+    document.title = path.split('/').pop() + ' — Job Search Notes';
+    markActive();
+    document.body.classList.remove('side-open');
+    const doc = $('doc');
+    try {
+      const r = await fetch(BASE + enc(path), { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status === 404 ? 'Not found' : 'HTTP ' + r.status);
+      doc.innerHTML = DOMPurify.sanitize(marked.parse(await r.text()));
+      fixLinks(doc, path);
+    } catch (e) {
+      doc.innerHTML = '';
+      const p = document.createElement('p');
+      p.textContent = `${path}: ${e.message}`;
+      doc.append(p);
+    }
+    document.querySelector('main').scrollTop = 0;
+    window.scrollTo(0, 0);
+  }
+
+  $('filter').addEventListener('input', drawTree);
+  $('reload').onclick = loadTree;
+  $('toggle').onclick = () => document.body.classList.toggle('side-open');
+  window.addEventListener('hashchange', show);
+
+  show();
+  loadTree();
+})();
+</script>
+</body>
+</html>
