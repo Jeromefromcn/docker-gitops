@@ -66,7 +66,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ledger
-          image: ghcr.io/jeromefromcn/sl-ledger@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          image: ghcr.io/jeromefromcn/sl-ledger@sha256:273f98bdfb4f1f480a70e0aa3c0cf8e43550f5798185078e185dbda4d96a9b4a
           ports:
             - name: http
               containerPort: 8080
