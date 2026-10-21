@@ -77,6 +77,19 @@
   #doc img { max-width: 100%; }
   #doc hr { border: 0; border-top: 1px solid var(--border); }
   #doc a.blocked { color: var(--muted); text-decoration: line-through; cursor: not-allowed; }
+  #pick {
+    display: none; flex: 1; min-height: 100vh; padding: 16px;
+    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  }
+  #pick h1 { margin: 0 0 10px; font-size: 1.5em; }
+  #pick a {
+    display: block; width: 240px; max-width: 100%; padding: 14px; text-align: center;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg-side);
+    color: var(--fg); text-decoration: none; font-size: 1.1em;
+  }
+  #pick a:hover { background: var(--hover); }
+  body.picking #pick { display: flex; }
+  body.picking #side, body.picking main, body.picking #backdrop { display: none; }
   @media (max-width: 760px) {
     body { display: block; height: auto; }
     #side {
@@ -108,10 +121,12 @@
   <header>
     <input id="filter" type="search" placeholder="Filter files…" autocomplete="off">
     <button id="reload" title="Rebuild file tree">↻</button>
+    <button id="switch" title="Switch to the other notes">⇄</button>
   </header>
   <div id="status">Loading…</div>
   <div id="tree"></div>
 </nav>
+<div id="pick"><h1>Job Search Notes</h1></div>
 <div id="backdrop"></div>
 <main>
   <div id="bar"><button id="toggle">☰</button><span id="path"></span></div>
@@ -119,22 +134,25 @@
 </main>
 <script>
 (() => {
-  const BASE = '/files/';
+  // Each key is a subdirectory of /files/ (bind mounts in docker-compose.yml).
+  const SOURCES = { jerome: 'Jerome', bridget: 'Bridget' };
   const DEFAULT_DOC = 'README.md';
   const CONCURRENCY = 16;
 
   const $ = (id) => document.getElementById(id);
   const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
   let files = [];
+  let who = null;
+  const base = () => '/files/' + who + '/';
 
   // ---- tree crawl over nginx JSON autoindex ----
-  async function listDir(dir) {
-    const r = await fetch(BASE + enc(dir) + (dir ? '/' : ''), { cache: 'no-store' });
+  async function listDir(root, dir) {
+    const r = await fetch(root + enc(dir) + (dir ? '/' : ''), { cache: 'no-store' });
     if (!r.ok) return [];
     return r.json();
   }
 
-  async function crawl() {
+  async function crawl(root) {
     const found = [];
     const queue = [''];
     let active = 0;
@@ -144,7 +162,7 @@
         while (active < CONCURRENCY && queue.length) {
           const dir = queue.shift();
           active++;
-          listDir(dir).then((entries) => {
+          listDir(root, dir).then((entries) => {
             for (const e of entries) {
               const p = dir ? dir + '/' + e.name : e.name;
               if (e.type === 'directory') queue.push(p);
@@ -190,7 +208,7 @@
     for (const p of node.files) {
       const li = document.createElement('li');
       const a = document.createElement('a');
-      a.href = '#/' + p;
+      a.href = '#/' + who + '/' + p;
       a.dataset.path = p;
       a.textContent = p.split('/').pop();
       li.append(a);
@@ -208,15 +226,41 @@
   }
 
   async function loadTree() {
+    const w = who;
     $('status').textContent = 'Loading…';
-    files = await crawl();
+    const found = await crawl(base());
+    if (w !== who) return; // switched sources mid-crawl
+    files = found;
     drawTree();
   }
 
-  // ---- document view ----
-  function current() {
+  // ---- routing: #/<source>/<path> ----
+  function route() {
     const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
-    return h || DEFAULT_DOC;
+    const i = h.indexOf('/');
+    const w = i < 0 ? h : h.slice(0, i);
+    return { who: Object.hasOwn(SOURCES, w) ? w : null, path: (i < 0 ? '' : h.slice(i + 1)) || DEFAULT_DOC };
+  }
+
+  function current() {
+    return route().path;
+  }
+
+  function onRoute() {
+    const r = route();
+    document.body.classList.toggle('picking', !r.who);
+    if (!r.who) {
+      document.title = 'Job Search Notes';
+      return;
+    }
+    if (r.who !== who) {
+      who = r.who;
+      files = [];
+      $('filter').value = '';
+      $('tree').replaceChildren();
+      loadTree();
+    }
+    show();
   }
 
   function markActive() {
@@ -237,7 +281,7 @@
   }
 
   function fixLinks(doc, path) {
-    const dirUrl = new URL(BASE + enc(path), location.origin);
+    const dirUrl = new URL(base() + enc(path), location.origin);
     doc.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((h) => { if (!h.id) h.id = slug(h.textContent); });
     doc.querySelectorAll('a[href]').forEach((a) => {
       const href = a.getAttribute('href');
@@ -254,22 +298,23 @@
         return;
       }
       const u = new URL(href, dirUrl);
-      const rel = decodeURIComponent(u.pathname.slice(BASE.length)).replace(/\/$/, '');
-      if (rel.endsWith('.md')) a.href = '#/' + rel;
-      else if (files.includes(rel + '/README.md')) a.href = '#/' + rel + '/README.md';
+      const rel = decodeURIComponent(u.pathname.slice(base().length)).replace(/\/$/, '');
+      if (!u.pathname.startsWith(base())) { a.removeAttribute('href'); a.classList.add('blocked'); a.title = 'Outside this repo'; }
+      else if (rel.endsWith('.md')) a.href = '#/' + who + '/' + rel;
+      else if (files.includes(rel + '/README.md')) a.href = '#/' + who + '/' + rel + '/README.md';
       else { a.removeAttribute('href'); a.classList.add('blocked'); a.title = 'Only markdown files are served'; }
     });
   }
 
   async function show() {
     const path = current();
-    $('path').textContent = path;
-    document.title = path.split('/').pop() + ' — Job Search Notes';
+    $('path').textContent = SOURCES[who] + ' / ' + path;
+    document.title = path.split('/').pop() + ' — ' + SOURCES[who] + ' — Job Search Notes';
     markActive();
     document.body.classList.remove('side-open');
     const doc = $('doc');
     try {
-      const r = await fetch(BASE + enc(path), { cache: 'no-store' });
+      const r = await fetch(base() + enc(path), { cache: 'no-store' });
       if (!r.ok) throw new Error(r.status === 404 ? 'Not found' : 'HTTP ' + r.status);
       doc.innerHTML = DOMPurify.sanitize(marked.parse(await r.text()));
       fixLinks(doc, path);
@@ -285,12 +330,18 @@
 
   $('filter').addEventListener('input', drawTree);
   $('reload').onclick = loadTree;
+  $('switch').onclick = () => { location.hash = ''; };
   $('toggle').onclick = () => document.body.classList.toggle('side-open');
   $('backdrop').onclick = () => document.body.classList.remove('side-open');
-  window.addEventListener('hashchange', show);
+  window.addEventListener('hashchange', onRoute);
 
-  show();
-  loadTree();
+  for (const [key, label] of Object.entries(SOURCES)) {
+    const a = document.createElement('a');
+    a.href = '#/' + key + '/';
+    a.textContent = label;
+    $('pick').append(a);
+  }
+  onRoute();
 })();
 </script>
 </body>
