@@ -12,23 +12,10 @@ scrape_configs:
       # vps_oracle2's node-exporter over the tailscale mesh (tag:oracle-hub -> tag:oracle2),
       # see vps_oracle2/compose/node-exporter/docker-compose.yml. Shares this job so the
       # node-exporter-full-oracle dashboard (job is a constant) lists it in its Nodename
-      # dropdown. Default 60s interval is fine: OCI egress isn't metered like GCP's 1GB.
+      # dropdown. Default 60s interval is fine: OCI egress isn't metered.
       - targets: ['100.100.140.33:9100']
         labels:
           instance: vps-oracle2
-
-  # vps_gcp's node-exporter, reached over the oracle<->gcp tailscale mesh (confirmed
-  # reachable directly from this container, no extra routing needed). See
-  # vps_gcp/compose/node-exporter/docker-compose.yml. scrape_interval overridden to 15m
-  # (vs. the 60s global default) because this scrape's response body egresses from GCP's
-  # side of the tailscale link, counted against its 1GB/month free-tier network egress —
-  # at 60s this job alone would use ~500MB/month, at 15m it's ~33MB/month.
-  - job_name: node_gcp
-    scrape_interval: 15m
-    static_configs:
-      - targets: ['100.96.184.44:9100']
-        labels:
-          instance: vps-gcp
 
   - job_name: prometheus
     static_configs:
