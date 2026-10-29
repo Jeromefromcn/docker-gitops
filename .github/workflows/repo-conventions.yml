@@ -62,7 +62,7 @@ jobs:
 
       # Every checks/<name>.sh must have a tests/test-<name>.sh. The pairing is
       # the convention; without this, a new check can land untested (two did).
-      # Covers every check tree: vps_oracle/, vps_oracle2/, vps_gcp/ and k3s/.
+      # Covers every check tree: vps_oracle/, vps_oracle2/ and k3s/.
       # The engine under vps_oracle/host-native/inspector/ owns no checks.
       - name: Every check has a paired test
         run: |

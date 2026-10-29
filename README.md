@@ -28,9 +28,7 @@ docker-gitops/
 │   ├── inspector-checks/          #   checks about vps_oracle (run by the engine above)
 │   ├── dotfiles/                  # host-local config, symlinked into the repo
 │   └── tofu/                      # OpenTofu brownfield adoption of the OCI network
-├── vps_gcp/                       # GCP free-tier e2-micro (practice instance)
-│   ├── compose/                   #   node-exporter + glances (run via `docker --context gcp`)
-│   ├── inspector-checks/          #   checks about vps-gcp (reached over SSH)
+├── vps_gcp/                       # GCP free-tier e2-micro (practice instance, stopped since 2026-10-29)
 │   └── tofu/                      # OpenTofu greenfield lifecycle practice
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
 │   ├── compose/                   #   node-exporter, glances, portainer-agent, sillytavern, plans (run via `docker --context oracle2`)
@@ -44,7 +42,7 @@ docker-gitops/
 └── .github/                       # CI: repo-conventions check, image build/sign, tailscale ACL apply
 ```
 
-Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `tofu/` (OpenTofu IaC — `vps_oracle/tofu/` brownfield adoption of the OCI network, `vps_gcp/tofu/` greenfield lifecycle practice; governed by `.claude/rules/tofu-conventions.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), `host-native/` (explained below), and `inspector-checks/` — inspection checks **about that host**, discovered and run by the vps_oracle inspector engine. Every inspection target has one, including vps_oracle itself and the k3s cluster, because the tree a check lives in is exactly what decides which machine the report attributes its findings to. See `vps_oracle/inspector-checks/README.md`, `vps_oracle2/inspector-checks/README.md`, `vps_gcp/inspector-checks/README.md`. Each follows its own conventions; see the corresponding subdirectory's README.
+Besides `compose/`, a `<host>/` may also contain other subdirectories that are not managed by docker compose: `tofu/` (OpenTofu IaC — `vps_oracle/tofu/` brownfield adoption of the OCI network, `vps_gcp/tofu/` greenfield lifecycle practice; governed by `.claude/rules/tofu-conventions.md`), `dotfiles/` (symlinked local-machine configuration; see `vps_oracle/dotfiles/README.md`), `host-native/` (explained below), and `inspector-checks/` — inspection checks **about that host**, discovered and run by the vps_oracle inspector engine. Every inspection target has one, including vps_oracle itself and the k3s cluster, because the tree a check lives in is exactly what decides which machine the report attributes its findings to. See `vps_oracle/inspector-checks/README.md`, `vps_oracle2/inspector-checks/README.md`. Each follows its own conventions; see the corresponding subdirectory's README.
 
 Components that span hosts live at the repo root instead of under a `<host>/`: `k3s/` (one cluster whose server runs on vps_oracle and whose agent is vps-oracle2; managed by ArgoCD GitOps — changes go through git push + ArgoCD sync, not manual commands; see `k3s/README.md`) and `tailscale/` (the tailnet ACL). The same rule gives the k3s cluster its own check tree, `k3s/inspector-checks/`.
 
@@ -121,7 +119,7 @@ Three other rule files: k3s/ArgoCD change discipline is in [`.claude/rules/k3s-g
 | Host | Description | Details |
 |---|---|---|
 | vps_oracle | Oracle Cloud VPS | [vps_oracle/README.md](vps_oracle/README.md) |
-| vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + `compose/` (node-exporter, glances) + `inspector-checks/`, reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
+| vps_gcp | GCP free-tier e2-micro, **stopped long-term since 2026-10-29** (only `tofu/` IaC remains; its compose stacks and inspector checks were removed, `plans` moved to vps_oracle2) | [vps_gcp/README.md](vps_gcp/README.md) |
 | vps_oracle2 | second OCI tenancy, Always Free A1.Flex (managed: `tofu/`, `compose/` incl. sillytavern and plans, `inspector-checks/`; reachable over tailscale only) | [vps_oracle2/README.md](vps_oracle2/README.md) |
 
 Other background/history material (incident records, design archives, etc., not required daily reading) is in [`docs/README.md`](docs/README.md).

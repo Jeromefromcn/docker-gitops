@@ -9,8 +9,7 @@
 #
 # The engine is vps_oracle/host-native/inspector/ (inspect.sh, systemd/,
 # state/, lib/common.sh). It discovers this directory exactly like
-# vps_oracle2/inspector-checks/, vps_gcp/inspector-checks/ and
-# k3s/inspector-checks/, and takes the report's instance name from the
+# vps_oracle2/inspector-checks/ and k3s/inspector-checks/, and takes the report's instance name from the
 # directory name — which is why the checks about vps_oracle live here rather
 # than beside the engine: "the directory says what the check inspects" then
 # holds for every instance with no exception.

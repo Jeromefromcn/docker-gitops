@@ -7,7 +7,7 @@ Host-level inspection script, not managed by docker compose (like `vps_oracle/ho
 
 **Notification language**: the Telegram report title and body are English only (2026-08-16 user request; the repo docs remain Chinese). `tests/test-inspect.sh` has a corresponding assertion (title, section headers, no CJK characters). The title carries no host name: a report is one logical inspection, and the `Inspected` section names the instances covered.
 
-**Report layout**: one logical inspection, grouped by instance — the instance is simply the `inspector-checks/` directory a check lives in, so today's four are `vps_oracle`, `vps_oracle2`, `vps_gcp` and `k3s`. It never says which machine ran the scripts (all of them run here). Sections appear in the order the discovery glob returns the trees, i.e. alphabetically by tree name — there is no special case promoting the local host to the top, because there is no special case anywhere in the attribution.
+**Report layout**: one logical inspection, grouped by instance — the instance is simply the `inspector-checks/` directory a check lives in, so today's three are `vps_oracle`, `vps_oracle2` and `k3s` (`vps_gcp` had one until the instance was stopped on 2026-10-29). It never says which machine ran the scripts (all of them run here). Sections appear in the order the discovery glob returns the trees, i.e. alphabetically by tree name — there is no special case promoting the local host to the top, because there is no special case anywhere in the attribution.
 
 Because the directory *is* the attribution, filing a check in the wrong tree is not a naming problem to paper over: a check about the cluster belongs under `k3s/` — which spans two nodes and so has no host to live under — and a check about another host under that host. The 2026-09-27 lab OOM was reported under `vps_oracle` for exactly this reason, while every pod it concerned runs on vps-oracle2. Adding a tree is cheap and needs no engine change: create `<repo>/<x>/inspector-checks/checks/`, and the glob and the instance name both follow.
 
@@ -19,7 +19,7 @@ Every instance always gets a header — `✅ … all clear`, `✅ … N auto-han
 🔍 Inspection report · 2026-09-27 21:00
 
 ✅ k3s — 7 checks, all clear
-✅ vps_gcp — 5 checks, 1 auto-handled
+✅ vps_oracle2 — 5 checks, 1 auto-handled
 ⚠️ vps_oracle — 14 checks, 1 need review
    Needs manual review
    ⚠️ docker container foo
@@ -97,7 +97,7 @@ done
 
 `tests/test-common.sh` is the most important test in the whole project — it verifies the "never mistakenly kill yourself" rule itself, which can't be left to eyeballing the code; see the spec's "self-protection rules" section.
 
-Check tests live next to their checks in all four trees: `vps_oracle/inspector-checks/tests/`, `vps_oracle2/inspector-checks/tests/`, `vps_gcp/inspector-checks/tests/` and `k3s/inspector-checks/tests/`. CI runs every one of them with the glob above.
+Check tests live next to their checks in all three trees: `vps_oracle/inspector-checks/tests/`, `vps_oracle2/inspector-checks/tests/` and `k3s/inspector-checks/tests/`. CI runs every one of them with the glob above.
 
 ## Deploy
 

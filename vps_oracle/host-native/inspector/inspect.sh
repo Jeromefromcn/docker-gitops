@@ -27,8 +27,8 @@ start_epoch="$(date +%s.%N)"
 # This engine (inspect.sh, lib/, systemd/, state/) owns no checks of its own.
 # It discovers every check tree under <repo>/<x>/inspector-checks/checks/ —
 # one per thing that can be inspected, including vps_oracle itself — and runs
-# them all from here. Each tree is reached the same way; see the four READMEs
-# (vps_oracle/, vps_oracle2/, vps_gcp/, k3s/) for what each one inspects.
+# them all from here. Each tree is reached the same way; see the three READMEs
+# (vps_oracle/, vps_oracle2/, k3s/) for what each one inspects.
 REPO_ROOT="${INSPECTOR_REPO_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
 # Which instance a check inspects is simply the directory it lives in. The
 # report is one logical inspection grouped by instance, so it never matters
