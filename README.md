@@ -29,11 +29,11 @@ docker-gitops/
 │   ├── dotfiles/                  # host-local config, symlinked into the repo
 │   └── tofu/                      # OpenTofu brownfield adoption of the OCI network
 ├── vps_gcp/                       # GCP free-tier e2-micro (practice instance)
-│   ├── compose/                   #   node-exporter + glances + plans (run via `docker --context gcp`)
+│   ├── compose/                   #   node-exporter + glances (run via `docker --context gcp`)
 │   ├── inspector-checks/          #   checks about vps-gcp (reached over SSH)
 │   └── tofu/                      # OpenTofu greenfield lifecycle practice
 ├── vps_oracle2/                   # second, separate OCI tenancy — Always Free A1.Flex (2 OCPU/12GB)
-│   ├── compose/                   #   node-exporter, glances, portainer-agent, sillytavern (run via `docker --context oracle2`)
+│   ├── compose/                   #   node-exporter, glances, portainer-agent, sillytavern, plans (run via `docker --context oracle2`)
 │   ├── inspector-checks/          #   checks about vps-oracle2 (reached over SSH)
 │   └── tofu/                      # OpenTofu full-control adoption (network import + instance created by tofu)
 ├── k3s/                           # the k3s cluster spanning hosts (always via ArgoCD GitOps): server on vps_oracle, vps-oracle2 as agent
@@ -121,7 +121,7 @@ Three other rule files: k3s/ArgoCD change discipline is in [`.claude/rules/k3s-g
 | Host | Description | Details |
 |---|---|---|
 | vps_oracle | Oracle Cloud VPS | [vps_oracle/README.md](vps_oracle/README.md) |
-| vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + `compose/` (node-exporter, glances, the private `plans` web app) + `inspector-checks/`, reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
-| vps_oracle2 | second OCI tenancy, Always Free A1.Flex (managed: `tofu/`, `compose/` incl. sillytavern, `inspector-checks/`; reachable over tailscale only) | [vps_oracle2/README.md](vps_oracle2/README.md) |
+| vps_gcp | GCP free-tier e2-micro (managed: `tofu/` IaC + `compose/` (node-exporter, glances) + `inspector-checks/`, reached over the oracle↔GCP tailscale mesh) | [vps_gcp/README.md](vps_gcp/README.md) |
+| vps_oracle2 | second OCI tenancy, Always Free A1.Flex (managed: `tofu/`, `compose/` incl. sillytavern and plans, `inspector-checks/`; reachable over tailscale only) | [vps_oracle2/README.md](vps_oracle2/README.md) |
 
 Other background/history material (incident records, design archives, etc., not required daily reading) is in [`docs/README.md`](docs/README.md).
