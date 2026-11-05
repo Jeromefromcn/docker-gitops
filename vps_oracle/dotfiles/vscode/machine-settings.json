@@ -6,7 +6,8 @@
     "claudeCode.useTerminal": true,
     "claudeCode.environmentVariables": [],
     "workbench.editorAssociations": {
-        "*.copilotmd": "vscode.markdown.preview.editor"
+        "*.copilotmd": "vscode.markdown.preview.editor",
+        "*.md": "markdown-preview-enhanced"
     },
     "markdown-preview-enhanced.enableScriptExecution": true
 }
