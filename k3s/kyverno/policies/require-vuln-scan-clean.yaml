@@ -21,6 +21,14 @@ spec:
           - resources:
               kinds:
                 - Pod
+              # CREATE only. Unscoped, the rule also fired on DELETE (and
+              # UPDATE), so a pod whose image picked up a fixable CRITICAL
+              # could not be deleted: the Recreate rollout to a patched image
+              # stalled with FailedDelete on the old pod (2026-11-05,
+              # hello-frontend). Gating admission is the point; removal must
+              # never be blocked.
+              operations:
+                - CREATE
               selector:
                 matchExpressions:
                   - key: app
