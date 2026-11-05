@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: hello-frontend
-          image: ghcr.io/jeromefromcn/placeholder-hello@sha256:3b8929d1913203f822539731236bf1127c178729588647703eed7ea15e831992
+          image: ghcr.io/jeromefromcn/hello-frontend@sha256:095e60dff30203180a8ffc16ca360296cbfecf0c03179aca23d8618d2ce6ae24
           env:
             - name: TZ
               value: "Asia/Hong_Kong"
