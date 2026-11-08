@@ -42,8 +42,10 @@ Alert rules: `../monitoring/grafana/provisioning/alerting/shared-backends-rules.
 
    | user | role(s) | index access |
    |---|---|---|
-   | `<app>` | `<app>_rw` (+ `<app>_audit_writer`) | `all` on `<app>-*` (+ `create_doc`/`auto_configure` on the audit pattern) |
-   | `<app>_dev` | `<app>_dev_rw` (+ `<app>_dev_audit_writer`) | `all` on `<app>_dev-*` (+ the same on the audit pattern with `audit-<app>-` → `audit-<app>_dev-`) |
+   | `<app>` | `<app>_rw` (+ `<app>_audit_writer`) | `all` on `<app>-*` (+ `create_doc`/`create_index` on the audit pattern) |
+   | `<app>_dev` | `<app>_dev_rw` (+ `<app>_dev_audit_writer`) | `all` on `<app>_dev-*` (+ the same on the dev audit pattern, `audit-<app>-` → `audit-<app>_dev-`) |
+   | `<app>_audit_reader` (only with `--audit-pattern`) | `<app>_audit_reader` | `read` on the audit pattern only — nothing on `<app>-*` |
+   | `<app>_audit_reader_dev` (only with `--audit-pattern`) | `<app>_audit_reader_dev` | `read` on the dev audit pattern only — nothing on `<app>_dev-*` |
 
    The script also maintains index template `<app>-defaults` (priority 1) on `<app>-*`, `<app>_dev-*`, `audit-<app>-*`, `audit-<app>_dev-*` with `number_of_replicas: 0` — see "Single node and replicas" below.
 
@@ -69,7 +71,9 @@ Alert rules: `../monitoring/grafana/provisioning/alerting/shared-backends-rules.
 
 - App names match `^[a-z][a-z0-9]*$` — no `-` or `_`. With apps `rag` and `rag-x`, the pattern `rag-*` would also match `rag-x-*`; alphanumeric names keep every app's patterns disjoint.
 - **Audit indices live under the reserved `audit-` prefix**, outside the app's namespace. ES roles are additive with no deny, so an audit index under `<app>-*` would be fully writable/deletable through `<app>_rw`. The app name `audit` is reserved.
-- Audit writes must be create-only: `POST /audit-<app>-x/_doc` (auto id) or `PUT …/_create/<id>`, or `_bulk` with `create` actions. `PUT …/_doc/<id>` (index/overwrite), reads, updates and deletes are 403. `auto_configure` lets the first write auto-create the index without granting `create_index`/delete. Reading audit data is ops-only (as `elastic`).
+- **Audit indices are created explicitly by the app**, with its own (strict) mapping: the writer role has `create_index`, and the cluster setting `action.auto_create_index: "-audit-*,+*"` (maintained by the script) makes a write to a missing `audit-*` index fail with 404 instead of auto-creating it with a dynamic mapping. `create_index` alone would still auto-create — tested; that's why the cluster setting exists. It applies to every app's audit indices; everything else still auto-creates.
+- Audit writes must be create-only: `POST /audit-<app>-x/_doc` (auto id) or `PUT …/_create/<id>`, or `_bulk` with `create` actions. `PUT …/_doc/<id>` (overwrite), reads, updates, deletes, `_delete_by_query`, deleting the index and changing its settings are all 403 for the writer. Caveat: `create_index` also grants `PUT _mapping`, so the writer can add fields (or relax `dynamic`) — it still cannot alter or remove existing docs.
+- Reading audit data goes through `<app>_audit_reader` / `<app>_audit_reader_dev` (read-only, audit pattern only). Hand that credential only to the component that serves audit reads, not to the main write path.
 
 ## Ops
 
@@ -82,7 +86,7 @@ curl -s -u "elastic:$(grep ^ELASTIC_PASSWORD= .env | cut -d= -f2-)" '127.0.0.1:9
 
 ### Single node and replicas
 
-A replica can never be assigned on one node, so any index with the default 1 replica turns the cluster `yellow` permanently. Auto-created audit indices hit this first: the app can't create templates, and `auto_configure` creates the index with defaults. Hence the per-app `<app>-defaults` template (0 replicas). It is per-app rather than a catch-all `*` template because `*` at priority 0 is rejected (it collides with the built-in `.monitoring-*` templates) and at a higher priority would override them. Only one composable template applies per index, so any later higher-priority template on an app's patterns must set `number_of_replicas: 0` itself.
+A replica can never be assigned on one node, so any index with the default 1 replica turns the cluster `yellow` permanently. An app creating an index without `number_of_replicas: 0` hits this, and it can't create templates itself. Hence the per-app `<app>-defaults` template (0 replicas). It is per-app rather than a catch-all `*` template because `*` at priority 0 is rejected (it collides with the built-in `.monitoring-*` templates) and at a higher priority would override them. Only one composable template applies per index, so any later higher-priority template on an app's patterns must set `number_of_replicas: 0` itself.
 
 ## First install
 
