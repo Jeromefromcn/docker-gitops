@@ -9,8 +9,9 @@ First consumer: `rag` (bank-policy-rag) — `dense_vector` kNN with `filter`, pl
 | container_name | network | host port | data |
 |---|---|---|---|
 | `elasticsearch` | `elasticsearch_default` | `127.0.0.1:9200` only | `/etc/elasticsearch/data` (bind mount, owned `1000:0`) |
+| `elasticsearch-exporter` | `elasticsearch_default` + `monitoring_default` | none | — |
 
-- Not on `proxy`, no NPM record, no homepage card (no UI) and no Prometheus target — same as the `postgres` / `redis` backends.
+- Not on `proxy`, no NPM record, no homepage card (no UI) — same as the `postgres` / `redis` backends.
 - HTTP is plain (no TLS): the only paths in are loopback and the stack's own docker network.
 
 ## Why it isn't exposed publicly
@@ -20,6 +21,14 @@ It holds app data, and a public ES endpoint is a standard target for credential 
 ## Resource limits
 
 `cpus: 2`, `memory: 3G`, heap `-Xms1536m -Xmx1536m` (the rest is left for Lucene's off-heap / page cache). `bootstrap.memory_lock=true` with `ulimits.memlock: -1` keeps the heap out of swap (the host has 4G swap that is in use); check with `_nodes?filter_path=**.mlockall`. `xpack.ml.enabled=false` (unused). `vm.max_map_count` on the host is `1048576` — ES needs ≥ 262144; don't lower it.
+
+## Monitoring and alerts
+
+`elasticsearch-exporter` (Prometheus job `elasticsearch`) logs in as `prometheus_exporter` — role `prometheus_exporter`, cluster `monitor` only, no index privileges (it runs without `--es.indices`). Provision it with `./scripts/es-provision-exporter.sh` (password `ES_EXPORTER_PASSWORD` in `.env`). It joins `monitoring_default`, so **the monitoring stack must be up before this one**.
+
+Alert rules: `../monitoring/grafana/provisioning/alerting/shared-backends-rules.yml` — Elasticsearch Down (critical), Cluster Red (critical), JVM Heap > 90% for 10m (warning). Yellow is not alerted.
+
+- "Down" is `sum(elasticsearch_cluster_health_number_of_nodes) or vector(0) < 1`. When ES dies mid-run the exporter keeps answering 200 but drops every `cluster_health_*` series; when ES is down at exporter start the exporter never opens `:9114`. One expression covers both. Don't use `elasticsearch_clusterinfo_up` — it is cached for 5m and stays `1` after ES is gone.
 
 ## Connecting a new app
 
@@ -35,6 +44,8 @@ It holds app data, and a public ES endpoint is a standard target for credential 
    |---|---|---|
    | `<app>` | `<app>_rw` (+ `<app>_audit_writer`) | `all` on `<app>-*` (+ `create_doc`/`auto_configure` on the audit pattern) |
    | `<app>_dev` | `<app>_dev_rw` (+ `<app>_dev_audit_writer`) | `all` on `<app>_dev-*` (+ the same on the audit pattern with `audit-<app>-` → `audit-<app>_dev-`) |
+
+   The script also maintains index template `<app>-defaults` (priority 1) on `<app>-*`, `<app>_dev-*`, `audit-<app>-*`, `audit-<app>_dev-*` with `number_of_replicas: 0` — see "Single node and replicas" below.
 
    Both roles also carry cluster action `cluster:monitor/main` (= `GET /`, which clients use for `info()`/version checks) and nothing else — not `monitor`, which would expose every index name through cluster state.
 
@@ -69,7 +80,9 @@ grep ^ELASTIC_PASSWORD= .env
 curl -s -u "elastic:$(grep ^ELASTIC_PASSWORD= .env | cut -d= -f2-)" '127.0.0.1:9200/_cluster/health?pretty'
 ```
 
-Single node, so new indices with replicas show `yellow`; `green` is normal until then. For single-node, create indices with `"number_of_replicas": 0`.
+### Single node and replicas
+
+A replica can never be assigned on one node, so any index with the default 1 replica turns the cluster `yellow` permanently. Auto-created audit indices hit this first: the app can't create templates, and `auto_configure` creates the index with defaults. Hence the per-app `<app>-defaults` template (0 replicas). It is per-app rather than a catch-all `*` template because `*` at priority 0 is rejected (it collides with the built-in `.monitoring-*` templates) and at a higher priority would override them. Only one composable template applies per index, so any later higher-priority template on an app's patterns must set `number_of_replicas: 0` itself.
 
 ## First install
 
@@ -79,6 +92,7 @@ cp .env.example .env && chmod 600 .env     # set ELASTIC_PASSWORD
 sudo mkdir -p /etc/elasticsearch/data && sudo chown 1000:0 /etc/elasticsearch/data && sudo chmod 770 /etc/elasticsearch/data
 docker compose up -d
 ./scripts/es-provision-app.sh rag --audit-pattern 'audit-rag-*'
+./scripts/es-provision-exporter.sh && docker compose up -d elasticsearch-exporter
 ```
 
 ## Gotchas

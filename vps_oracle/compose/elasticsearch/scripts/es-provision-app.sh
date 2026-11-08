@@ -81,6 +81,7 @@ get_or_create_password() {
 
 es GET /_security/_authenticate >/dev/null || { echo "error: cannot authenticate as elastic at $ES_URL" >&2; exit 1; }
 
+
 provision() {
   local user="$1" pw_var="$2" audit="$3" roles
   local rw_role="${user}_rw"
@@ -104,6 +105,22 @@ provision() {
     '{password: $pw, roles: $roles}')" >/dev/null
   echo "user  ${user}: roles $(jq -r 'join(",")' <<<"$roles"), password in ${PWD}/${ENV_FILE} (${pw_var})"
 }
+
+# Default 0 replicas for this app's indices. Single node, so a replica can never
+# be assigned: any index created with the default 1 replica — notably the
+# auto-created audit indices, which the app cannot template itself — would turn
+# the cluster yellow for good. Scoped to the app's own patterns: a catch-all `*`
+# template collides with the built-in .monitoring-* templates (same priority 0)
+# or, at a higher priority, would override them. Only one composable template
+# applies per index, so a later higher-priority template for these patterns
+# must set number_of_replicas 0 itself. Explicit settings in a create-index
+# request still win over this template.
+es PUT "/_index_template/${app}-defaults" "$(jq -nc --arg a "$app" '{
+  index_patterns: ["\($a)-*", "\($a)_dev-*", "audit-\($a)-*", "audit-\($a)_dev-*"],
+  priority: 1,
+  template: {settings: {number_of_replicas: 0}},
+  _meta: {managed_by: "es-provision-app.sh"}}')" >/dev/null
+echo "template ${app}-defaults: number_of_replicas 0 on ${app}-*, ${app}_dev-*, audit-${app}-*, audit-${app}_dev-*"
 
 app_uc="$(tr '[:lower:]' '[:upper:]' <<<"$app")"
 dev_audit=""

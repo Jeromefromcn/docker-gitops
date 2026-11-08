@@ -60,3 +60,39 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+
+  # Prometheus metrics for the alert rules in
+  # ../monitoring/grafana/provisioning/alerting/shared-backends-rules.yml.
+  # Reads ES over the default network; joins monitoring_default so prometheus can
+  # scrape elasticsearch-exporter:9114 (no host port). User/role from
+  # scripts/es-provision-exporter.sh — cluster `monitor` only, no index access.
+  elasticsearch-exporter:
+    # v1.11.0
+    image: prometheuscommunity/elasticsearch-exporter:v1.11.0@sha256:a056739b095df4baaa076f0b31321394233da9a240eeada2623d1b028b7ee7a6
+    container_name: elasticsearch-exporter
+    hostname: elasticsearch-exporter
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      ES_USERNAME: prometheus_exporter
+      ES_PASSWORD: "${ES_EXPORTER_PASSWORD}"
+    command:
+      - --es.uri=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - default
+      - monitoring
+
+networks:
+  monitoring:
+    name: monitoring_default
+    external: true   # created by the monitoring stack; bring that stack up first
