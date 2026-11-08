@@ -14,7 +14,13 @@ Unlike the minio/postgres/redis shared resources, there is **no `<app>` / `<app>
 |---|---|---|---|
 | `ollama` | `ollama_default` | `127.0.0.1:11434` only | `/etc/ollama` (bind mount: models + server key) |
 
-Not on `proxy`, no NPM record, no homepage card (no UI) and no Prometheus target — same as the other shared backends.
+Not on `proxy`, no NPM record, no homepage card (no UI) — same as the other shared backends.
+
+## Monitoring and alerts
+
+`blackbox-exporter` (monitoring stack) joins `ollama_default` and probes `http://ollama:11434/api/tags` every minute (Prometheus job `blackbox_ollama`, module `http_ollama_model`). The probe fails unless the response is 200 **and** lists `nomic-embed-text`, so a wiped model directory alerts too. Alert: "Ollama Down" (warning) in `../monitoring/grafana/provisioning/alerting/shared-backends-rules.yml`. It deliberately doesn't call `/api/embed` — that would keep the model loaded all the time.
+
+The monitoring stack references `ollama_default` as an external network, so **this stack must be up before `monitoring`**. If you ever remove this stack, remove the `ollama` network from `blackbox-exporter` first.
 
 ## Why it isn't exposed publicly
 
