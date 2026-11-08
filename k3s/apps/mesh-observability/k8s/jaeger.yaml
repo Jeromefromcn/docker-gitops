@@ -33,11 +33,19 @@ spec:
               value: "memory"
             - name: MEMORY_MAX_TRACES
               value: "5000"
+            # OTLP ingest for compose services (via the jaeger-otlp NodePort
+            # below). On by default in 1.60; set explicitly so it is visible.
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
           ports:
             - containerPort: 16686
               name: ui
             - containerPort: 9411
               name: zipkin
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
           resources:
             requests:
               cpu: 25m
@@ -47,8 +55,8 @@ spec:
               memory: 256Mi
 ---
 # Zipkin span ingest — in-cluster only, Envoy sends spans here directly.
-# Never exposed via NodePort: nothing outside the cluster needs to reach it,
-# and it must not cross the k3s->compose boundary this plan avoids entirely.
+# Stays ClusterIP: pods pushing out to the docker bridge is the direction that
+# does not work on this host (docs/incidents/2026-08-24-k3s-pod-to-docker-bridge-blackhole.md).
 apiVersion: v1
 kind: Service
 metadata:
@@ -78,3 +86,32 @@ spec:
       targetPort: 16686
       nodePort: 30114
       name: ui
+---
+# OTLP ingest for docker compose services. Compose containers connect OUT to
+# a k3s NodePort — the direction that works (same path Grafana uses to query
+# jaeger-query). No auth on either port: what keeps them private is the OCI
+# security list (public) and the tailscale ACL, and host-firewall.sh only lets
+# the docker `proxy` network (172.19.0.0/16) reach the NodePort range.
+# Each port also needs a nodeport-relay@<port> instance on vps_oracle, or
+# container traffic is blackholed (vps_oracle/host-native/npm-nodeport-relay/).
+# vps_oracle/inspector-checks/checks/public-nodeport-exposure.sh alerts if the
+# public side ever opens. Clients: OTEL_EXPORTER_OTLP_ENDPOINT=http://10.0.0.95:30117
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-otlp
+  namespace: mesh-observability
+spec:
+  type: NodePort
+  selector:
+    app: jaeger
+  ports:
+    - port: 4317
+      targetPort: 4317
+      nodePort: 30116
+      name: grpc-otlp
+      appProtocol: grpc
+    - port: 4318
+      targetPort: 4318
+      nodePort: 30117
+      name: http-otlp
