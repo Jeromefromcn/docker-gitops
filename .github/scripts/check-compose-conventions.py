@@ -24,6 +24,8 @@ PORT_EXCEPTIONS = {
     ("apprise", "apprise"): "bound to 127.0.0.1 only",
     ("elasticsearch", "elasticsearch"): "shared backend for host-native clients; bound to "
         "127.0.0.1 only, never via NPM (containers use the elasticsearch_default network)",
+    ("ollama", "ollama"): "shared backend for host-native clients; bound to 127.0.0.1 only, "
+        "never via NPM — it has no auth (containers use the ollama_default network)",
     ("plans", "plans"): "bound to oracle2's tailscale IP only; NPM on oracle reaches it over the "
         "tailscale mesh (cross-host, no shared docker `proxy` network is possible)",
     ("node-exporter", "node-exporter"): "bound to oracle2's tailscale IP only; oracle's "

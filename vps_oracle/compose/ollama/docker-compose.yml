@@ -1,0 +1,45 @@
+# Shared Ollama (embedding/LLM inference) for the user's own apps. Models are
+# stateless and shared, so there is no prod/dev split — see README.md.
+#
+# Network layout:
+#   ollama -> default network (ollama_default; consuming apps join it as an
+#             external network) + 127.0.0.1:11434 for host-native clients.
+#   Ollama has NO auth: never on `proxy`, never via NPM, never on the public IP.
+services:
+  ollama:
+    # 0.40.15
+    image: ollama/ollama:0.40.15@sha256:0e59999e0e8f9fd4e704bd788a89b7e4cad399367fb1365f8c102ac662288761
+    container_name: ollama
+    hostname: ollama
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      OLLAMA_HOST: "0.0.0.0:11434"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+    deploy:
+      resources:
+        limits:
+          cpus: "3"
+          memory: 2.5G
+    volumes:
+      # Host bind mount for pulled models, same pattern as the other stacks (/etc/<name>).
+      - /etc/ollama:/root/.ollama
+      # Image ships no tzdata; Go needs the zone file for TZ to take effect.
+      - /usr/share/zoneinfo/Asia/Hong_Kong:/usr/share/zoneinfo/Asia/Hong_Kong:ro
+    ports:
+      # Loopback only — for host-native clients. Containers use ollama:11434.
+      - "127.0.0.1:11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
