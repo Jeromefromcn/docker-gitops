@@ -20,7 +20,9 @@ docker-gitops/
 │   │   ├── apprise/               #   notification routing
 │   │   ├── minio/                 #   shared object storage
 │   │   ├── postgres/              #   shared postgres
-│   │   └── redis/                 #   shared redis (ACL users)
+│   │   ├── redis/                 #   shared redis (ACL users)
+│   │   ├── elasticsearch/         #   shared elasticsearch (per-app users/roles)
+│   │   └── ollama/                #   shared ollama (embedding models, no auth)
 │   ├── host-native/               # systemd services on the host itself (not containers)
 │   │   ├── inspector/             #   the inspection engine (systemd timer); owns no checks
 │   │   ├── host-firewall/         #   hand-written iptables rules
@@ -88,7 +90,7 @@ cd ~/jerome/docker-gitops/<host>/compose/<compose> && docker compose up -d
 
 Mounted volumes in the compose files uniformly use absolute paths (e.g. `/etc/x-ui/...`), so moving the working directory into the repo doesn't affect where the container data lives.
 
-Some compose stacks have their own README (recording stack-specific steps/gotchas) — check for one before entering a directory: [`ccr/README.md`](vps_oracle/compose/ccr/README.md), [`sillytavern/README.md`](vps_oracle2/compose/sillytavern/README.md) (runs on vps_oracle2), [`npm/README.md`](vps_oracle/compose/npm/README.md), [`postgres/README.md`](vps_oracle/compose/postgres/README.md), [`redis/README.md`](vps_oracle/compose/redis/README.md), [`switchboard/README.md`](vps_oracle/compose/switchboard/README.md).
+Some compose stacks have their own README (recording stack-specific steps/gotchas) — check for one before entering a directory: [`ccr/README.md`](vps_oracle/compose/ccr/README.md), [`sillytavern/README.md`](vps_oracle2/compose/sillytavern/README.md) (runs on vps_oracle2), [`npm/README.md`](vps_oracle/compose/npm/README.md), [`postgres/README.md`](vps_oracle/compose/postgres/README.md), [`redis/README.md`](vps_oracle/compose/redis/README.md), [`elasticsearch/README.md`](vps_oracle/compose/elasticsearch/README.md), [`ollama/README.md`](vps_oracle/compose/ollama/README.md), [`switchboard/README.md`](vps_oracle/compose/switchboard/README.md).
 
 ## Adding a service
 
