@@ -1,5 +1,10 @@
 # sl-ledger
 
+> **Stopped since 2026-11-08** — every workload is at `replicas: 0` to free ~2 GiB on vps_oracle.
+> The Postgres PVC (`data-postgres-0`), Services and Secrets stay; Kafka and Redis keep no
+> volume, so their contents are gone (same as on any restart). To bring it back, `git revert`
+> the stop commit and push.
+
 The securities-lending ledger of [java-hands-on](https://github.com/Jeromefromcn/java-hands-on),
 deployed by its stage 14 (packaging and delivery). Everything it needs runs in the `sl-ledger`
 namespace: the ledger (two replicas), Postgres, Redis, a single Kafka broker, and a WireMock that

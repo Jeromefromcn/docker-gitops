@@ -74,7 +74,7 @@ metadata:
   labels:
     app: sl-ledger-stubs
 spec:
-  replicas: 1
+  replicas: 0  # stopped 2026-11-08 (was 1); git revert to restore
   selector:
     matchLabels:
       app: sl-ledger-stubs

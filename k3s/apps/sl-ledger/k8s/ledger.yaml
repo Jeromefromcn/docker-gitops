@@ -39,7 +39,7 @@ metadata:
   labels:
     app: sl-ledger
 spec:
-  replicas: 2
+  replicas: 0  # stopped 2026-11-08 (was 2) to free memory on vps_oracle; git revert to restore
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate

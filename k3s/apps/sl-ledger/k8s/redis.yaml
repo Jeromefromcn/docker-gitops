@@ -22,7 +22,7 @@ metadata:
   labels:
     app: sl-ledger-redis
 spec:
-  replicas: 1
+  replicas: 0  # stopped 2026-11-08 (was 1); git revert to restore
   strategy:
     type: Recreate
   selector:

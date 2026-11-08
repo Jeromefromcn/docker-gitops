@@ -23,7 +23,7 @@ metadata:
     app: sl-ledger-postgres
 spec:
   serviceName: postgres
-  replicas: 1
+  replicas: 0  # stopped 2026-11-08 (was 1); git revert to restore
   selector:
     matchLabels:
       app: sl-ledger-postgres
