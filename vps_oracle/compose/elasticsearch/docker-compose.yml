@@ -1,0 +1,62 @@
+# Shared single-node Elasticsearch for the user's own apps. Per-app isolation
+# is by native-realm user + role scoped to an index-name prefix, provisioned
+# by scripts/es-provision-app.sh (prod `<app>-*` / dev `<app>_dev-*`).
+#
+# Network layout:
+#   elasticsearch -> default network (elasticsearch_default; consuming apps join it
+#                    as an external network) + 127.0.0.1:9200 for host-native clients.
+#   Never on `proxy`, never reverse-proxied through NPM, never on the public IP.
+services:
+  elasticsearch:
+    # 9.5.5
+    image: elasticsearch:9.5.5@sha256:a418cab5c89773ab827d1d146e6c95a3658226216d8d934d404c33e7a09a147d
+    container_name: elasticsearch
+    hostname: elasticsearch
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    environment:
+      TZ: "Asia/Hong_Kong"
+      # Bootstrap password for the built-in `elastic` superuser; only read on
+      # first start with an empty data dir (later changes go through the API).
+      ELASTIC_PASSWORD: "${ELASTIC_PASSWORD}"
+      discovery.type: single-node
+      cluster.name: shared-es
+      node.name: elasticsearch
+      xpack.security.enabled: "true"
+      # Plain HTTP: only reachable on loopback and the stack's docker network.
+      xpack.security.http.ssl.enabled: "false"
+      xpack.security.transport.ssl.enabled: "false"
+      xpack.ml.enabled: "false"
+      bootstrap.memory_lock: "true"
+      ES_JAVA_OPTS: "-Xms1536m -Xmx1536m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 3G
+    volumes:
+      # Host bind mount, same pattern as postgres (/etc/postgres/data). Owned by 1000:0.
+      - /etc/elasticsearch/data:/usr/share/elasticsearch/data
+    ports:
+      # Loopback only — for host-native clients. Containers use elasticsearch:9200.
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      # 401 means the HTTP layer is up; auth is checked by the provisioning script.
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:9200 | grep -qE '^(200|401)$'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
