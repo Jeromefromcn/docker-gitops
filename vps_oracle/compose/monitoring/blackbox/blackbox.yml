@@ -21,6 +21,18 @@ modules:
     http:
       valid_status_codes: [200, 201, 202, 203, 204, 205, 206, 404, 401]
 
+  # Shared Ollama (vps_oracle/compose/ollama): /api/tags must answer 200 AND list
+  # the embedding model, so a wiped model dir fails the probe too. Deliberately
+  # not /api/embed — probing that every minute would keep the model resident.
+  http_ollama_model:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - '"name":"nomic-embed-text'
+
   tcp_connect:
     prober: tcp
     timeout: 5s

@@ -77,6 +77,10 @@ services:
     networks:
       - default
       - egress
+      - ollama
+    # ollama: to probe the shared Ollama at ollama:11434 (it binds only 127.0.0.1 on the
+    # host and has no auth, so it lives on its own network). The http prober only issues
+    # the module's GET, so this adds no way to pull/delete models.
     # The only container in this project that needs to reach the public internet (probing
     # the https://*.jerome.cloudns.asia batch in prometheus.yml). The default network is
     # internal, so it has no default route; it gets its own egress bridge as an exit —
@@ -138,3 +142,6 @@ networks:
     # egress bridge used only by blackbox-exporter; see that service's comment above
   proxy:
     external: true   # create once manually: docker network create proxy
+  ollama:
+    name: ollama_default
+    external: true   # created by vps_oracle/compose/ollama; bring that stack up first

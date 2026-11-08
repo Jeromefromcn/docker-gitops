@@ -1,0 +1,140 @@
+apiVersion: 1
+
+# Shared backends on vps_oracle: elasticsearch (via elasticsearch-exporter on
+# monitoring_default) and ollama (via blackbox over ollama_default). Neither has
+# a host-reachable port from these containers, see the two stacks' READMEs.
+groups:
+  - orgId: 1
+    name: shared_backends
+    folder: Monitoring
+    interval: 60s
+    rules:
+      # Covers both "ES is down" and "exporter is down": when ES dies mid-run the
+      # exporter still answers 200 but drops every cluster_health_* series, and when
+      # ES is down at exporter start the exporter never opens :9114 at all. Either
+      # way the sum is empty and `or vector(0)` turns it into 0. (clusterinfo_up is
+      # NOT usable here: it is cached for 5m and stays 1 after ES dies — tested.)
+      - uid: es_down
+        title: Elasticsearch Down
+        condition: B
+        for: 2m
+        noDataState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: "Shared Elasticsearch (vps_oracle) is unreachable, or elasticsearch-exporter is down"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'sum(elasticsearch_cluster_health_number_of_nodes{job="elasticsearch"}) or vector(0)'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      # Yellow is deliberately not alerted: on a single node it only means an index
+      # was created with replicas (the per-app templates default to 0, see
+      # es-provision-app.sh); data is still fully served.
+      - uid: es_cluster_red
+        title: Elasticsearch Cluster Red
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: critical
+        annotations:
+          summary: "Shared Elasticsearch cluster status is red: at least one primary shard is unassigned"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'max(elasticsearch_cluster_health_status{job="elasticsearch",color="red"})'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: es_heap_high
+        title: Elasticsearch JVM Heap High
+        condition: B
+        for: 10m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Shared Elasticsearch heap above 90% for 10m (heap is 1.5G, container limit 3G)"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'max(100 * elasticsearch_jvm_memory_used_bytes{job="elasticsearch",area="heap"} / elasticsearch_jvm_memory_max_bytes{job="elasticsearch",area="heap"})'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [90]
+
+      # Fails on: ollama down, /api/tags not 200, or nomic-embed-text missing from
+      # the model list (module http_ollama_model in blackbox.yml).
+      - uid: ollama_down
+        title: Ollama Down
+        condition: B
+        for: 2m
+        noDataState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "Shared Ollama (vps_oracle) is unreachable or nomic-embed-text is missing"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              expr: 'probe_success{job="blackbox_ollama"}'
+          - refId: B
+            datasourceUid: '__expr__'
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]

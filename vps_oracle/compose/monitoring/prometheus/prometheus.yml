@@ -106,6 +106,28 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
+  # Shared Elasticsearch (vps_oracle/compose/elasticsearch): its exporter joins
+  # monitoring_default; alert rules in grafana .../alerting/shared-backends-rules.yml
+  - job_name: elasticsearch
+    static_configs:
+      - targets: ['elasticsearch-exporter:9114']
+
+  # Shared Ollama: blackbox reaches it over ollama_default (no host-reachable port)
+  - job_name: blackbox_ollama
+    metrics_path: /probe
+    params:
+      module: [http_ollama_model]
+    static_configs:
+      - targets:
+          - http://ollama:11434/api/tags
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
   - job_name: istiod
     static_configs:
       - targets: ['10.0.0.95:30110']
